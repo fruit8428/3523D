@@ -59,6 +59,33 @@
         .theme-red { border-top-color: #DC2626; }
         .theme-purple { border-top-color: #9333EA; }
 
+        /* 3D Embossed Relief Title (立體浮雕質感標題) */
+        .title-emboss-plaque {
+            display: inline-flex;
+            align-items: center;
+            max-width: 100%;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 45%, #eef2f6 100%);
+            padding: 6px 18px;
+            border-radius: 12px;
+            border: 1px solid #d8e0e9;
+            box-shadow: 
+                inset 0 1px 0 #ffffff,
+                inset 0 -1px 0 #cbd5e1,
+                0 2px 4px rgba(15, 23, 42, 0.06),
+                0 4px 10px rgba(15, 23, 42, 0.04);
+            transform: translateZ(0);
+        }
+        .title-emboss-text {
+            color: #0f172a;
+            font-weight: 900;
+            letter-spacing: 0.01em;
+            text-shadow: 
+                0 1px 0 #ffffff,
+                0 -1px 0 rgba(15, 23, 42, 0.2),
+                1px 2px 2px rgba(15, 23, 42, 0.14);
+            word-break: break-word;
+        }
+
         /* Mobile inputs font size 16px to eliminate iOS Safari form auto-zoom */
         @media (max-width: 640px) {
             input, select, textarea {
@@ -162,8 +189,12 @@
                     <span id="golfSpecialBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 hidden">⛳ 高爾夫賽事 (差點連動已啟用)</span>
                 </div>
                 
-                <!-- Main Sub-event Title (Dynamically linked with top dropdown) -->
-                <h2 id="catTitle" class="text-xl sm:text-2xl font-black text-slate-900 leading-tight">1. 獎助金管理研討會 (GMS)</h2>
+                <!-- Main Sub-event Title (Dynamically linked with top dropdown, 3D Embossed) -->
+                <div class="pt-0.5">
+                    <div class="title-emboss-plaque">
+                        <h2 id="catTitle" class="text-xl sm:text-2xl font-black title-emboss-text leading-tight">1. 獎助金管理研討會 (GMS)</h2>
+                    </div>
+                </div>
 
                 <p id="catDesc" class="text-xs text-slate-500 leading-normal">專為地區培育幹部與講習設計之研討會，費用由地區統籌，不開放共同主辦/協辦/贊助社機制。</p>
             </div>
