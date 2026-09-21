@@ -221,7 +221,7 @@
                     <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-3">
                         <div>
                             <h3 class="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-1.5">
-                                👥 <span id="currentClubNameTitle">台北內湖扶輪社</span> 社友庫
+                                👥 <span id="currentClubNameTitle">臺北市南區扶輪社</span> 社友庫
                             </h3>
                             <p class="text-[11px] text-slate-500">已整合<strong>高爾夫差點</strong>，預先維護一勞永逸</p>
                         </div>
@@ -268,7 +268,7 @@
                                 <h3 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2">
                                     📝 <span id="regFormTitle">報名表單</span>
                                 </h3>
-                                <p class="text-[11px] text-slate-500">填表社別：<strong id="lockedClubNameBadge" class="text-blue-700 font-bold">台北內湖扶輪社</strong> (防竄改保護已啟動)</p>
+                                <p class="text-[11px] text-slate-500">填表社別：<strong id="lockedClubNameBadge" class="text-blue-700 font-bold">臺北市南區扶輪社</strong> (防竄改保護已啟動)</p>
                             </div>
                             <span id="countdownDisplay" class="text-xs bg-amber-50 text-amber-800 font-mono font-bold px-2.5 py-1 rounded-md border border-amber-200 whitespace-nowrap">
                                 ⏱️ 報名開放中
@@ -609,8 +609,8 @@
 
             <!-- Division & Club Standard Appendix Directory -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sm:p-6">
-                <h3 class="text-base font-bold text-slate-800 mb-3">📍 3523 地區分區所屬扶輪社標準點選名單 (附錄)</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 text-xs" id="divisionDirectoryContainer">
+                <h3 class="text-base font-bold text-slate-800 mb-3">📍 3523 地區分區所屬扶輪社標準名單 (依地區排序，共 13 分區 80 社)</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 text-xs" id="divisionDirectoryContainer">
                     <!-- Dynamic rendering of Divisions 1-6 -->
                 </div>
             </div>
@@ -623,7 +623,7 @@
         <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
                 <h3 class="font-bold text-slate-900 text-base" id="memberModalTitle">
-                    ➕ 新增社友至 <span id="modalClubName" class="text-blue-600">台北內湖扶輪社</span>
+                    ➕ 新增社友至 <span id="modalClubName" class="text-blue-600">臺北市南區扶輪社</span>
                 </h3>
                 <button onclick="closeAddMemberModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1 leading-none">&times;</button>
             </div>
@@ -841,7 +841,7 @@
         <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl p-5 sm:p-6 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
                 <div>
-                    <h3 class="font-bold text-slate-900 text-base" id="detailModalClubTitle">台北內湖扶輪社 - 出席名冊明細</h3>
+                    <h3 class="font-bold text-slate-900 text-base" id="detailModalClubTitle">臺北市南區扶輪社 - 出席名冊明細</h3>
                     <p class="text-[11px] text-slate-500" id="detailModalSubTitle">贊助等級：一般參賽社 | 報名時間：2026-09-05</p>
                 </div>
                 <button onclick="closeOrderDetailModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1">&times;</button>
@@ -968,16 +968,408 @@
     <!-- JavaScript Logic & Interactive State Management -->
     <script>
         // ================= STORAGE KEY & DATA INITIALIZATION =================
-        const LOCAL_STORAGE_KEY = 'rotary_3523_spa_data_v2';
+        const LOCAL_STORAGE_KEY = 'rotary_3523_spa_data_v3';
 
-        // Appendix: Division & Clubs Dictionary
+        // Appendix: Division & Clubs Dictionary (依據 3523地區現有社名排序.xlsx 完整 13 分區 80 社)
         const DIVISIONS_DATA = [
-            { id: 1, name: "第一分區", clubs: ["台北扶輪社", "台北西區扶輪社", "台北北區扶輪社", "台北南區扶輪社"] },
-            { id: 2, name: "第二分區", clubs: ["台北東北區扶輪社", "台北西北區扶輪社", "台北中區扶輪社", "台北東南區扶輪社", "台北安東扶輪社"] },
-            { id: 3, name: "第三分區", clubs: ["台北華岡扶輪社", "台北陽明扶輪社", "台北至善扶輪社", "台北華欣扶輪社", "台北文山扶輪社"] },
-            { id: 4, name: "第四分區", clubs: ["台北南門扶輪社", "台北和平扶輪社", "台北城西扶輪社", "台北菁英扶輪社", "台北永福扶輪社"] },
-            { id: 5, name: "第五分區", clubs: ["台北仁愛扶輪社", "台北安和扶輪社", "台北安康扶輪社", "台北信義扶輪社", "台北世貿扶輪社"] },
-            { id: 6, name: "第六分區", clubs: ["台北內湖扶輪社", "台北南湖扶輪社", "台北汐止扶輪社", "台北秀峰扶輪社", "台北新湖扶輪社"] }
+                    {
+                                "id": 1,
+                                "name": "第一分區",
+                                "clubs": [
+                                            {
+                                                        "code": "01-1",
+                                                        "name": "臺北市南區扶輪社"
+                                            },
+                                            {
+                                                        "code": "01-2",
+                                                        "name": "台北逸仙扶輪社"
+                                            },
+                                            {
+                                                        "code": "01-3",
+                                                        "name": "台北逸天扶輪社"
+                                            },
+                                            {
+                                                        "code": "01-4",
+                                                        "name": "台北市雲聯網扶輪社"
+                                            },
+                                            {
+                                                        "code": "01-5",
+                                                        "name": "台北逸澤扶輪社"
+                                            },
+                                            {
+                                                        "code": "01-6",
+                                                        "name": "臺北黃埔扶輪社"
+                                            },
+                                            {
+                                                        "code": "01-7",
+                                                        "name": "台北逸新扶輪社"
+                                            },
+                                            {
+                                                        "code": "01-8",
+                                                        "name": "台北蘭亭鐵馬扶輪社"
+                                            },
+                                            {
+                                                        "code": "01-9",
+                                                        "name": "台北銀河扶輪社"
+                                            }
+                                ]
+                    },
+                    {
+                                "id": 2,
+                                "name": "第二分區",
+                                "clubs": [
+                                            {
+                                                        "code": "02-1",
+                                                        "name": "台北市西南區扶輪社"
+                                            },
+                                            {
+                                                        "code": "02-2",
+                                                        "name": "台北健康扶輪社"
+                                            },
+                                            {
+                                                        "code": "02-3",
+                                                        "name": "台北高峰扶輪社"
+                                            },
+                                            {
+                                                        "code": "02-4",
+                                                        "name": "台北永康扶輪社"
+                                            },
+                                            {
+                                                        "code": "02-5",
+                                                        "name": "台北市南山扶輪社"
+                                            }
+                                ]
+                    },
+                    {
+                                "id": 3,
+                                "name": "第三分區",
+                                "clubs": [
+                                            {
+                                                        "code": "03-1",
+                                                        "name": "台北市華南扶輪社"
+                                            },
+                                            {
+                                                        "code": "03-2",
+                                                        "name": "台北市華陽扶輪社"
+                                            },
+                                            {
+                                                        "code": "03-3",
+                                                        "name": "台北市瑞光扶輪社"
+                                            },
+                                            {
+                                                        "code": "03-4",
+                                                        "name": "台北市華東扶輪社"
+                                            },
+                                            {
+                                                        "code": "03-5",
+                                                        "name": "台北市永續扶輪社"
+                                            },
+                                            {
+                                                        "code": "03-6",
+                                                        "name": "影響力扶輪社"
+                                            }
+                                ]
+                    },
+                    {
+                                "id": 4,
+                                "name": "第四分區",
+                                "clubs": [
+                                            {
+                                                        "code": "04-1",
+                                                        "name": "台北市南欣扶輪社"
+                                            },
+                                            {
+                                                        "code": "04-2",
+                                                        "name": "台北松山扶輪社"
+                                            },
+                                            {
+                                                        "code": "04-3",
+                                                        "name": "台北市民生扶輪社"
+                                            },
+                                            {
+                                                        "code": "04-4",
+                                                        "name": "台北政愛扶輪社"
+                                            },
+                                            {
+                                                        "code": "04-5",
+                                                        "name": "台北添愛扶輪社"
+                                            },
+                                            {
+                                                        "code": "04-6",
+                                                        "name": "台北泰愛扶輪社"
+                                            },
+                                            {
+                                                        "code": "04-7",
+                                                        "name": "文化扶輪社"
+                                            }
+                                ]
+                    },
+                    {
+                                "id": 5,
+                                "name": "第五分區",
+                                "clubs": [
+                                            {
+                                                        "code": "05-1",
+                                                        "name": "台北府門扶輪社"
+                                            },
+                                            {
+                                                        "code": "05-2",
+                                                        "name": "台北南陽扶輪社"
+                                            },
+                                            {
+                                                        "code": "05-3",
+                                                        "name": "台北明星扶輪社"
+                                            },
+                                            {
+                                                        "code": "05-4",
+                                                        "name": "台北風雲扶輪社"
+                                            }
+                                ]
+                    },
+                    {
+                                "id": 6,
+                                "name": "第六分區",
+                                "clubs": [
+                                            {
+                                                        "code": "06-1",
+                                                        "name": "台北市南門扶輪社"
+                                            },
+                                            {
+                                                        "code": "06-2",
+                                                        "name": "台北大都會扶輪社"
+                                            },
+                                            {
+                                                        "code": "06-3",
+                                                        "name": "台北市南方扶輪社"
+                                            },
+                                            {
+                                                        "code": "06-4",
+                                                        "name": "台北市南光扶輪社"
+                                            },
+                                            {
+                                                        "code": "06-5",
+                                                        "name": "台北南英扶輪社"
+                                            },
+                                            {
+                                                        "code": "06-6",
+                                                        "name": "台北市南揚扶輪社"
+                                            },
+                                            {
+                                                        "code": "06-7",
+                                                        "name": "台北市南波扶輪社"
+                                            },
+                                            {
+                                                        "code": "06-8",
+                                                        "name": "臺北市南星扶輪社"
+                                            },
+                                            {
+                                                        "code": "06-9",
+                                                        "name": "台北南法扶輪社"
+                                            }
+                                ]
+                    },
+                    {
+                                "id": 7,
+                                "name": "第七分區",
+                                "clubs": [
+                                            {
+                                                        "code": "07-1",
+                                                        "name": "台北市南海扶輪社"
+                                            },
+                                            {
+                                                        "code": "07-2",
+                                                        "name": "台北市南雅扶輪社"
+                                            },
+                                            {
+                                                        "code": "07-3",
+                                                        "name": "台北市新世代扶輪社"
+                                            },
+                                            {
+                                                        "code": "07-4",
+                                                        "name": "台北市南鷹扶輪社"
+                                            },
+                                            {
+                                                        "code": "07-5",
+                                                        "name": "台北大加蚋扶輪社"
+                                            }
+                                ]
+                    },
+                    {
+                                "id": 8,
+                                "name": "第八分區",
+                                "clubs": [
+                                            {
+                                                        "code": "08-1",
+                                                        "name": "台北市華麗扶輪社"
+                                            },
+                                            {
+                                                        "code": "08-2",
+                                                        "name": "台北市華欣扶輪社"
+                                            },
+                                            {
+                                                        "code": "08-3",
+                                                        "name": "台北市華樂扶輪社"
+                                            },
+                                            {
+                                                        "code": "08-4",
+                                                        "name": "台北網路扶輪社"
+                                            },
+                                            {
+                                                        "code": "08-5",
+                                                        "name": "臺北新北投扶輪社"
+                                            },
+                                            {
+                                                        "code": "08-6",
+                                                        "name": "台北市華真扶輪社"
+                                            }
+                                ]
+                    },
+                    {
+                                "id": 9,
+                                "name": "第九分區",
+                                "clubs": [
+                                            {
+                                                        "code": "09-1",
+                                                        "name": "台北市華安扶輪社"
+                                            },
+                                            {
+                                                        "code": "09-2",
+                                                        "name": "台北市華中扶輪社"
+                                            },
+                                            {
+                                                        "code": "09-3",
+                                                        "name": "台北市益成扶輪社"
+                                            },
+                                            {
+                                                        "code": "09-4",
+                                                        "name": "台北市南德扶輪社"
+                                            },
+                                            {
+                                                        "code": "09-5",
+                                                        "name": "台北市華茂扶輪社"
+                                            },
+                                            {
+                                                        "code": "09-6",
+                                                        "name": "台北南茂扶輪社"
+                                            },
+                                            {
+                                                        "code": "09-7",
+                                                        "name": "台北市三友扶輪社"
+                                            }
+                                ]
+                    },
+                    {
+                                "id": 10,
+                                "name": "第十分區",
+                                "clubs": [
+                                            {
+                                                        "code": "10-1",
+                                                        "name": "台北市南港扶輪社"
+                                            },
+                                            {
+                                                        "code": "10-2",
+                                                        "name": "台北市南北扶輪社"
+                                            },
+                                            {
+                                                        "code": "10-3",
+                                                        "name": "台北市南西扶輪社"
+                                            },
+                                            {
+                                                        "code": "10-4",
+                                                        "name": "台北市南東扶輪社"
+                                            }
+                                ]
+                    },
+                    {
+                                "id": 11,
+                                "name": "第十一分區",
+                                "clubs": [
+                                            {
+                                                        "code": "11-1",
+                                                        "name": "台北市南華扶輪社"
+                                            },
+                                            {
+                                                        "code": "11-2",
+                                                        "name": "台北市文華扶輪社"
+                                            },
+                                            {
+                                                        "code": "11-3",
+                                                        "name": "台北永華扶輪社"
+                                            },
+                                            {
+                                                        "code": "11-4",
+                                                        "name": "台北市西華扶輪社"
+                                            },
+                                            {
+                                                        "code": "11-5",
+                                                        "name": "台北市碩華扶輪社"
+                                            },
+                                            {
+                                                        "code": "11-6",
+                                                        "name": "台北富華扶輪社"
+                                            }
+                                ]
+                    },
+                    {
+                                "id": 12,
+                                "name": "第十二分區",
+                                "clubs": [
+                                            {
+                                                        "code": "12-1",
+                                                        "name": "台北龍門扶輪社"
+                                            },
+                                            {
+                                                        "code": "12-2",
+                                                        "name": "台北龍華扶輪社"
+                                            },
+                                            {
+                                                        "code": "12-3",
+                                                        "name": "台北龍鳳扶輪社"
+                                            },
+                                            {
+                                                        "code": "12-4",
+                                                        "name": "台北龍族扶輪社"
+                                            },
+                                            {
+                                                        "code": "12-5",
+                                                        "name": "台北龍欣扶輪社"
+                                            },
+                                            {
+                                                        "code": "12-6",
+                                                        "name": "台北龍來扶輪社"
+                                            },
+                                            {
+                                                        "code": "12-7",
+                                                        "name": "台北龍穎扶輪社"
+                                            },
+                                            {
+                                                        "code": "12-8",
+                                                        "name": "台北龍舟扶輪社"
+                                            }
+                                ]
+                    },
+                    {
+                                "id": 13,
+                                "name": "第十三分區",
+                                "clubs": [
+                                            {
+                                                        "code": "13-1",
+                                                        "name": "台北市南天扶輪社"
+                                            },
+                                            {
+                                                        "code": "13-2",
+                                                        "name": "台北市天一扶輪社"
+                                            },
+                                            {
+                                                        "code": "13-3",
+                                                        "name": "台北樂雅扶輪社"
+                                            },
+                                            {
+                                                        "code": "13-4",
+                                                        "name": "台北風澤扶輪社"
+                                            }
+                                ]
+                    }
         ];
 
         // Categories & Sub-Events Master List
@@ -1052,19 +1444,19 @@
 
         // Club Member Master Database Store (Included Golf Handicap 差點)
         const DEFAULT_MEMBERS_DB = {
-            "台北內湖扶輪社": [
+            "臺北市南區扶輪社": [
                 { id: 101, role: "社長", nickname: "P Ken", name: "張建國", diet: "MEAT", veganNote: "", handicap: 18 },
                 { id: 102, role: "秘書", nickname: "Steel", name: "林鋼鐵", diet: "VEGAN", veganNote: "全素", handicap: 24 },
                 { id: 103, role: "財務", nickname: "CPA", name: "王會計", diet: "MEAT", veganNote: "", handicap: 14 },
                 { id: 104, role: "執秘", nickname: "Iron", name: "許小姐", diet: "MEAT", veganNote: "", handicap: 28 },
                 { id: 105, role: "社友", nickname: "Joy", name: "李快樂", diet: "VEGAN", veganNote: "蛋奶素、對花生過敏", handicap: 22 }
             ],
-            "台北扶輪社": [
+            "台北逸仙扶輪社": [
                 { id: 201, role: "社長", nickname: "P John", name: "陳約翰", diet: "MEAT", veganNote: "", handicap: 16 },
                 { id: 202, role: "秘書", nickname: "David", name: "劉大衛", diet: "MEAT", veganNote: "", handicap: 20 },
                 { id: 203, role: "社友", nickname: "Golf King", name: "蔡一桿", diet: "MEAT", veganNote: "", handicap: 8 }
             ],
-            "台北陽明扶輪社": [
+            "台北市西南區扶輪社": [
                 { id: 301, role: "社長", nickname: "P Sun", name: "陽明光", diet: "VEGAN", veganNote: "鍋邊素", handicap: 12 },
                 { id: 302, role: "社友", nickname: "Star", name: "周星", diet: "MEAT", veganNote: "", handicap: 26 }
             ]
@@ -1074,7 +1466,7 @@
         const DEFAULT_ORDERS = {
             '1. 獎助金管理研討會 (GMS)': [
                 {
-                    clubName: "台北內湖扶輪社",
+                    clubName: "臺北市南區扶輪社",
                     sponsorTier: "PARTICIPANT",
                     sponsorAmount: 0,
                     submittedAt: "2026-09-02 10:15",
@@ -1084,7 +1476,7 @@
                     ]
                 },
                 {
-                    clubName: "台北扶輪社",
+                    clubName: "台北逸仙扶輪社",
                     sponsorTier: "PARTICIPANT",
                     sponsorAmount: 0,
                     submittedAt: "2026-09-03 14:20",
@@ -1095,7 +1487,7 @@
             ],
             '1. 地區高爾夫球聯誼賽': [
                 {
-                    clubName: "台北內湖扶輪社",
+                    clubName: "臺北市南區扶輪社",
                     sponsorTier: "CO_HOST",
                     sponsorAmount: 50000,
                     submittedAt: "2026-09-05 11:00",
@@ -1105,7 +1497,7 @@
                     ]
                 },
                 {
-                    clubName: "台北扶輪社",
+                    clubName: "台北逸仙扶輪社",
                     sponsorTier: "SPONSOR",
                     sponsorAmount: 10000,
                     submittedAt: "2026-09-06 16:40",
@@ -1121,7 +1513,7 @@
         let currentRole = 'secretary'; // 'secretary' | 'chair' | 'arch'
         let currentCatId = 'seminars';
         let currentSubEventIndex = 0;
-        let selectedClubName = "台北內湖扶輪社";
+        let selectedClubName = "臺北市南區扶輪社";
         let isEventLockedToday = false;
 
         let categoriesData = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
@@ -1327,15 +1719,25 @@
         function populateClubSelector() {
             const selector = document.getElementById('clubSelector');
             let html = '';
+            const allClubNames = [];
             DIVISIONS_DATA.forEach(div => {
-                html += `<optgroup label="${div.name}">`;
+                html += `<optgroup label="${div.name} (${div.clubs.length}社)">`;
                 div.clubs.forEach(c => {
-                    html += `<option value="${c}">${c}</option>`;
+                    const cName = typeof c === 'object' ? c.name : c;
+                    const cCode = typeof c === 'object' && c.code ? `[${c.code}] ` : '';
+                    allClubNames.push(cName);
+                    html += `<option value="${cName}">${cCode}${cName}</option>`;
                 });
                 html += `</optgroup>`;
             });
             selector.innerHTML = html;
+
+            // Ensure valid selected club
+            if (!allClubNames.includes(selectedClubName)) {
+                selectedClubName = allClubNames[0] || '臺北市南區扶輪社';
+            }
             selector.value = selectedClubName;
+            selectClub(selectedClubName);
         }
 
         function selectClub(clubName) {
@@ -2240,10 +2642,17 @@
         function renderDivisionDirectory() {
             const container = document.getElementById('divisionDirectoryContainer');
             container.innerHTML = DIVISIONS_DATA.map(div => `
-                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                    <h4 class="font-bold text-slate-800 mb-1.5">${div.name}</h4>
-                    <ul class="space-y-1 text-slate-600 font-medium">
-                        ${div.clubs.map(c => `<li>• ${c}</li>`).join('')}
+                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 shadow-sm">
+                    <h4 class="font-bold text-slate-800 mb-2 pb-1 border-b border-slate-200 flex items-center justify-between text-xs sm:text-sm">
+                        <span>${div.name}</span>
+                        <span class="text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">${div.clubs.length} 社</span>
+                    </h4>
+                    <ul class="space-y-1 text-slate-600 font-medium text-xs">
+                        ${div.clubs.map(c => {
+                            const cName = typeof c === 'object' ? c.name : c;
+                            const cCode = typeof c === 'object' && c.code ? `<span class="font-mono text-slate-400 font-semibold mr-1 text-[11px]">${c.code}</span>` : '';
+                            return `<li class="flex items-center hover:text-blue-600 transition-colors py-0.5">${cCode}<span>${cName}</span></li>`;
+                        }).join('')}
                     </ul>
                 </div>
             `).join('');
