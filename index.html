@@ -1,0 +1,2303 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+    <title>國際扶輪 3523 地區活動整合報名系統 (跨系統與行動連動版)</title>
+    <!-- PWA & Mobile Web App Capabilities (跨手機與作業系統支援) -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="扶輪3523報名">
+    <meta name="theme-color" content="#0F172A">
+    <meta name="format-detection" content="telephone=no">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- QRCode CDN for Cross-Device Mobile Linkage -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Font Customizations & Tailwind Config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        rotary: {
+                            blue: '#1A56DB',
+                            green: '#16A34A',
+                            orange: '#EA580C',
+                            red: '#DC2626',
+                            purple: '#9333EA',
+                            gold: '#D97706',
+                            slate: '#0F172A',
+                            bg: '#F8FAFC'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 320px;
+            max-height: 360px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .theme-blue { border-top-color: #1A56DB; }
+        .theme-green { border-top-color: #16A34A; }
+        .theme-orange { border-top-color: #EA580C; }
+        .theme-red { border-top-color: #DC2626; }
+        .theme-purple { border-top-color: #9333EA; }
+
+        /* Mobile inputs font size 16px to eliminate iOS Safari form auto-zoom */
+        @media (max-width: 640px) {
+            input, select, textarea {
+                font-size: 16px !important;
+            }
+        }
+
+        /* Smooth touch scrolling */
+        .touch-scroll {
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* Print friendly styles */
+        @media print {
+            header, nav, #countdownDisplay, button, .no-print, #mobileBottomBar, #toastNotification {
+                display: none !important;
+            }
+            body, main {
+                background: white !important;
+                color: black !important;
+                padding: 0 !important;
+            }
+            .shadow-sm, .shadow-md, .shadow-lg, .shadow-2xl {
+                box-shadow: none !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col pb-16 md:pb-0">
+
+    <!-- Top Navigation Header -->
+    <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex flex-wrap justify-between items-center gap-3">
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <div class="bg-amber-500 text-slate-900 font-black rounded-full w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-lg sm:text-xl shadow">
+                    ⚙️
+                </div>
+                <div>
+                    <div class="flex items-center gap-1.5">
+                        <h1 class="text-base sm:text-lg font-bold leading-tight">國際扶輪 3523 地區</h1>
+                        <span class="px-1.5 py-0.5 bg-blue-600 text-[10px] font-bold rounded text-white hidden sm:inline-block">跨平台連動版</span>
+                    </div>
+                    <p class="text-[11px] sm:text-xs text-slate-300">年度常態活動整合報名系統 (支援iOS / Android / Mac / Windows)</p>
+                </div>
+            </div>
+
+            <!-- Header Quick Actions & Role Switcher -->
+            <div class="flex items-center flex-wrap gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                <!-- Mobile / Cross-OS Hub Trigger Button -->
+                <button onclick="openMobileSyncModal()" class="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg text-xs font-bold shadow flex items-center gap-1.5 transition active:scale-95">
+                    <span>📲 手機/跨系統連動</span>
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
+                </button>
+
+                <!-- Role Selector Simulation Controls -->
+                <div class="flex items-center space-x-1 bg-slate-800 p-1 rounded-lg border border-slate-700 text-xs overflow-x-auto">
+                    <button id="roleSecBtn" onclick="switchRole('secretary')" class="px-2.5 sm:px-3 py-1 text-xs font-semibold rounded-md transition-all bg-blue-600 text-white shadow whitespace-nowrap">
+                        ✍️ 執秘報名端
+                    </button>
+                    <button id="roleChairBtn" onclick="switchRole('chair')" class="px-2.5 sm:px-3 py-1 text-xs font-semibold rounded-md transition-all text-slate-300 hover:text-white hover:bg-slate-700 whitespace-nowrap">
+                        📊 主委戰情
+                    </button>
+                    <button id="roleArchBtn" onclick="switchRole('arch')" class="px-2.5 sm:px-3 py-1 text-xs font-semibold rounded-md transition-all text-slate-300 hover:text-white hover:bg-slate-700 whitespace-nowrap">
+                        🔄 生命週期架構
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Navigation Bar (Dynamic Category Color Branding) -->
+    <nav class="bg-white border-b border-slate-200 shadow-sm sticky top-[57px] sm:top-[60px] z-40 touch-scroll">
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between overflow-x-auto py-2 space-x-2 scrollbar-none" id="mainNavContainer">
+                <!-- Navigation Tabs generated dynamically by JS -->
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Application Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+
+        <!-- Banner Context & Sub-Event Switcher -->
+        <div id="categoryHeaderBanner" class="bg-white rounded-xl shadow-sm border p-4 sm:p-5 mb-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-8 border-blue-600">
+            <div>
+                <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+                    <span id="catBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">📘 免贊助研討會</span>
+                    <span id="rotaryYearTag" class="text-xs font-bold text-slate-500">2026-2027 年度</span>
+                    <span id="golfSpecialBadge" class="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 hidden">⛳ 高爾夫賽事 (差點連動已啟用)</span>
+                </div>
+                <h2 id="catTitle" class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">研討會及講習會</h2>
+                <p id="catDesc" class="text-xs text-slate-600 mt-1">專為地區培育幹部與講習設計之研討會，費用由地區統籌，不開放共同主辦/協辦/贊助社機制。</p>
+            </div>
+            
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div class="w-full sm:w-auto">
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">選擇當前子活動：</label>
+                    <select id="subEventSelect" onchange="changeSubEvent(this.value)" class="w-full sm:w-64 bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2 font-medium">
+                        <!-- Options generated by JS -->
+                    </select>
+                </div>
+                <div class="bg-slate-100 p-2.5 rounded-lg border text-center min-w-[130px] flex sm:flex-col justify-between items-center sm:justify-center">
+                    <span class="text-[10px] text-slate-500 font-bold uppercase">報名狀態</span>
+                    <span id="eventStatusBadge" class="inline-flex items-center text-xs font-bold text-emerald-600">
+                        🟢 開放報名中
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= VIEW 1: SECRETARY WORKSPACE (執秘端) ================= -->
+        <section id="viewSecretary" class="space-y-5">
+            <!-- Secretary Quick Bar & Club Selector -->
+            <div class="bg-blue-50 border border-blue-200 rounded-xl p-3.5 sm:p-4 text-blue-900 text-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                <div class="flex items-start sm:items-center space-x-2">
+                    <span class="text-lg">💡</span>
+                    <span><strong>各社執秘專用：</strong> 選擇本社分區與社別後，系統自動載入社友名冊庫（<strong>包含高爾夫差點</strong>）。勾選即可快速代入報名表，支援手機一鍵轉發至 LINE 群組！</span>
+                </div>
+                <div class="flex items-center space-x-2 w-full md:w-auto justify-between sm:justify-end">
+                    <span class="font-bold text-slate-700 whitespace-nowrap">綁定本社：</span>
+                    <select id="clubSelector" onchange="selectClub(this.value)" class="bg-white border border-blue-300 text-slate-900 text-xs rounded-lg p-1.5 font-bold focus:outline-none shadow-sm flex-1 sm:flex-none">
+                        <!-- Division & Clubs populated via JS -->
+                    </select>
+                </div>
+            </div>
+
+            <!-- Quick Action Shortcuts for Secretary -->
+            <div class="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm text-xs">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="font-bold text-slate-600">⚡ 行動快捷功能：</span>
+                    <button onclick="copyLineText()" class="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold rounded-md transition flex items-center gap-1">
+                        💬 複製 LINE 報名名冊
+                    </button>
+                    <button onclick="shareToLine()" class="px-2.5 py-1 bg-green-500 hover:bg-green-600 text-white font-bold rounded-md transition flex items-center gap-1 shadow-sm">
+                        🟢 一鍵發送 LINE
+                    </button>
+                    <button onclick="downloadICS()" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 font-bold rounded-md transition flex items-center gap-1">
+                        📅 加入手機/電腦行事曆 (.ics)
+                    </button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="openMobileSyncModal()" class="text-slate-500 hover:text-slate-800 underline font-medium">
+                        📲 跨裝置同步與備份
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
+                <!-- Left: Club Member Master Database (各社執秘社友資料庫) -->
+                <div class="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col">
+                    <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-3">
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-1.5">
+                                👥 <span id="currentClubNameTitle">台北內湖扶輪社</span> 社友庫
+                            </h3>
+                            <p class="text-[11px] text-slate-500">已整合<strong>高爾夫差點</strong>，預先維護一勞永逸</p>
+                        </div>
+                        <button onclick="openAddMemberModal()" class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95">
+                            ➕ 新增社友
+                        </button>
+                    </div>
+
+                    <!-- Member Search Filter Input -->
+                    <div class="mb-2.5">
+                        <input type="text" id="memberSearchInput" oninput="renderMemberMasterTable()" placeholder="🔍 快速搜尋社友姓名 / 職稱 / 差點..." class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    </div>
+
+                    <!-- Master Member List Table -->
+                    <div class="overflow-x-auto touch-scroll border border-slate-100 rounded-lg max-h-[460px] overflow-y-auto">
+                        <table class="w-full text-left text-xs min-w-[340px]">
+                            <thead class="bg-slate-100 text-slate-600 font-bold sticky top-0 z-10 shadow-sm">
+                                <tr>
+                                    <th class="p-2 text-center w-10">選取</th>
+                                    <th class="p-2">姓名 / 職務</th>
+                                    <th class="p-2">Nick Name</th>
+                                    <th class="p-2 text-center bg-emerald-50 text-emerald-800 border-x border-emerald-100" title="高爾夫差點 (0-54)">⛳ 差點</th>
+                                    <th class="p-2">飲食</th>
+                                    <th class="p-2 text-center w-14">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="memberMasterTableBody" class="divide-y divide-slate-100">
+                                <!-- Dynamic Member Rows with Handicap -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-400 flex justify-between items-center">
+                        <span>勾選社友自動代入右側報名表；點 ✏️ 可直接修正差點</span>
+                        <span id="masterMemberCount" class="font-bold text-slate-600">共 0 位社友</span>
+                    </div>
+                </div>
+
+                <!-- Right: Active Event Registration Form (報名填表處) -->
+                <div class="lg:col-span-7 bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                            <div>
+                                <h3 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                                    📝 <span id="regFormTitle">報名表單</span>
+                                </h3>
+                                <p class="text-[11px] text-slate-500">填表社別：<strong id="lockedClubNameBadge" class="text-blue-700 font-bold">台北內湖扶輪社</strong> (防竄改保護已啟動)</p>
+                            </div>
+                            <span id="countdownDisplay" class="text-xs bg-amber-50 text-amber-800 font-mono font-bold px-2.5 py-1 rounded-md border border-amber-200 whitespace-nowrap">
+                                ⏱️ 報名開放中
+                            </span>
+                        </div>
+
+                        <!-- Sponsorship Options (Conditional display based on Event Type) -->
+                        <div id="sponsorshipSelectionBox" class="mb-4 p-3 sm:p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl hidden">
+                            <h4 class="text-xs font-bold text-emerald-900 mb-2 flex items-center gap-1.5">
+                                🏆 本社贊助門檻選擇 (主委已開放贊助選項)
+                            </h4>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                <label class="flex flex-col p-2 bg-white rounded-lg border border-emerald-200 cursor-pointer text-center hover:bg-emerald-100 transition">
+                                    <input type="radio" name="sponsorTier" value="CO_HOST" onchange="updateSponsorshipSelection()" class="mx-auto mb-1">
+                                    <span class="text-[11px] font-bold text-slate-800">共同主辦社</span>
+                                    <span class="text-xs font-extrabold text-emerald-700" id="feeCoHostText">$50,000</span>
+                                </label>
+                                <label class="flex flex-col p-2 bg-white rounded-lg border border-emerald-200 cursor-pointer text-center hover:bg-emerald-100 transition">
+                                    <input type="radio" name="sponsorTier" value="ORGANIZER" onchange="updateSponsorshipSelection()" class="mx-auto mb-1">
+                                    <span class="text-[11px] font-bold text-slate-800">協辦社</span>
+                                    <span class="text-xs font-extrabold text-emerald-700" id="feeOrganizerText">$20,000</span>
+                                </label>
+                                <label class="flex flex-col p-2 bg-white rounded-lg border border-emerald-200 cursor-pointer text-center hover:bg-emerald-100 transition">
+                                    <input type="radio" name="sponsorTier" value="SPONSOR" onchange="updateSponsorshipSelection()" class="mx-auto mb-1">
+                                    <span class="text-[11px] font-bold text-slate-800">贊助社</span>
+                                    <span class="text-xs font-extrabold text-emerald-700" id="feeSponsorText">$10,000</span>
+                                </label>
+                                <label class="flex flex-col p-2 bg-white rounded-lg border border-emerald-200 cursor-pointer text-center hover:bg-emerald-100 transition">
+                                    <input type="radio" name="sponsorTier" value="PARTICIPANT" checked onchange="updateSponsorshipSelection()" class="mx-auto mb-1">
+                                    <span class="text-[11px] font-bold text-slate-800">一般參賽社</span>
+                                    <span class="text-xs font-semibold text-slate-500">標準註冊</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Selected Participants Table -->
+                        <div class="mb-4">
+                            <div class="flex flex-wrap justify-between items-center mb-2 gap-1.5">
+                                <h4 class="text-xs font-bold text-slate-700">本次出席社友名冊 (自動帶入差點與快照):</h4>
+                                <div class="text-[11px] flex items-center gap-1.5 flex-wrap">
+                                    <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">總人數: <b id="selectedTotalCount">0</b> 名</span>
+                                    <span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-medium">素食: <b id="selectedVeganCount">0</b> 名</span>
+                                    <span id="selectedAvgHandicapBox" class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">⛳ 平均差點: <b id="selectedAvgHandicap">--</b></span>
+                                </div>
+                            </div>
+
+                            <div class="overflow-x-auto touch-scroll border border-slate-200 rounded-lg max-h-[320px] overflow-y-auto">
+                                <table class="w-full text-left text-xs min-w-[420px]">
+                                    <thead class="bg-slate-50 text-slate-600 font-bold sticky top-0 z-10 shadow-sm">
+                                        <tr>
+                                            <th class="p-2">職務</th>
+                                            <th class="p-2">Nick Name</th>
+                                            <th class="p-2">中文姓名</th>
+                                            <th class="p-2 text-center bg-emerald-50 text-emerald-800 border-x border-emerald-100">⛳ 差點</th>
+                                            <th class="p-2">飲食需求</th>
+                                            <th class="p-2 text-center w-12">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="selectedMembersTableBody" class="divide-y divide-slate-100">
+                                        <!-- Selected items added here -->
+                                        <tr id="emptySelectionRow">
+                                            <td colspan="6" class="p-6 text-center text-slate-400">
+                                                👈 請從左側「社友名冊庫」勾選欲報名的社友
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit Action Area -->
+                    <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3">
+                        <div class="text-xs text-slate-500 w-full sm:w-auto text-left">
+                            狀態：<span id="regStatusLabel" class="font-bold text-emerald-600">編輯中 (尚未鎖定)</span>
+                        </div>
+                        <div class="flex gap-2 w-full sm:w-auto justify-end">
+                            <button onclick="clearSelectedMembers()" class="px-3 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold active:scale-95 transition">
+                                清空重選
+                            </button>
+                            <button id="submitRegBtn" onclick="submitRegistration()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow transition flex-1 sm:flex-none text-center active:scale-95">
+                                🚀 送出本社報名表
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= VIEW 2: CHAIR DASHBOARD (主委後台) ================= -->
+        <section id="viewChair" class="space-y-5 hidden">
+            <!-- Top Chair Controls & Event Configurator -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
+                <div class="flex flex-col md:flex-row justify-between md:items-center gap-3 pb-4 border-b border-slate-100">
+                    <div>
+                        <span class="text-xs font-bold text-blue-600 uppercase tracking-wider">Committee Chair Control Center</span>
+                        <h3 class="text-base sm:text-lg font-bold text-slate-900">當屆主委後台控制與跨系統資料彙整</h3>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button onclick="simulateEventDayLock()" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow transition active:scale-95">
+                            🔒 模擬「活動當日 00:00」封存
+                        </button>
+                        <button onclick="exportReportCSV()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg shadow transition flex items-center gap-1 active:scale-95">
+                            📥 匯出各系統相容 Excel (CSV)
+                        </button>
+                        <button onclick="window.print()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold rounded-lg shadow-sm transition">
+                            🖨️ 列印簽到表
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Chair Configuration Form -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">自訂活動全名：</label>
+                        <input type="text" id="cfgEventName" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">報名開放時間：</label>
+                        <input type="datetime-local" id="cfgStartDate" value="2026-09-01T09:00" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">贊助機制啟用：</label>
+                        <select id="cfgSponsorToggle" onchange="toggleSponsorConfig(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-bold">
+                            <option value="disabled">關閉 (研討會預設關閉)</option>
+                            <option value="enabled">開啟 (運動賽事/RYLA/義診)</option>
+                        </select>
+                    </div>
+                    <div class="flex items-end">
+                        <button onclick="saveChairSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-1.5 text-xs font-bold rounded-md transition shadow">
+                            💾 儲存主委設定
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Custom Sponsor Fee Tier Settings (Visible if enabled) -->
+                <div id="chairSponsorFeeInputs" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3 pt-3 border-t border-dashed border-slate-200 hidden">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-500">共同主辦社金額 (NT$)</label>
+                        <input type="number" id="cfgFeeCoHost" value="50000" class="w-full bg-slate-50 border rounded p-1 text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-500">協辦社金額 (NT$)</label>
+                        <input type="number" id="cfgFeeOrganizer" value="20000" class="w-full bg-slate-50 border rounded p-1 text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-500">贊助社金額 (NT$)</label>
+                        <input type="number" id="cfgFeeSponsor" value="10000" class="w-full bg-slate-50 border rounded p-1 text-xs">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-time War Room Stats KPI Cards -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <span class="text-xs font-semibold text-slate-500">總報名出席人數</span>
+                    <div class="text-xl sm:text-2xl font-black text-slate-900 mt-1" id="kpiTotalParticipants">0 人</div>
+                    <span class="text-[10px] text-emerald-600 font-bold">來自 <span id="kpiClubCount">0</span> 個扶輪社</span>
+                </div>
+                <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <span class="text-xs font-semibold text-slate-500">飲食偏好統計</span>
+                    <div class="text-xl sm:text-2xl font-black text-amber-600 mt-1" id="kpiDietSummary">0 / 0</div>
+                    <span class="text-[10px] text-slate-400">葷食 / 素食總數</span>
+                </div>
+                <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <span class="text-xs font-semibold text-slate-500">贊助累計金額</span>
+                    <div class="text-xl sm:text-2xl font-black text-emerald-600 mt-1" id="kpiTotalSponsorship">$0</div>
+                    <span class="text-[10px] text-slate-500" id="kpiSponsorClubsDetail">共同主辦 0 | 協辦 0 | 贊助 0</span>
+                </div>
+                <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <span class="text-xs font-semibold text-slate-500" id="kpiFourthCardTitle">全場高爾夫差點</span>
+                    <div class="text-lg sm:text-xl font-bold text-blue-600 mt-1" id="kpiGolfSummary">--</div>
+                    <span class="text-[10px] text-slate-400" id="kpiGolfSub">選手差點即時計算</span>
+                </div>
+            </div>
+
+            <!-- Visual Charts Dashboard Section (Chart.js) -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
+                <!-- Chart 1: Registrations by Club -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 lg:col-span-2">
+                    <h4 class="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+                        📊 各扶輪社即時報名人數分佈 (分區對比)
+                    </h4>
+                    <div class="chart-container">
+                        <canvas id="chartClubs"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 2: Dietary Distribution -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+                    <h4 class="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+                        🥗 飲食需求比例 (葷食 vs 素食細項)
+                    </h4>
+                    <div class="chart-container">
+                        <canvas id="chartDiet"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Club Registration Table in Chair View -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
+                <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+                    <h4 class="text-sm font-bold text-slate-800">📋 各社已提交報名明細與名冊清單 (支援檢視各社差點)</h4>
+                    <span class="text-xs text-slate-400">點擊「🔍 名單明細」即可查看該社出席社友名冊與高爾夫差點</span>
+                </div>
+                <div class="overflow-x-auto touch-scroll">
+                    <table class="w-full text-left text-xs min-w-[580px]">
+                        <thead class="bg-slate-100 text-slate-700 font-bold">
+                            <tr>
+                                <th class="p-2.5">扶輪社名稱</th>
+                                <th class="p-2.5">贊助等級</th>
+                                <th class="p-2.5">贊助金額</th>
+                                <th class="p-2.5">報名人數</th>
+                                <th class="p-2.5">素食人數</th>
+                                <th class="p-2.5">提交時間</th>
+                                <th class="p-2.5 text-center">出席明細與差點</th>
+                            </tr>
+                        </thead>
+                        <tbody id="chairDetailedOrdersTable" class="divide-y divide-slate-100">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= VIEW 3: LIFECYCLE & SYSTEM ARCHITECTURE (生命週期與架構) ================= -->
+        <section id="viewArch" class="space-y-5 hidden">
+            <!-- Lifecycle Simulation Flow Interactive Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sm:p-6">
+                <div class="max-w-3xl">
+                    <span class="text-xs font-bold text-purple-600 uppercase tracking-wider">Automated Rotary Year Lifecycle</span>
+                    <h3 class="text-lg sm:text-xl font-extrabold text-slate-900 mt-1">資料生命週期與自動化封存／歸零機制</h3>
+                    <p class="text-xs text-slate-600 mt-2">
+                        扶輪年度為每年 7 月 1 日至次年 6 月 30 日。本系統透過自動化快照保護機制，確保歷史報名真實不被事後竄改，並在大會換屆時實現零負擔銜接。
+                    </p>
+                </div>
+
+                <!-- Interactive Lifecycle Simulator Steps -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mt-6">
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl relative">
+                        <div class="text-xs font-bold text-blue-600 mb-1">STEP 1</div>
+                        <h4 class="font-bold text-sm text-slate-800">主委公告與開放</h4>
+                        <p class="text-[11px] text-slate-500 mt-1">主委自訂門檻與時間，時間一到執秘前台解鎖報名。</p>
+                        <span class="inline-block mt-3 px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold rounded">進行中</span>
+                    </div>
+
+                    <div class="p-4 bg-amber-50 border border-amber-200 rounded-xl relative">
+                        <div class="text-xs font-bold text-amber-700 mb-1">STEP 2 (自動化)</div>
+                        <h4 class="font-bold text-sm text-amber-900">活動當天 00:00 觸發</h4>
+                        <p class="text-[11px] text-slate-600 mt-1">系統自動產出 Snapshot 封存檔，狀態轉為唯讀。</p>
+                        <button onclick="triggerLifecycleStep(2)" class="mt-3 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold rounded shadow">
+                            ⚡ 模擬 00:00 觸發
+                        </button>
+                    </div>
+
+                    <div class="p-4 bg-purple-50 border border-purple-200 rounded-xl relative">
+                        <div class="text-xs font-bold text-purple-700 mb-1">STEP 3</div>
+                        <h4 class="font-bold text-sm text-purple-900">切斷連動保護</h4>
+                        <p class="text-[11px] text-slate-600 mt-1">中斷與社友庫之連動，日後社友庫修改不影響歷史真相。</p>
+                        <span class="inline-block mt-3 px-2 py-0.5 bg-purple-100 text-purple-800 text-[10px] font-bold rounded">Snapshot 固化</span>
+                    </div>
+
+                    <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl relative">
+                        <div class="text-xs font-bold text-emerald-700 mb-1">STEP 4 (換屆銜接)</div>
+                        <h4 class="font-bold text-sm text-emerald-900">新年度主委重置</h4>
+                        <p class="text-[11px] text-slate-600 mt-1">舊報名歸檔，當屆名單歸零，<b>完全保留執秘社友庫（含高爾夫差點）</b>。</p>
+                        <button onclick="triggerLifecycleStep(4)" class="mt-3 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded shadow">
+                            🔄 模擬新年度重置
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- E-R Database Schema Inspector -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sm:p-6">
+                <h3 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    🗄️ 資料庫實體設計 (E-R Schema 規格已納入高爾夫差點)
+                </h3>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                    <div class="bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+                        <h4 class="font-bold text-blue-700 border-b pb-1 mb-2">activity_categories</h4>
+                        <p class="text-slate-500 mb-2">主選單與活動分類表</p>
+                        <ul class="space-y-1 font-mono text-[11px] text-slate-700">
+                            <li>• category_id (PK)</li>
+                            <li>• category_name</li>
+                            <li>• theme_color (Hex)</li>
+                            <li>• is_custom (Boolean)</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+                        <h4 class="font-bold text-blue-700 border-b pb-1 mb-2">events</h4>
+                        <p class="text-slate-500 mb-2">活動主檔表 (主委控制)</p>
+                        <ul class="space-y-1 font-mono text-[11px] text-slate-700">
+                            <li>• event_id (PK)</li>
+                            <li>• rotary_year</li>
+                            <li>• registration_start_at</li>
+                            <li>• allow_sponsors</li>
+                            <li>• status (DRAFT/OPEN/LOCKED)</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-slate-50 p-3.5 rounded-lg border border-blue-300 ring-2 ring-blue-100">
+                        <div class="flex justify-between items-center border-b pb-1 mb-2">
+                            <h4 class="font-bold text-blue-700">club_members</h4>
+                            <span class="text-[9px] font-bold px-1 bg-emerald-100 text-emerald-800 rounded">已新增欄位</span>
+                        </div>
+                        <p class="text-slate-500 mb-2">各社社友名冊 Master (執秘庫)</p>
+                        <ul class="space-y-1 font-mono text-[11px] text-slate-700">
+                            <li>• member_id (PK)</li>
+                            <li>• club_id (固定社別)</li>
+                            <li>• current_role</li>
+                            <li>• nickname / chinese_name</li>
+                            <li class="font-bold text-emerald-700 bg-emerald-50 px-1 rounded">• golf_handicap (高爾夫差點)</li>
+                            <li>• diet_type & vegan_note</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-slate-50 p-3.5 rounded-lg border border-emerald-300 ring-2 ring-emerald-100">
+                        <div class="flex justify-between items-center border-b pb-1 mb-2">
+                            <h4 class="font-bold text-emerald-700">registration_items</h4>
+                            <span class="text-[9px] font-bold px-1 bg-emerald-100 text-emerald-800 rounded">差點快照</span>
+                        </div>
+                        <p class="text-slate-500 mb-2">報名獨立快照明細</p>
+                        <ul class="space-y-1 font-mono text-[11px] text-slate-700">
+                            <li>• item_id (PK)</li>
+                            <li>• snapshot_club_name</li>
+                            <li>• snapshot_role</li>
+                            <li>• snapshot_chinese_name</li>
+                            <li class="font-bold text-emerald-700 bg-emerald-50 px-1 rounded">• snapshot_golf_handicap</li>
+                            <li>• snapshot_diet_type</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Division & Club Standard Appendix Directory -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sm:p-6">
+                <h3 class="text-base font-bold text-slate-800 mb-3">📍 3523 地區分區所屬扶輪社標準點選名單 (附錄)</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 text-xs" id="divisionDirectoryContainer">
+                    <!-- Dynamic rendering of Divisions 1-6 -->
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ================= MODAL 1: ADD / EDIT MEMBER MODAL (新增與編輯社友含高爾夫差點) ================= -->
+    <div id="addMemberModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                <h3 class="font-bold text-slate-900 text-base" id="memberModalTitle">
+                    ➕ 新增社友至 <span id="modalClubName" class="text-blue-600">台北內湖扶輪社</span>
+                </h3>
+                <button onclick="closeAddMemberModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1 leading-none">&times;</button>
+            </div>
+            
+            <form onsubmit="handleSaveNewMember(event)" class="space-y-3.5 text-xs">
+                <input type="hidden" id="mEditId" value="">
+                
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">今年扶輪職務：</label>
+                    <select id="mRole" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:ring-1 focus:ring-blue-500">
+                        <option value="社友">社友</option>
+                        <option value="社長">社長</option>
+                        <option value="秘書">秘書</option>
+                        <option value="財務">財務</option>
+                        <option value="執秘">執秘</option>
+                        <option value="副社長">副社長</option>
+                        <option value="理事">理事</option>
+                        <option value="監事">監事</option>
+                        <option value="糾察">糾察</option>
+                        <option value="寶眷">寶眷</option>
+                        <option value="貴賓">貴賓</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2.5">
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Nick Name：</label>
+                        <input type="text" id="mNickname" required placeholder="例如: CPA" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">真實中文姓名：</label>
+                        <input type="text" id="mChineseName" required placeholder="例如: 陳大明" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium">
+                    </div>
+                </div>
+
+                <!-- GOLF HANDICAP FIELD (高爾夫差點) -->
+                <div class="bg-emerald-50/80 p-3 rounded-xl border border-emerald-200">
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="font-bold text-emerald-900 flex items-center gap-1">
+                            <span>⛳ 高爾夫差點 (Handicap)：</span>
+                        </label>
+                        <span class="text-[10px] text-emerald-700 font-medium">0 ~ 54 (無打球可留空)</span>
+                    </div>
+                    <input type="number" id="mHandicap" min="0" max="54" step="0.1" placeholder="例如: 18 (體育賽事編組與差點賽使用)" class="w-full bg-white border border-emerald-300 rounded-lg p-2 font-bold text-slate-800 focus:ring-2 focus:ring-emerald-400">
+                    <p class="text-[10px] text-emerald-700 mt-1">💡 填寫後在「地區高爾夫球聯誼賽」等體育活動中，系統將自動計算全隊平均差點並利於大會編組。</p>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">飲食習慣：</label>
+                    <div class="flex items-center space-x-5 mt-1 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                        <label class="flex items-center space-x-1.5 cursor-pointer">
+                            <input type="radio" name="mDiet" value="MEAT" checked onchange="toggleVeganNoteInput(false)">
+                            <span class="font-medium text-slate-700">葷食</span>
+                        </label>
+                        <label class="flex items-center space-x-1.5 cursor-pointer">
+                            <input type="radio" name="mDiet" value="VEGAN" onchange="toggleVeganNoteInput(true)">
+                            <span class="text-amber-700 font-bold">🌱 素食 (含細項備註)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="veganNoteBox" class="hidden">
+                    <label class="block font-semibold text-amber-800 mb-1">素食備註 (例如全素、蛋奶素、海鮮過敏)：</label>
+                    <input type="text" id="mVeganNote" placeholder="例如: 全素、蛋奶素、鍋邊素、海鮮過敏" class="w-full bg-amber-50 border border-amber-300 rounded-lg p-2 text-xs font-medium">
+                </div>
+
+                <div class="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+                    <button type="button" onclick="closeAddMemberModal()" class="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-semibold hover:bg-slate-50">取消</button>
+                    <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow active:scale-95 transition">儲存至名冊庫</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================= MODAL 2: MOBILE & CROSS-OS SYNC HUB (跨作業系統與手機連動中心) ================= -->
+    <div id="mobileSyncModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl p-5 sm:p-6 max-h-[92vh] overflow-y-auto">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl">📲</span>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-base">跨作業系統與手機連動中心</h3>
+                        <p class="text-[11px] text-slate-500">支援 iOS / Android / macOS / Windows 無縫切換與 LINE 連動</p>
+                    </div>
+                </div>
+                <button onclick="closeMobileSyncModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1">&times;</button>
+            </div>
+
+            <!-- Sync Tabs -->
+            <div class="flex border-b border-slate-200 mb-4 gap-1 text-xs">
+                <button id="syncTab1Btn" onclick="switchSyncTab(1)" class="px-3 py-2 font-bold border-b-2 border-emerald-600 text-emerald-700">📱 手機掃碼 / 原生分享</button>
+                <button id="syncTab2Btn" onclick="switchSyncTab(2)" class="px-3 py-2 font-bold text-slate-500 hover:text-slate-800">💬 LINE 扶輪一鍵通報</button>
+                <button id="syncTab3Btn" onclick="switchSyncTab(3)" class="px-3 py-2 font-bold text-slate-500 hover:text-slate-800">📅 行事曆連動 (.ics)</button>
+                <button id="syncTab4Btn" onclick="switchSyncTab(4)" class="px-3 py-2 font-bold text-slate-500 hover:text-slate-800">💾 跨裝置備份/代碼</button>
+            </div>
+
+            <!-- TAB 1: Mobile QR Code & Web Share -->
+            <div id="syncTab1" class="space-y-4 text-xs">
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+                    <div id="qrcodeContainer" class="bg-white p-2.5 rounded-lg border shadow-sm shrink-0 flex items-center justify-center min-w-[140px] min-h-[140px]">
+                        <!-- Dynamic QR Code rendered via QRCode.js -->
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-slate-900 text-sm mb-1">手機即時掃描連動</h4>
+                        <p class="text-slate-600 mb-3">使用 iPhone (相機) 或 Android 手機掃描左側 QR Code，即可在手機瀏覽器直接開啟本報名系統，並自動保存各社資料！</p>
+                        <div class="flex flex-wrap gap-2 justify-center sm:justify-start">
+                            <button onclick="copyCurrentUrl()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-sm">
+                                🔗 複製網址
+                            </button>
+                            <button onclick="triggerWebShare()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm">
+                                📲 原生系統分享 (LINE/AirDrop)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-amber-50 p-3 rounded-xl border border-amber-200 text-amber-900">
+                    <p class="font-bold mb-1">📱 手機加到主畫面 (PWA 模式如同 App)：</p>
+                    <ul class="list-disc list-inside space-y-0.5 text-[11px] text-amber-800">
+                        <li><strong>iOS (Safari)：</strong>點擊下方「分享按鈕」➔ 選擇「加入主畫面」，即可獲得全螢幕 App 體驗。</li>
+                        <li><strong>Android (Chrome)：</strong>點擊右上角「三點選單」➔ 選擇「安裝應用程式」或「加到主畫面」。</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- TAB 2: LINE Integration -->
+            <div id="syncTab2" class="space-y-3.5 text-xs hidden">
+                <p class="text-slate-600">台灣扶輪社最常使用 LINE 進行執秘與社長彙整。點擊下方可將目前報名名單（包含<strong>高爾夫差點</strong>）自動編排為專用通報格式：</p>
+                
+                <div class="relative">
+                    <label class="block font-bold text-slate-700 mb-1">即時產出之 LINE 群組通報預覽：</label>
+                    <textarea id="linePreviewTextarea" rows="8" readonly class="w-full font-mono bg-slate-900 text-emerald-400 p-3 rounded-lg text-xs leading-relaxed"></textarea>
+                </div>
+
+                <div class="flex flex-wrap justify-end gap-2 pt-2">
+                    <button onclick="copyLineText()" class="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-800 rounded-lg font-bold">
+                        📋 複製完整文字
+                    </button>
+                    <button onclick="shareToLine()" class="px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow flex items-center gap-1.5">
+                        <span>💬 直接開啟 LINE 傳送</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- TAB 3: Calendar Link (.ics & Google Calendar) -->
+            <div id="syncTab3" class="space-y-4 text-xs hidden">
+                <p class="text-slate-600">將活動快速加入行事曆，免手動輸入時間與地點，全面相容各平台：</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl flex flex-col justify-between">
+                        <div>
+                            <h4 class="font-bold text-blue-900 text-sm mb-1">🍏 Apple / Outlook (.ics 檔案)</h4>
+                            <p class="text-blue-700 text-[11px] mb-3">相容 iPhone 日曆、Mac Calendar、Windows Outlook。</p>
+                        </div>
+                        <button onclick="downloadICS()" class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow text-center">
+                            📥 下載 .ics 行事曆檔案
+                        </button>
+                    </div>
+
+                    <div class="bg-red-50 border border-red-200 p-4 rounded-xl flex flex-col justify-between">
+                        <div>
+                            <h4 class="font-bold text-red-900 text-sm mb-1">📅 Google Calendar (網頁版)</h4>
+                            <p class="text-red-700 text-[11px] mb-3">直接開啟 Google 日曆，在手機與電腦無縫同步提醒。</p>
+                        </div>
+                        <button onclick="openGoogleCalendar()" class="w-full py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold shadow text-center">
+                            🗓️ 開啟 Google 日曆新增
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Cross-Device Backup & Sync Code -->
+            <div id="syncTab4" class="space-y-4 text-xs hidden">
+                <p class="text-slate-600">將您電腦上編修的社友名冊與差點，移轉至手機；或在手機新增後傳回電腦：</p>
+                
+                <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                    <h4 class="font-bold text-slate-800">方法 1：一鍵複製同步字串代碼 (推薦手機/電腦互傳)</h4>
+                    <p class="text-slate-500 text-[11px]">在電腦點「複製同步代碼」，透過 LINE 發送至手機，手機端貼上即可同步！</p>
+                    <div class="flex gap-2">
+                        <button onclick="copySyncCode()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-bold shadow-sm">
+                            📋 產生並複製同步代碼
+                        </button>
+                    </div>
+                    <div class="pt-2">
+                        <input type="text" id="syncCodeInput" placeholder="在此貼上自其他裝置複製的同步代碼..." class="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-mono">
+                        <button onclick="applySyncCode()" class="mt-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold">
+                            📥 套用同步代碼還原資料
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                    <h4 class="font-bold text-slate-800">方法 2：JSON 備份檔案匯出與匯入</h4>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="exportBackupJSON()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-md font-bold shadow-sm">
+                            💾 下載 JSON 備份檔
+                        </button>
+                        <label class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-bold shadow-sm cursor-pointer inline-block">
+                            📂 上傳還原 JSON 備份
+                            <input type="file" accept=".json" onchange="importBackupJSON(event)" class="hidden">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t text-right">
+                    <button onclick="resetSystemData()" class="text-red-500 hover:text-red-700 text-[11px] underline">
+                        ⚠️ 清除本機快取並重置為系統初始預設值
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= MODAL 3: VIEW ORDER PARTICIPANTS & HANDICAP DETAILS (主委檢視社友明細) ================= -->
+    <div id="orderDetailModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl p-5 sm:p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                <div>
+                    <h3 class="font-bold text-slate-900 text-base" id="detailModalClubTitle">台北內湖扶輪社 - 出席名冊明細</h3>
+                    <p class="text-[11px] text-slate-500" id="detailModalSubTitle">贊助等級：一般參賽社 | 報名時間：2026-09-05</p>
+                </div>
+                <button onclick="closeOrderDetailModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1">&times;</button>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4 text-center text-xs">
+                <div>
+                    <span class="text-slate-500 block text-[10px]">總報名人數</span>
+                    <strong class="text-base text-slate-900" id="detailModalTotalCount">0 人</strong>
+                </div>
+                <div>
+                    <span class="text-slate-500 block text-[10px]">葷 / 素統計</span>
+                    <strong class="text-base text-amber-700" id="detailModalDietCount">0 / 0</strong>
+                </div>
+                <div>
+                    <span class="text-slate-500 block text-[10px]">⛳ 選手平均差點</span>
+                    <strong class="text-base text-emerald-700" id="detailModalAvgHandicap">--</strong>
+                </div>
+            </div>
+
+            <!-- Participants Roster Table -->
+            <div class="overflow-x-auto touch-scroll border border-slate-200 rounded-lg max-h-[360px] overflow-y-auto mb-4">
+                <table class="w-full text-left text-xs min-w-[400px]">
+                    <thead class="bg-slate-100 text-slate-700 font-bold sticky top-0">
+                        <tr>
+                            <th class="p-2.5">職務</th>
+                            <th class="p-2.5">Nick Name</th>
+                            <th class="p-2.5">中文姓名</th>
+                            <th class="p-2.5 text-center bg-emerald-50 text-emerald-800 border-x border-emerald-100">⛳ 高爾夫差點</th>
+                            <th class="p-2.5">飲食習慣 / 備註</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detailModalTableBody" class="divide-y divide-slate-100">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex justify-between items-center pt-2">
+                <button onclick="copyClubOrderRosterText()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg text-xs">
+                    📋 複製本社選手名冊文字
+                </button>
+                <button onclick="closeOrderDetailModal()" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg text-xs shadow">
+                    關閉
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= MODAL 4: ADD NEW MENU CATEGORY (後台新增主選單) ================= -->
+    <div id="addCategoryModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 sm:p-6">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                <h3 class="font-bold text-slate-900 text-base">➕ 後台新增主選單類別</h3>
+                <button onclick="closeAddCategoryModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1">&times;</button>
+            </div>
+            
+            <form onsubmit="handleSaveNewCategory(event)" class="space-y-3.5 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">主選單名稱：</label>
+                    <input type="text" id="catNameInput" required placeholder="例如: 地區年會 / 扶輪日" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium">
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">主題色系識別：</label>
+                    <select id="catColorInput" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium">
+                        <option value="blue">📘 專業藍色系 (#1A56DB)</option>
+                        <option value="green">⚽ 活力草綠 (#16A34A)</option>
+                        <option value="orange">🌟 活力橙色 (#EA580C)</option>
+                        <option value="red">❤️ 人道暖紅 (#DC2626)</option>
+                        <option value="purple">🟣 扶輪紫色 (#9333EA)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">預設子活動 (以換行分隔)：</label>
+                    <textarea id="catSubEventsInput" rows="3" placeholder="例如: 2027 地區年會大會&#10;地區年會晚宴" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium"></textarea>
+                </div>
+
+                <div class="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+                    <button type="button" onclick="closeAddCategoryModal()" class="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-semibold">取消</button>
+                    <button type="submit" class="px-4 py-2 bg-slate-900 hover:bg-black text-white rounded-lg font-bold shadow">建立選單類別</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Mobile Floating Bottom Action Bar (手機專屬快捷列) -->
+    <div id="mobileBottomBar" class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-md text-white border-t border-slate-800 px-4 py-2 flex justify-around items-center z-40 text-[10px]">
+        <button onclick="switchRole('secretary')" class="flex flex-col items-center text-blue-400 active:scale-95">
+            <span class="text-base">✍️</span>
+            <span>執秘報名</span>
+        </button>
+        <button onclick="switchRole('chair')" class="flex flex-col items-center text-slate-400 active:scale-95">
+            <span class="text-base">📊</span>
+            <span>主委戰情</span>
+        </button>
+        <button onclick="openMobileSyncModal()" class="flex flex-col items-center text-emerald-400 active:scale-95">
+            <span class="text-base">📲</span>
+            <span>手機連動</span>
+        </button>
+        <button onclick="submitRegistration()" class="px-3 py-1 bg-emerald-600 text-white rounded-lg font-bold flex items-center gap-1 active:scale-95 shadow">
+            <span>🚀</span>
+            <span>送出報名</span>
+            <span id="mobileCountBadge" class="bg-white text-emerald-800 rounded-full px-1.5 py-0.2 text-[9px] font-black">0</span>
+        </button>
+    </div>
+
+    <!-- Toast Notification Container (非侵入式提示) -->
+    <div id="toastNotification" class="fixed bottom-20 md:bottom-8 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 backdrop-blur-md text-white border border-slate-700 px-4 py-2.5 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-2 pointer-events-none opacity-0 transition-opacity duration-300">
+        <span id="toastIcon">✅</span>
+        <span id="toastMessage">操作成功</span>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900 text-slate-400 text-xs py-6 mt-12 border-t border-slate-800 no-print">
+        <div class="max-w-7xl mx-auto px-4 text-center space-y-2">
+            <p>國際扶輪 3523 地區 Rotary District 3523 © 2026-2027 年度活動報名整合系統</p>
+            <p class="text-[11px] text-slate-500">支援各作業系統與手機連動 | 高爾夫差點整合庫 | 快照防護 | 自動化年度銜接</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript Logic & Interactive State Management -->
+    <script>
+        // ================= STORAGE KEY & DATA INITIALIZATION =================
+        const LOCAL_STORAGE_KEY = 'rotary_3523_spa_data_v2';
+
+        // Appendix: Division & Clubs Dictionary
+        const DIVISIONS_DATA = [
+            { id: 1, name: "第一分區", clubs: ["台北扶輪社", "台北西區扶輪社", "台北北區扶輪社", "台北南區扶輪社"] },
+            { id: 2, name: "第二分區", clubs: ["台北東北區扶輪社", "台北西北區扶輪社", "台北中區扶輪社", "台北東南區扶輪社", "台北安東扶輪社"] },
+            { id: 3, name: "第三分區", clubs: ["台北華岡扶輪社", "台北陽明扶輪社", "台北至善扶輪社", "台北華欣扶輪社", "台北文山扶輪社"] },
+            { id: 4, name: "第四分區", clubs: ["台北南門扶輪社", "台北和平扶輪社", "台北城西扶輪社", "台北菁英扶輪社", "台北永福扶輪社"] },
+            { id: 5, name: "第五分區", clubs: ["台北仁愛扶輪社", "台北安和扶輪社", "台北安康扶輪社", "台北信義扶輪社", "台北世貿扶輪社"] },
+            { id: 6, name: "第六分區", clubs: ["台北內湖扶輪社", "台北南湖扶輪社", "台北汐止扶輪社", "台北秀峰扶輪社", "台北新湖扶輪社"] }
+        ];
+
+        // Categories & Sub-Events Master List
+        const DEFAULT_CATEGORIES = [
+            {
+                id: 'seminars',
+                name: '📘 研討會及講習會',
+                themeColor: 'blue',
+                hexColor: '#1A56DB',
+                allowSponsors: false,
+                desc: '專為地區幹部講習設計，無須贊助社/協辦社，免設贊助門檻。',
+                subEvents: [
+                    '1. 獎助金管理研討會 (GMS)',
+                    '2. 地區團隊學習研討會 (DTLS)',
+                    '3. 社長當選人訓練研討會 (PETS)',
+                    '4. 地區訓練講習會 (DTA)',
+                    '5. 社訓練師訓練研討會 (CTTS)',
+                    '6. 地區扶輪基金會研討會 (DRFS)',
+                    '7. 地區社員研討會 (DMS)',
+                    '8. 地區公共形象研討會 (DPIS)'
+                ]
+            },
+            {
+                id: 'sports',
+                name: '⚽ 運動賽事',
+                themeColor: 'green',
+                hexColor: '#16A34A',
+                allowSponsors: true,
+                desc: '各類體育賽事，主委可指定共同主辦社/協辦社/贊助社之贊助金額，已整合高爾夫差點。',
+                subEvents: [
+                    '1. 地區高爾夫球聯誼賽',
+                    '2. 地區保齡球聯誼賽',
+                    '3. 地區桌球聯誼賽',
+                    '4. 地區羽毛球聯誼賽',
+                    '5. 地區籃球聯誼賽'
+                ]
+            },
+            {
+                id: 'ryla',
+                name: '🌟 RYLA 青年領袖營',
+                themeColor: 'orange',
+                hexColor: '#EA580C',
+                allowSponsors: true,
+                desc: '地區 RYLA 青年領袖獎勵研習營，培養青年領導潛能。',
+                subEvents: [
+                    '地區 RYLA 青年領袖獎勵研習營'
+                ]
+            },
+            {
+                id: 'medical',
+                name: '❤️ 國際義診',
+                themeColor: 'red',
+                hexColor: '#DC2626',
+                allowSponsors: true,
+                desc: '年度地區海外及偏鄉人道國際義診服務。',
+                subEvents: [
+                    '年度地區海外/偏鄉國際義診服務'
+                ]
+            },
+            {
+                id: 'polio',
+                name: '🟣 End Polio 慈善音樂會',
+                themeColor: 'purple',
+                hexColor: '#9333EA',
+                allowSponsors: true,
+                desc: 'End Polio 根除小兒麻痺症慈善籌款音樂會。',
+                subEvents: [
+                    'End Polio 根除小兒麻痺慈善音樂會'
+                ]
+            }
+        ];
+
+        // Club Member Master Database Store (Included Golf Handicap 差點)
+        const DEFAULT_MEMBERS_DB = {
+            "台北內湖扶輪社": [
+                { id: 101, role: "社長", nickname: "P Ken", name: "張建國", diet: "MEAT", veganNote: "", handicap: 18 },
+                { id: 102, role: "秘書", nickname: "Steel", name: "林鋼鐵", diet: "VEGAN", veganNote: "全素", handicap: 24 },
+                { id: 103, role: "財務", nickname: "CPA", name: "王會計", diet: "MEAT", veganNote: "", handicap: 14 },
+                { id: 104, role: "執秘", nickname: "Iron", name: "許小姐", diet: "MEAT", veganNote: "", handicap: 28 },
+                { id: 105, role: "社友", nickname: "Joy", name: "李快樂", diet: "VEGAN", veganNote: "蛋奶素、對花生過敏", handicap: 22 }
+            ],
+            "台北扶輪社": [
+                { id: 201, role: "社長", nickname: "P John", name: "陳約翰", diet: "MEAT", veganNote: "", handicap: 16 },
+                { id: 202, role: "秘書", nickname: "David", name: "劉大衛", diet: "MEAT", veganNote: "", handicap: 20 },
+                { id: 203, role: "社友", nickname: "Golf King", name: "蔡一桿", diet: "MEAT", veganNote: "", handicap: 8 }
+            ],
+            "台北陽明扶輪社": [
+                { id: 301, role: "社長", nickname: "P Sun", name: "陽明光", diet: "VEGAN", veganNote: "鍋邊素", handicap: 12 },
+                { id: 302, role: "社友", nickname: "Star", name: "周星", diet: "MEAT", veganNote: "", handicap: 26 }
+            ]
+        };
+
+        // Registration Orders Store (Key: subEventName)
+        const DEFAULT_ORDERS = {
+            '1. 獎助金管理研討會 (GMS)': [
+                {
+                    clubName: "台北內湖扶輪社",
+                    sponsorTier: "PARTICIPANT",
+                    sponsorAmount: 0,
+                    submittedAt: "2026-09-02 10:15",
+                    items: [
+                        { role: "社長", nickname: "P Ken", name: "張建國", diet: "MEAT", veganNote: "", handicap: 18 },
+                        { role: "秘書", nickname: "Steel", name: "林鋼鐵", diet: "VEGAN", veganNote: "全素", handicap: 24 }
+                    ]
+                },
+                {
+                    clubName: "台北扶輪社",
+                    sponsorTier: "PARTICIPANT",
+                    sponsorAmount: 0,
+                    submittedAt: "2026-09-03 14:20",
+                    items: [
+                        { role: "社長", nickname: "P John", name: "陳約翰", diet: "MEAT", veganNote: "", handicap: 16 }
+                    ]
+                }
+            ],
+            '1. 地區高爾夫球聯誼賽': [
+                {
+                    clubName: "台北內湖扶輪社",
+                    sponsorTier: "CO_HOST",
+                    sponsorAmount: 50000,
+                    submittedAt: "2026-09-05 11:00",
+                    items: [
+                        { role: "社長", nickname: "P Ken", name: "張建國", diet: "MEAT", veganNote: "", handicap: 18 },
+                        { role: "社友", nickname: "Joy", name: "李快樂", diet: "VEGAN", veganNote: "蛋奶素", handicap: 22 }
+                    ]
+                },
+                {
+                    clubName: "台北扶輪社",
+                    sponsorTier: "SPONSOR",
+                    sponsorAmount: 10000,
+                    submittedAt: "2026-09-06 16:40",
+                    items: [
+                        { role: "社長", nickname: "P John", name: "陳約翰", diet: "MEAT", veganNote: "", handicap: 16 },
+                        { role: "社友", nickname: "Golf King", name: "蔡一桿", diet: "MEAT", veganNote: "", handicap: 8 }
+                    ]
+                }
+            ]
+        };
+
+        // Application State
+        let currentRole = 'secretary'; // 'secretary' | 'chair' | 'arch'
+        let currentCatId = 'seminars';
+        let currentSubEventIndex = 0;
+        let selectedClubName = "台北內湖扶輪社";
+        let isEventLockedToday = false;
+
+        let categoriesData = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+        let clubMemberDatabase = JSON.parse(JSON.stringify(DEFAULT_MEMBERS_DB));
+        let registrationOrders = JSON.parse(JSON.stringify(DEFAULT_ORDERS));
+
+        let chairConfig = {
+            sponsorshipEnabled: false,
+            feeCoHost: 50000,
+            feeOrganizer: 20000,
+            feeSponsor: 10000,
+            startDate: '2026-09-01T09:00'
+        };
+
+        // Temporarily selected members in secretary form
+        let currentFormSelectedMembers = [];
+        let currentSelectedSponsorTier = "PARTICIPANT";
+
+        // Current selected order for detail modal inspection
+        let currentInspectedOrder = null;
+
+        // Chart.js References
+        let chartClubsInstance = null;
+        let chartDietInstance = null;
+
+        // ================= PERSISTENCE (LOCAL STORAGE) =================
+
+        function saveToStorage() {
+            try {
+                const data = {
+                    categoriesData,
+                    clubMemberDatabase,
+                    registrationOrders,
+                    chairConfig,
+                    lastUpdated: new Date().toISOString()
+                };
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+            } catch (e) {
+                console.warn("無法寫入 LocalStorage", e);
+            }
+        }
+
+        function loadFromStorage() {
+            try {
+                const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (parsed.categoriesData) categoriesData = parsed.categoriesData;
+                    if (parsed.clubMemberDatabase) clubMemberDatabase = parsed.clubMemberDatabase;
+                    if (parsed.registrationOrders) registrationOrders = parsed.registrationOrders;
+                    if (parsed.chairConfig) chairConfig = parsed.chairConfig;
+                }
+            } catch (e) {
+                console.warn("讀取 LocalStorage 失敗", e);
+            }
+        }
+
+        function resetSystemData() {
+            if (confirm("⚠️ 確定將所有社友名冊與報名資料重置為初始預設值？本機修改將被清除。")) {
+                localStorage.removeItem(LOCAL_STORAGE_KEY);
+                categoriesData = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+                clubMemberDatabase = JSON.parse(JSON.stringify(DEFAULT_MEMBERS_DB));
+                registrationOrders = JSON.parse(JSON.stringify(DEFAULT_ORDERS));
+                saveToStorage();
+                location.reload();
+            }
+        }
+
+        // ================= INITIALIZATION & NAVIGATION =================
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFromStorage();
+            renderNavTabs();
+            renderDivisionDirectory();
+            populateClubSelector();
+            loadCategoryView();
+            initCharts();
+            initQRCode();
+        });
+
+        function switchRole(role) {
+            currentRole = role;
+            document.getElementById('roleSecBtn').className = role === 'secretary' ? 'px-2.5 sm:px-3 py-1 text-xs font-semibold rounded-md transition-all bg-blue-600 text-white shadow whitespace-nowrap' : 'px-2.5 sm:px-3 py-1 text-xs font-semibold rounded-md transition-all text-slate-300 hover:text-white hover:bg-slate-700 whitespace-nowrap';
+            document.getElementById('roleChairBtn').className = role === 'chair' ? 'px-2.5 sm:px-3 py-1 text-xs font-semibold rounded-md transition-all bg-blue-600 text-white shadow whitespace-nowrap' : 'px-2.5 sm:px-3 py-1 text-xs font-semibold rounded-md transition-all text-slate-300 hover:text-white hover:bg-slate-700 whitespace-nowrap';
+            document.getElementById('roleArchBtn').className = role === 'arch' ? 'px-2.5 sm:px-3 py-1 text-xs font-semibold rounded-md transition-all bg-blue-600 text-white shadow whitespace-nowrap' : 'px-2.5 sm:px-3 py-1 text-xs font-semibold rounded-md transition-all text-slate-300 hover:text-white hover:bg-slate-700 whitespace-nowrap';
+
+            document.getElementById('viewSecretary').classList.toggle('hidden', role !== 'secretary');
+            document.getElementById('viewChair').classList.toggle('hidden', role !== 'chair');
+            document.getElementById('viewArch').classList.toggle('hidden', role !== 'arch');
+
+            if (role === 'chair') {
+                updateChairDashboard();
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function renderNavTabs() {
+            const container = document.getElementById('mainNavContainer');
+            container.innerHTML = categoriesData.map(cat => {
+                const isActive = cat.id === currentCatId;
+                const activeStyle = isActive ? 'bg-slate-900 text-white shadow' : 'bg-slate-100 text-slate-700 hover:bg-slate-200';
+                return `
+                    <button onclick="selectCategory('${cat.id}')" class="px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 ${activeStyle}">
+                        <span>${cat.name}</span>
+                    </button>
+                `;
+            }).join('') + `
+                <button onclick="openAddCategoryModal()" class="px-3 py-2 bg-slate-800 text-amber-400 hover:bg-slate-900 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1 shrink-0">
+                    ➕ 新增主選單
+                </button>
+            `;
+        }
+
+        function selectCategory(catId) {
+            currentCatId = catId;
+            currentSubEventIndex = 0;
+            renderNavTabs();
+            loadCategoryView();
+        }
+
+        function loadCategoryView() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            if (!cat) return;
+
+            // Banner Title & Border Styling
+            const banner = document.getElementById('categoryHeaderBanner');
+            banner.className = `bg-white rounded-xl shadow-sm border p-4 sm:p-5 mb-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-8 theme-${cat.themeColor}`;
+            document.getElementById('catTitle').innerText = cat.name;
+            document.getElementById('catDesc').innerText = cat.desc;
+
+            // Sponsor capability flag
+            chairConfig.sponsorshipEnabled = cat.allowSponsors;
+            document.getElementById('cfgSponsorToggle').value = cat.allowSponsors ? 'enabled' : 'disabled';
+            document.getElementById('sponsorshipSelectionBox').classList.toggle('hidden', !cat.allowSponsors);
+            document.getElementById('chairSponsorFeeInputs').classList.toggle('hidden', !cat.allowSponsors);
+
+            // Sub-Event Dropdown
+            const select = document.getElementById('subEventSelect');
+            select.innerHTML = cat.subEvents.map((se, idx) => `<option value="${idx}">${se}</option>`).join('');
+            select.value = currentSubEventIndex;
+
+            updateSubEventContext();
+        }
+
+        function changeSubEvent(idx) {
+            currentSubEventIndex = parseInt(idx);
+            updateSubEventContext();
+        }
+
+        function updateSubEventContext() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const subEventName = cat.subEvents[currentSubEventIndex];
+            
+            document.getElementById('regFormTitle').innerText = `報名：${subEventName}`;
+            document.getElementById('cfgEventName').value = `2026-27年度 ${subEventName}`;
+
+            // Check if current event is Golf Tournament
+            const isGolf = subEventName.includes("高爾夫") || cat.id === 'sports';
+            document.getElementById('golfSpecialBadge').classList.toggle('hidden', !isGolf);
+
+            // Load existing selections for current club
+            const activeOrders = registrationOrders[subEventName] || [];
+            const existingClubOrder = activeOrders.find(o => o.clubName === selectedClubName);
+
+            if (existingClubOrder) {
+                currentFormSelectedMembers = JSON.parse(JSON.stringify(existingClubOrder.items));
+                currentSelectedSponsorTier = existingClubOrder.sponsorTier;
+            } else {
+                currentFormSelectedMembers = [];
+                currentSelectedSponsorTier = "PARTICIPANT";
+            }
+
+            // Sync radio button
+            const radios = document.getElementsByName('sponsorTier');
+            radios.forEach(r => r.checked = (r.value === currentSelectedSponsorTier));
+
+            renderMemberMasterTable();
+            renderSelectedMembersTable();
+            updateLinePreviewText();
+            if (currentRole === 'chair') updateChairDashboard();
+        }
+
+        // Calculate Average Handicap
+        function calculateAvgHandicap(items) {
+            if (!items || items.length === 0) return '--';
+            const valid = items.filter(m => m.handicap !== undefined && m.handicap !== null && m.handicap !== '' && !isNaN(Number(m.handicap)));
+            if (valid.length === 0) return '--';
+            const sum = valid.reduce((acc, m) => acc + Number(m.handicap), 0);
+            return (sum / valid.length).toFixed(1);
+        }
+
+        // ================= SECRETARY & MEMBER MASTER LOGIC =================
+
+        function populateClubSelector() {
+            const selector = document.getElementById('clubSelector');
+            let html = '';
+            DIVISIONS_DATA.forEach(div => {
+                html += `<optgroup label="${div.name}">`;
+                div.clubs.forEach(c => {
+                    html += `<option value="${c}">${c}</option>`;
+                });
+                html += `</optgroup>`;
+            });
+            selector.innerHTML = html;
+            selector.value = selectedClubName;
+        }
+
+        function selectClub(clubName) {
+            selectedClubName = clubName;
+            document.getElementById('currentClubNameTitle').innerText = clubName;
+            document.getElementById('lockedClubNameBadge').innerText = clubName;
+            
+            // Ensure club array exists in DB
+            if (!clubMemberDatabase[clubName]) {
+                clubMemberDatabase[clubName] = [
+                    { id: Date.now(), role: "社長", nickname: "P " + clubName.substring(2, 4), name: `${clubName.substring(2, 4)}社長`, diet: "MEAT", veganNote: "", handicap: 18 }
+                ];
+                saveToStorage();
+            }
+
+            updateSubEventContext();
+        }
+
+        function renderMemberMasterTable() {
+            const members = clubMemberDatabase[selectedClubName] || [];
+            const tbody = document.getElementById('memberMasterTableBody');
+            const searchKeyword = (document.getElementById('memberSearchInput').value || '').trim().toLowerCase();
+
+            const filteredMembers = members.filter(m => {
+                if (!searchKeyword) return true;
+                const hcapStr = (m.handicap !== undefined && m.handicap !== '') ? String(m.handicap) : '';
+                return (m.name && m.name.toLowerCase().includes(searchKeyword)) ||
+                       (m.nickname && m.nickname.toLowerCase().includes(searchKeyword)) ||
+                       (m.role && m.role.toLowerCase().includes(searchKeyword)) ||
+                       hcapStr.includes(searchKeyword);
+            });
+
+            document.getElementById('masterMemberCount').innerText = `共 ${members.length} 位社友`;
+
+            if (filteredMembers.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">查無符合社友，請新增或修改搜尋關鍵字</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filteredMembers.map(m => {
+                const isChecked = currentFormSelectedMembers.some(sm => sm.name === m.name && sm.nickname === m.nickname);
+                const handicapDisplay = (m.handicap !== undefined && m.handicap !== null && m.handicap !== '')
+                    ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded font-mono text-[11px]">${m.handicap}</span>`
+                    : `<span class="text-slate-300 font-mono">-</span>`;
+
+                return `
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="p-2 text-center">
+                            <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleMemberSelection(${m.id})" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
+                        </td>
+                        <td class="p-2">
+                            <div class="font-bold text-slate-900">${m.name}</div>
+                            <span class="px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded text-[10px] font-semibold">${m.role}</span>
+                        </td>
+                        <td class="p-2 font-mono font-medium text-slate-600">${m.nickname || '-'}</td>
+                        <td class="p-2 text-center bg-emerald-50/40 border-x border-emerald-50">
+                            ${handicapDisplay}
+                        </td>
+                        <td class="p-2">
+                            ${m.diet === 'VEGAN' 
+                                ? `<span class="text-amber-700 font-bold" title="${m.veganNote || ''}">🌱 素食</span>`
+                                : `<span class="text-slate-400">葷食</span>`}
+                        </td>
+                        <td class="p-2 text-center space-x-1 whitespace-nowrap">
+                            <button onclick="openAddMemberModal(${m.id})" title="編輯社友/差點" class="text-blue-600 hover:text-blue-800 p-1 font-bold">✏️</button>
+                            <button onclick="deleteMember(${m.id})" title="刪除社友" class="text-red-400 hover:text-red-600 p-1 font-bold">🗑️</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function toggleMemberSelection(memberId) {
+            if (isEventLockedToday) {
+                alert('⚠️ 本活動今日已封存（唯讀狀態），無法增刪人員！');
+                renderMemberMasterTable();
+                return;
+            }
+
+            const members = clubMemberDatabase[selectedClubName] || [];
+            const target = members.find(m => m.id === memberId);
+            if (!target) return;
+
+            const existingIdx = currentFormSelectedMembers.findIndex(sm => sm.name === target.name && sm.nickname === target.nickname);
+            if (existingIdx > -1) {
+                currentFormSelectedMembers.splice(existingIdx, 1);
+            } else {
+                currentFormSelectedMembers.push({
+                    role: target.role,
+                    nickname: target.nickname,
+                    name: target.name,
+                    diet: target.diet,
+                    veganNote: target.veganNote,
+                    handicap: target.handicap !== undefined ? target.handicap : ''
+                });
+            }
+
+            renderMemberMasterTable();
+            renderSelectedMembersTable();
+            updateLinePreviewText();
+        }
+
+        function renderSelectedMembersTable() {
+            const tbody = document.getElementById('selectedMembersTableBody');
+            const total = currentFormSelectedMembers.length;
+            document.getElementById('selectedTotalCount').innerText = total;
+            document.getElementById('mobileCountBadge').innerText = total;
+            
+            const veganCount = currentFormSelectedMembers.filter(m => m.diet === 'VEGAN').length;
+            document.getElementById('selectedVeganCount').innerText = veganCount;
+
+            const avgHcap = calculateAvgHandicap(currentFormSelectedMembers);
+            document.getElementById('selectedAvgHandicap').innerText = avgHcap;
+
+            if (currentFormSelectedMembers.length === 0) {
+                tbody.innerHTML = `
+                    <tr id="emptySelectionRow">
+                        <td colspan="6" class="p-6 text-center text-slate-400">
+                            👈 請從左側「社友名冊庫」勾選欲報名的社友
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = currentFormSelectedMembers.map((m, idx) => {
+                const handicapDisplay = (m.handicap !== undefined && m.handicap !== null && m.handicap !== '')
+                    ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded font-mono text-[11px]">${m.handicap}</span>`
+                    : `<span class="text-slate-300 font-mono">-</span>`;
+
+                return `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-2 font-medium text-slate-700">${m.role}</td>
+                        <td class="p-2 font-mono text-slate-600">${m.nickname}</td>
+                        <td class="p-2 font-bold text-slate-900">${m.name}</td>
+                        <td class="p-2 text-center bg-emerald-50/40 border-x border-emerald-50">
+                            ${handicapDisplay}
+                        </td>
+                        <td class="p-2">
+                            ${m.diet === 'VEGAN' ? `<span class="text-amber-700 font-bold">🌱 ${m.veganNote || '素食'}</span>` : '葷食'}
+                        </td>
+                        <td class="p-2 text-center">
+                            <button onclick="removeSelectedMember(${idx})" class="text-red-500 hover:text-red-700 font-bold p-1 rounded text-xs">✕</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function removeSelectedMember(index) {
+            if (isEventLockedToday) return;
+            currentFormSelectedMembers.splice(index, 1);
+            renderMemberMasterTable();
+            renderSelectedMembersTable();
+            updateLinePreviewText();
+        }
+
+        function clearSelectedMembers() {
+            if (isEventLockedToday) return;
+            currentFormSelectedMembers = [];
+            renderMemberMasterTable();
+            renderSelectedMembersTable();
+            updateLinePreviewText();
+            showToast("已清空當前勾選人員");
+        }
+
+        function updateSponsorshipSelection() {
+            const radios = document.getElementsByName('sponsorTier');
+            radios.forEach(r => {
+                if (r.checked) currentSelectedSponsorTier = r.value;
+            });
+            updateLinePreviewText();
+        }
+
+        function submitRegistration() {
+            if (isEventLockedToday) {
+                alert('⚠️ 本活動今日已封存唯讀，無法送出變更！');
+                return;
+            }
+
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const subEventName = cat.subEvents[currentSubEventIndex];
+
+            if (currentFormSelectedMembers.length === 0) {
+                alert('請至少勾選一名社友出席！');
+                return;
+            }
+
+            let amount = 0;
+            if (chairConfig.sponsorshipEnabled) {
+                if (currentSelectedSponsorTier === 'CO_HOST') amount = chairConfig.feeCoHost;
+                else if (currentSelectedSponsorTier === 'ORGANIZER') amount = chairConfig.feeOrganizer;
+                else if (currentSelectedSponsorTier === 'SPONSOR') amount = chairConfig.feeSponsor;
+            }
+
+            if (!registrationOrders[subEventName]) {
+                registrationOrders[subEventName] = [];
+            }
+
+            const existingIdx = registrationOrders[subEventName].findIndex(o => o.clubName === selectedClubName);
+            const orderPayload = {
+                clubName: selectedClubName,
+                sponsorTier: currentSelectedSponsorTier,
+                sponsorAmount: amount,
+                submittedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                items: JSON.parse(JSON.stringify(currentFormSelectedMembers)) // Snapshot array containing handicap
+            };
+
+            if (existingIdx > -1) {
+                registrationOrders[subEventName][existingIdx] = orderPayload;
+            } else {
+                registrationOrders[subEventName].push(orderPayload);
+            }
+
+            saveToStorage();
+            showToast(`✅ ${selectedClubName} 成功送出《${subEventName}》報名表！`);
+            updateLinePreviewText();
+            if (currentRole === 'chair') updateChairDashboard();
+        }
+
+        // ================= ADD / EDIT / DELETE MEMBER HANDLERS =================
+
+        function openAddMemberModal(memberId = null) {
+            document.getElementById('modalClubName').innerText = selectedClubName;
+            const modal = document.getElementById('addMemberModal');
+            const title = document.getElementById('memberModalTitle');
+            const editIdInput = document.getElementById('mEditId');
+
+            if (memberId) {
+                const members = clubMemberDatabase[selectedClubName] || [];
+                const target = members.find(m => m.id === memberId);
+                if (target) {
+                    title.innerHTML = `✏️ 編輯社友資料與差點：<span class="text-blue-600">${target.name}</span>`;
+                    editIdInput.value = target.id;
+                    document.getElementById('mRole').value = target.role || '社友';
+                    document.getElementById('mNickname').value = target.nickname || '';
+                    document.getElementById('mChineseName').value = target.name || '';
+                    document.getElementById('mHandicap').value = (target.handicap !== undefined && target.handicap !== null) ? target.handicap : '';
+                    const isVegan = target.diet === 'VEGAN';
+                    const dietRadios = document.getElementsByName('mDiet');
+                    dietRadios.forEach(r => r.checked = (r.value === (isVegan ? 'VEGAN' : 'MEAT')));
+                    toggleVeganNoteInput(isVegan);
+                    document.getElementById('mVeganNote').value = target.veganNote || '';
+                }
+            } else {
+                title.innerHTML = `➕ 新增社友至 <span class="text-blue-600">${selectedClubName}</span> 名冊`;
+                editIdInput.value = '';
+                document.getElementById('mRole').value = '社友';
+                document.getElementById('mNickname').value = '';
+                document.getElementById('mChineseName').value = '';
+                document.getElementById('mHandicap').value = '';
+                const dietRadios = document.getElementsByName('mDiet');
+                dietRadios.forEach(r => r.checked = (r.value === 'MEAT'));
+                toggleVeganNoteInput(false);
+                document.getElementById('mVeganNote').value = '';
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeAddMemberModal() {
+            document.getElementById('addMemberModal').classList.add('hidden');
+        }
+
+        function toggleVeganNoteInput(isVegan) {
+            document.getElementById('veganNoteBox').classList.toggle('hidden', !isVegan);
+        }
+
+        function handleSaveNewMember(e) {
+            e.preventDefault();
+            const editId = document.getElementById('mEditId').value;
+            const role = document.getElementById('mRole').value;
+            const nickname = document.getElementById('mNickname').value.trim();
+            const name = document.getElementById('mChineseName').value.trim();
+            const handicapVal = document.getElementById('mHandicap').value.trim();
+            const handicap = handicapVal !== '' ? parseFloat(handicapVal) : '';
+            const diet = document.querySelector('input[name="mDiet"]:checked').value;
+            const veganNote = diet === 'VEGAN' ? document.getElementById('mVeganNote').value.trim() : '';
+
+            if (!clubMemberDatabase[selectedClubName]) clubMemberDatabase[selectedClubName] = [];
+
+            if (editId) {
+                // Update existing member
+                const targetIdx = clubMemberDatabase[selectedClubName].findIndex(m => m.id === parseInt(editId));
+                if (targetIdx > -1) {
+                    clubMemberDatabase[selectedClubName][targetIdx] = {
+                        id: parseInt(editId),
+                        role,
+                        nickname,
+                        name,
+                        diet,
+                        veganNote,
+                        handicap
+                    };
+                }
+                showToast(`✅ 已更新社友【${name}】的資料與高爾夫差點！`);
+            } else {
+                // Add new member
+                const newMember = {
+                    id: Date.now(),
+                    role,
+                    nickname,
+                    name,
+                    diet,
+                    veganNote,
+                    handicap
+                };
+                clubMemberDatabase[selectedClubName].push(newMember);
+                showToast(`✅ 成功新增社友【${name}】至 ${selectedClubName}！`);
+            }
+
+            saveToStorage();
+            closeAddMemberModal();
+            renderMemberMasterTable();
+        }
+
+        function deleteMember(memberId) {
+            const members = clubMemberDatabase[selectedClubName] || [];
+            const target = members.find(m => m.id === memberId);
+            if (!target) return;
+
+            if (confirm(`確定要從 ${selectedClubName} 名冊中移除社友【${target.name}】？`)) {
+                clubMemberDatabase[selectedClubName] = members.filter(m => m.id !== memberId);
+                // Also remove from current form if selected
+                currentFormSelectedMembers = currentFormSelectedMembers.filter(sm => !(sm.name === target.name && sm.nickname === target.nickname));
+                saveToStorage();
+                renderMemberMasterTable();
+                renderSelectedMembersTable();
+                showToast(`已刪除社友【${target.name}】`);
+            }
+        }
+
+        // ================= CHAIR DASHBOARD & CHARTS =================
+
+        function toggleSponsorConfig(val) {
+            const enabled = (val === 'enabled');
+            chairConfig.sponsorshipEnabled = enabled;
+            document.getElementById('sponsorshipSelectionBox').classList.toggle('hidden', !enabled);
+            document.getElementById('chairSponsorFeeInputs').classList.toggle('hidden', !enabled);
+            saveToStorage();
+        }
+
+        function saveChairSettings() {
+            chairConfig.feeCoHost = parseFloat(document.getElementById('cfgFeeCoHost').value) || 0;
+            chairConfig.feeOrganizer = parseFloat(document.getElementById('cfgFeeOrganizer').value) || 0;
+            chairConfig.feeSponsor = parseFloat(document.getElementById('cfgFeeSponsor').value) || 0;
+
+            document.getElementById('feeCoHostText').innerText = `$${chairConfig.feeCoHost.toLocaleString()}`;
+            document.getElementById('feeOrganizerText').innerText = `$${chairConfig.feeOrganizer.toLocaleString()}`;
+            document.getElementById('feeSponsorText').innerText = `$${chairConfig.feeSponsor.toLocaleString()}`;
+
+            saveToStorage();
+            showToast('💾 主委設定已成功更新！');
+            updateChairDashboard();
+        }
+
+        function simulateEventDayLock() {
+            isEventLockedToday = !isEventLockedToday;
+            document.getElementById('eventStatusBadge').innerHTML = isEventLockedToday ? '🔒 今日已自動封存唯讀' : '🟢 開放報名中';
+            document.getElementById('regStatusLabel').innerText = isEventLockedToday ? '🔒 已封存唯讀 (無法修改)' : '編輯中 (尚未鎖定)';
+            document.getElementById('regStatusLabel').className = isEventLockedToday ? 'font-bold text-amber-600' : 'font-bold text-emerald-600';
+            document.getElementById('submitRegBtn').disabled = isEventLockedToday;
+            document.getElementById('submitRegBtn').classList.toggle('opacity-50', isEventLockedToday);
+
+            alert(isEventLockedToday 
+                ? '⚡ 系統已模擬觸發【活動當日 00:00】自動封存機制！\n全體報名名冊與差點轉為唯讀快照，歷史資料受到固化保護。'
+                : '🔓 已解鎖狀態，回到正常編輯模式。');
+            if (currentRole === 'chair') updateChairDashboard();
+        }
+
+        function updateChairDashboard() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const subEventName = cat.subEvents[currentSubEventIndex];
+            const orders = registrationOrders[subEventName] || [];
+
+            let totalPeople = 0;
+            let meatCount = 0;
+            let veganCount = 0;
+            let totalSponsorship = 0;
+            let countCoHost = 0, countOrganizer = 0, countSponsor = 0;
+            let allParticipants = [];
+
+            orders.forEach(o => {
+                totalSponsorship += (o.sponsorAmount || 0);
+                if (o.sponsorTier === 'CO_HOST') countCoHost++;
+                if (o.sponsorTier === 'ORGANIZER') countOrganizer++;
+                if (o.sponsorTier === 'SPONSOR') countSponsor++;
+
+                o.items.forEach(item => {
+                    totalPeople++;
+                    allParticipants.push(item);
+                    if (item.diet === 'VEGAN') veganCount++;
+                    else meatCount++;
+                });
+            });
+
+            // Update KPI Cards
+            document.getElementById('kpiTotalParticipants').innerText = `${totalPeople} 人`;
+            document.getElementById('kpiClubCount').innerText = orders.length;
+            document.getElementById('kpiDietSummary').innerText = `${meatCount} 葷 / ${veganCount} 素`;
+            document.getElementById('kpiTotalSponsorship').innerText = `$${totalSponsorship.toLocaleString()}`;
+            document.getElementById('kpiSponsorClubsDetail').innerText = `共同主辦 ${countCoHost} | 協辦 ${countOrganizer} | 贊助 ${countSponsor}`;
+
+            // Calculate overall golf stats for 4th card
+            const isGolf = subEventName.includes("高爾夫") || cat.id === 'sports';
+            if (isGolf) {
+                document.getElementById('kpiFourthCardTitle').innerText = '⛳ 參賽選手平均差點';
+                const overallAvgHcap = calculateAvgHandicap(allParticipants);
+                document.getElementById('kpiGolfSummary').innerText = overallAvgHcap !== '--' ? `${overallAvgHcap}` : '尚無差點數據';
+                document.getElementById('kpiGolfSub').innerText = `共 ${allParticipants.filter(p => p.handicap !== '' && p.handicap !== undefined).length} 位選手已登記差點`;
+            } else {
+                document.getElementById('kpiFourthCardTitle').innerText = '系統封存狀態';
+                document.getElementById('kpiGolfSummary').innerText = isEventLockedToday ? '🔒 已封存唯讀' : '🟢 進行中 (可編修)';
+                document.getElementById('kpiGolfSub').innerText = '當天 00:00 觸發唯讀';
+            }
+
+            // Render Detailed Orders Table in Chair View
+            const tbody = document.getElementById('chairDetailedOrdersTable');
+            if (orders.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">目前尚無任何扶輪社送出報名表</td></tr>`;
+            } else {
+                tbody.innerHTML = orders.map((o, idx) => {
+                    const avgHcap = calculateAvgHandicap(o.items);
+                    return `
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-2.5 font-bold text-slate-900">${o.clubName}</td>
+                            <td class="p-2.5">
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    o.sponsorTier === 'CO_HOST' ? 'bg-amber-100 text-amber-800' :
+                                    o.sponsorTier === 'ORGANIZER' ? 'bg-blue-100 text-blue-800' :
+                                    o.sponsorTier === 'SPONSOR' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                                }">${
+                                    o.sponsorTier === 'CO_HOST' ? '共同主辦社' :
+                                    o.sponsorTier === 'ORGANIZER' ? '協辦社' :
+                                    o.sponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社'
+                                }</span>
+                            </td>
+                            <td class="p-2.5 font-mono font-bold text-emerald-700">$${(o.sponsorAmount || 0).toLocaleString()}</td>
+                            <td class="p-2.5 font-bold text-slate-900">${o.items.length} 人</td>
+                            <td class="p-2.5 text-amber-700 font-bold">${o.items.filter(i => i.diet === 'VEGAN').length} 人</td>
+                            <td class="p-2.5 text-slate-400 font-mono text-[11px]">${o.submittedAt}</td>
+                            <td class="p-2.5 text-center">
+                                <button onclick="openOrderDetailModal('${subEventName}', ${idx})" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded font-bold text-[11px] flex items-center gap-1 mx-auto shadow-sm">
+                                    <span>🔍 名單明細</span>
+                                    ${avgHcap !== '--' ? `<span class="bg-emerald-600 text-white rounded px-1 py-0.2 text-[9px]">差點 ${avgHcap}</span>` : ''}
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            // Update Chart.js Graphics
+            updateChartsData(orders, meatCount, veganCount);
+        }
+
+        function initCharts() {
+            const ctx1 = document.getElementById('chartClubs').getContext('2d');
+            chartClubsInstance = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '已報名人數',
+                        data: [],
+                        backgroundColor: '#1A56DB',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { precision: 0 } }
+                    }
+                }
+            });
+
+            const ctx2 = document.getElementById('chartDiet').getContext('2d');
+            chartDietInstance = new Chart(ctx2, {
+                type: 'doughnut',
+                data: {
+                    labels: ['葷食', '素食 (含全素/過敏)'],
+                    datasets: [{
+                        data: [0, 0],
+                        backgroundColor: ['#1A56DB', '#D97706']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+
+        function updateChartsData(orders, meat, vegan) {
+            if (!chartClubsInstance || !chartDietInstance) return;
+
+            chartClubsInstance.data.labels = orders.map(o => o.clubName.replace('扶輪社', ''));
+            chartClubsInstance.data.datasets[0].data = orders.map(o => o.items.length);
+            chartClubsInstance.update();
+
+            chartDietInstance.data.datasets[0].data = [meat, vegan];
+            chartDietInstance.update();
+        }
+
+        // ================= ORDER DETAIL MODAL =================
+
+        function openOrderDetailModal(subEventName, orderIndex) {
+            const orders = registrationOrders[subEventName] || [];
+            const order = orders[orderIndex];
+            if (!order) return;
+
+            currentInspectedOrder = order;
+            document.getElementById('detailModalClubTitle').innerText = `${order.clubName} - 《${subEventName}》出席名冊`;
+            
+            const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
+                              order.sponsorTier === 'ORGANIZER' ? '協辦社' :
+                              order.sponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社';
+            document.getElementById('detailModalSubTitle').innerText = `贊助等級：${tierLabel} ($${(order.sponsorAmount||0).toLocaleString()}) | 提交時間：${order.submittedAt}`;
+
+            document.getElementById('detailModalTotalCount').innerText = `${order.items.length} 人`;
+            const veganCount = order.items.filter(i => i.diet === 'VEGAN').length;
+            const meatCount = order.items.length - veganCount;
+            document.getElementById('detailModalDietCount').innerText = `${meatCount} 葷 / ${veganCount} 素`;
+
+            const avgHcap = calculateAvgHandicap(order.items);
+            document.getElementById('detailModalAvgHandicap').innerText = avgHcap !== '--' ? `${avgHcap}` : '無差點記錄';
+
+            const tbody = document.getElementById('detailModalTableBody');
+            tbody.innerHTML = order.items.map(item => {
+                const handicapDisplay = (item.handicap !== undefined && item.handicap !== null && item.handicap !== '')
+                    ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded font-mono text-[11px]">${item.handicap}</span>`
+                    : `<span class="text-slate-300 font-mono">-</span>`;
+
+                return `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-2.5 font-medium text-slate-700">${item.role}</td>
+                        <td class="p-2.5 font-mono text-slate-600">${item.nickname}</td>
+                        <td class="p-2.5 font-bold text-slate-900">${item.name}</td>
+                        <td class="p-2.5 text-center bg-emerald-50/40 border-x border-emerald-50">
+                            ${handicapDisplay}
+                        </td>
+                        <td class="p-2.5">
+                            ${item.diet === 'VEGAN' ? `<span class="text-amber-700 font-bold">🌱 素食 (${item.veganNote || '通用'})` : '葷食'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById('orderDetailModal').classList.remove('hidden');
+        }
+
+        function closeOrderDetailModal() {
+            document.getElementById('orderDetailModal').classList.add('hidden');
+        }
+
+        function copyClubOrderRosterText() {
+            if (!currentInspectedOrder) return;
+            const order = currentInspectedOrder;
+            let lines = [];
+            lines.push(`【${order.clubName} 出席名冊與高爾夫差點】`);
+            order.items.forEach((item, idx) => {
+                const hcapStr = (item.handicap !== undefined && item.handicap !== '') ? ` | 差點: ${item.handicap}` : '';
+                const dietStr = item.diet === 'VEGAN' ? `素食(${item.veganNote||''})` : '葷食';
+                lines.push(`${idx + 1}. [${item.role}] ${item.name} (${item.nickname})${hcapStr} - ${dietStr}`);
+            });
+            navigator.clipboard.writeText(lines.join("\n")).then(() => {
+                showToast("📋 已複製該社名冊文字！");
+            });
+        }
+
+        // ================= CROSS-OS EXPORT (EXCEL/CSV WITH UTF-8 BOM) =================
+
+        function exportReportCSV() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const subEventName = cat.subEvents[currentSubEventIndex];
+            const orders = registrationOrders[subEventName] || [];
+
+            if (orders.length === 0) {
+                alert("目前尚無任何扶輪社提交此活動報名，無法產生報表！");
+                return;
+            }
+
+            // UTF-8 BOM (\uFEFF) ensures Windows Excel, Mac Numbers & Mobile Office apps open with zero gibberish
+            let csvContent = "\uFEFF";
+            csvContent += "扶輪社名稱,贊助等級,贊助金額,出席社友姓名,今年職稱,Nick Name,高爾夫差點,飲食需求,素食細項備註,報名提交時間\n";
+
+            orders.forEach(order => {
+                const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
+                                 order.sponsorTier === 'ORGANIZER' ? '協辦社' :
+                                 order.sponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社';
+                order.items.forEach(item => {
+                    const dietLabel = item.diet === 'VEGAN' ? '素食' : '葷食';
+                    const hcap = (item.handicap !== undefined && item.handicap !== null && item.handicap !== '') ? item.handicap : '-';
+                    const row = [
+                        `"${order.clubName}"`,
+                        `"${tierLabel}"`,
+                        order.sponsorAmount || 0,
+                        `"${item.name || ''}"`,
+                        `"${item.role || ''}"`,
+                        `"${item.nickname || ''}"`,
+                        `"${hcap}"`,
+                        `"${dietLabel}"`,
+                        `"${(item.veganNote || '').replace(/"/g, '""')}"`,
+                        `"${order.submittedAt || ''}"`
+                    ];
+                    csvContent += row.join(",") + "\n";
+                });
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const dateStr = new Date().toISOString().slice(0, 10);
+            a.download = `3523地區報名名冊_${subEventName.replace(/[/\\s:]/g, '_')}_${dateStr}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast("📥 Excel/CSV 報表已匯出 (相容 Windows/Mac/iOS/Android)！");
+        }
+
+        // ================= MOBILE & CROSS-PLATFORM HUB LOGIC =================
+
+        function openMobileSyncModal() {
+            updateLinePreviewText();
+            document.getElementById('mobileSyncModal').classList.remove('hidden');
+            setTimeout(initQRCode, 100);
+        }
+
+        function closeMobileSyncModal() {
+            document.getElementById('mobileSyncModal').classList.add('hidden');
+        }
+
+        function switchSyncTab(tabIndex) {
+            for (let i = 1; i <= 4; i++) {
+                document.getElementById(`syncTab${i}`).classList.toggle('hidden', i !== tabIndex);
+                const btn = document.getElementById(`syncTab${i}Btn`);
+                if (i === tabIndex) {
+                    btn.className = "px-3 py-2 font-bold border-b-2 border-emerald-600 text-emerald-700";
+                } else {
+                    btn.className = "px-3 py-2 font-bold text-slate-500 hover:text-slate-800";
+                }
+            }
+        }
+
+        function initQRCode() {
+            const container = document.getElementById('qrcodeContainer');
+            if (!container) return;
+            container.innerHTML = '';
+            const currentUrl = window.location.href;
+
+            if (typeof QRCode !== 'undefined') {
+                try {
+                    new QRCode(container, {
+                        text: currentUrl,
+                        width: 130,
+                        height: 130,
+                        colorDark: "#0F172A",
+                        colorLight: "#FFFFFF",
+                        correctLevel: QRCode.CorrectLevel.M
+                    });
+                } catch (e) {
+                    container.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(currentUrl)}" alt="QR Code" class="w-32 h-32">`;
+                }
+            } else {
+                container.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(currentUrl)}" alt="QR Code" class="w-32 h-32">`;
+            }
+        }
+
+        function copyCurrentUrl() {
+            navigator.clipboard.writeText(window.location.href).then(() => {
+                showToast("🔗 網址已複製！可在手機瀏覽器開啟");
+            });
+        }
+
+        function triggerWebShare() {
+            const text = getLineRegistrationText();
+            if (navigator.share) {
+                navigator.share({
+                    title: '國際扶輪 3523 地區活動整合報名系統',
+                    text: text,
+                    url: window.location.href
+                }).then(() => {
+                    showToast("📲 系統分享成功！");
+                }).catch(e => {
+                    if (e.name !== 'AbortError') copyLineText();
+                });
+            } else {
+                copyLineText();
+            }
+        }
+
+        // LINE Text Generation
+        function getLineRegistrationText() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const subEventName = cat.subEvents[currentSubEventIndex];
+            const tierName = currentSelectedSponsorTier === 'CO_HOST' ? '共同主辦社' :
+                             currentSelectedSponsorTier === 'ORGANIZER' ? '協辦社' :
+                             currentSelectedSponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社';
+            let amount = 0;
+            if (chairConfig.sponsorshipEnabled) {
+                if (currentSelectedSponsorTier === 'CO_HOST') amount = chairConfig.feeCoHost;
+                else if (currentSelectedSponsorTier === 'ORGANIZER') amount = chairConfig.feeOrganizer;
+                else if (currentSelectedSponsorTier === 'SPONSOR') amount = chairConfig.feeSponsor;
+            }
+
+            const isGolf = subEventName.includes("高爾夫") || cat.id === 'sports';
+            const avgHcap = calculateAvgHandicap(currentFormSelectedMembers);
+
+            let lines = [];
+            lines.push(`【國際扶輪 3523 地區 活動報名通報】`);
+            lines.push(`🏆 活動名稱：${subEventName}`);
+            lines.push(`🏛️ 報名社別：${selectedClubName}`);
+            if (chairConfig.sponsorshipEnabled) {
+                lines.push(`🏅 贊助等級：${tierName} (NT$ ${amount.toLocaleString()})`);
+            }
+            const meatCount = currentFormSelectedMembers.filter(m => m.diet !== 'VEGAN').length;
+            const veganCount = currentFormSelectedMembers.filter(m => m.diet === 'VEGAN').length;
+            lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length} 位 (葷食 ${meatCount} / 素食 ${veganCount})`);
+            if (isGolf && avgHcap !== '--') {
+                lines.push(`⛳ 球隊統計：平均差點 ${avgHcap}`);
+            }
+            lines.push(`----------------------------------`);
+            lines.push(`📋 出席社友名冊：`);
+            if (currentFormSelectedMembers.length === 0) {
+                lines.push(`(目前尚未勾選出席社友)`);
+            } else {
+                currentFormSelectedMembers.forEach((m, idx) => {
+                    const dietStr = m.diet === 'VEGAN' ? `素食(${m.veganNote || '通用'})` : '葷食';
+                    const hcapStr = (m.handicap !== undefined && m.handicap !== null && m.handicap !== '') ? ` | ⛳差點: ${m.handicap}` : '';
+                    lines.push(`${idx + 1}. [${m.role}] ${m.name} (${m.nickname})${hcapStr} | ${dietStr}`);
+                });
+            }
+            lines.push(`----------------------------------`);
+            lines.push(`⏱️ 通報時間：${new Date().toLocaleString('zh-TW', { hour12: false })}`);
+            lines.push(`※ 本報名已由執秘完成系統登錄與快照固化。`);
+            return lines.join("\n");
+        }
+
+        function updateLinePreviewText() {
+            const ta = document.getElementById('linePreviewTextarea');
+            if (ta) ta.value = getLineRegistrationText();
+        }
+
+        function copyLineText() {
+            const text = getLineRegistrationText();
+            navigator.clipboard.writeText(text).then(() => {
+                showToast("📋 已複製 LINE 報名名冊！可直接貼上群組");
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showToast("📋 已複製 LINE 報名名冊！");
+            });
+        }
+
+        function shareToLine() {
+            const text = getLineRegistrationText();
+            const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(text)}`;
+            window.open(lineUrl, '_blank');
+        }
+
+        // Calendar .ics generator
+        function downloadICS() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const subEventName = cat.subEvents[currentSubEventIndex];
+            const startDate = "20261015T090000Z";
+            const endDate = "20261015T170000Z";
+            const icsData = [
+                "BEGIN:VCALENDAR",
+                "VERSION:2.0",
+                "PRODID:-//Rotary District 3523//Event Registration//TW",
+                "CALSCALE:GREGORIAN",
+                "METHOD:PUBLISH",
+                "BEGIN:VEVENT",
+                `SUMMARY:國際扶輪3523地區 - ${subEventName}`,
+                `DESCRIPTION:國際扶輪3523地區年度常態活動：${subEventName}\\n活動類別：${cat.name}\\n報名分社：${selectedClubName}`,
+                `LOCATION:台北市 (請參閱地區公文通知)`,
+                `DTSTART:${startDate}`,
+                `DTEND:${endDate}`,
+                `STATUS:CONFIRMED`,
+                "END:VEVENT",
+                "END:VCALENDAR"
+            ].join("\r\n");
+
+            const blob = new Blob([icsData], { type: 'text/calendar;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Rotary3523_${subEventName.replace(/[/\\s:]/g, '_')}.ics`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast("📅 已下載 .ics 行事曆 (相容 iOS/Mac/Outlook/Android)！");
+        }
+
+        function openGoogleCalendar() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const subEventName = cat.subEvents[currentSubEventIndex];
+            const title = encodeURIComponent(`國際扶輪3523地區 - ${subEventName}`);
+            const details = encodeURIComponent(`國際扶輪 3523 地區年度常態活動整合報名\\n活動類別：${cat.name}\\n報名分社：${selectedClubName}`);
+            const location = encodeURIComponent(`台北市 (請參閱地區公文通知)`);
+            const dates = "20261015T010000Z/20261015T090000Z";
+            const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}`;
+            window.open(gcalUrl, '_blank');
+        }
+
+        // Backup and Sync Code
+        function exportBackupJSON() {
+            const payload = {
+                system: "Rotary3523_Registration_System",
+                version: "2.0",
+                savedAt: new Date().toISOString(),
+                clubMemberDatabase,
+                registrationOrders,
+                chairConfig,
+                categoriesData
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `rotary_3523_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast("💾 備份檔案已成功下載！可移至手機或其它電腦還原。");
+        }
+
+        function importBackupJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.clubMemberDatabase) clubMemberDatabase = data.clubMemberDatabase;
+                    if (data.registrationOrders) registrationOrders = data.registrationOrders;
+                    if (data.chairConfig) chairConfig = data.chairConfig;
+                    if (data.categoriesData) categoriesData = data.categoriesData;
+                    saveToStorage();
+                    renderNavTabs();
+                    populateClubSelector();
+                    loadCategoryView();
+                    showToast("✅ 跨裝置備份資料已成功還原！");
+                    closeMobileSyncModal();
+                } catch (err) {
+                    alert("⚠️ 檔案格式錯誤，無法讀取 JSON 備份！");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function copySyncCode() {
+            try {
+                const syncPayload = {
+                    clubMemberDatabase,
+                    registrationOrders
+                };
+                const jsonStr = JSON.stringify(syncPayload);
+                const base64 = btoa(encodeURIComponent(jsonStr));
+                navigator.clipboard.writeText(base64).then(() => {
+                    showToast("📋 跨裝置同步代碼已複製！可發送至手機貼上同步");
+                });
+            } catch (e) {
+                alert("產生同步代碼失敗");
+            }
+        }
+
+        function applySyncCode() {
+            const code = document.getElementById('syncCodeInput').value.trim();
+            if (!code) {
+                alert("請先貼上同步代碼！");
+                return;
+            }
+            try {
+                const jsonStr = decodeURIComponent(atob(code));
+                const data = JSON.parse(jsonStr);
+                if (data.clubMemberDatabase) clubMemberDatabase = data.clubMemberDatabase;
+                if (data.registrationOrders) registrationOrders = data.registrationOrders;
+                saveToStorage();
+                updateSubEventContext();
+                showToast("🎉 同步代碼載入成功！手機與電腦名冊已同步！");
+                closeMobileSyncModal();
+            } catch (err) {
+                alert("⚠️ 同步代碼無效或格式損毀，請重新複製！");
+            }
+        }
+
+        // ================= LIFECYCLE & ARCHITECTURE HELPERS =================
+
+        function renderDivisionDirectory() {
+            const container = document.getElementById('divisionDirectoryContainer');
+            container.innerHTML = DIVISIONS_DATA.map(div => `
+                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <h4 class="font-bold text-slate-800 mb-1.5">${div.name}</h4>
+                    <ul class="space-y-1 text-slate-600 font-medium">
+                        ${div.clubs.map(c => `<li>• ${c}</li>`).join('')}
+                    </ul>
+                </div>
+            `).join('');
+        }
+
+        function triggerLifecycleStep(step) {
+            if (step === 2) {
+                simulateEventDayLock();
+            } else if (step === 4) {
+                const confirmed = confirm('⚠️ 確定執行【來年新屆次主委啟動】？\n此動作將歸零當年度活動報名名單，但會【完整保留各社執秘的社友名冊庫與高爾夫差點】！');
+                if (confirmed) {
+                    registrationOrders = {};
+                    saveToStorage();
+                    updateSubEventContext();
+                    alert('🎉 新年度報名開跑！歷史名單已歸檔，各社執秘社友名冊庫（含差點）妥善留存。');
+                }
+            }
+        }
+
+        // Custom Category Modal
+        function openAddCategoryModal() {
+            document.getElementById('addCategoryModal').classList.remove('hidden');
+        }
+
+        function closeAddCategoryModal() {
+            document.getElementById('addCategoryModal').classList.add('hidden');
+        }
+
+        function handleSaveNewCategory(e) {
+            e.preventDefault();
+            const name = document.getElementById('catNameInput').value;
+            const color = document.getElementById('catColorInput').value;
+            const subEventsRaw = document.getElementById('catSubEventsInput').value;
+            const subEvents = subEventsRaw.split('\n').filter(s => s.trim() !== '');
+
+            const colorHexMap = { blue: '#1A56DB', green: '#16A34A', orange: '#EA580C', red: '#DC2626', purple: '#9333EA' };
+
+            const newCat = {
+                id: 'custom_' + Date.now(),
+                name: `➕ ${name}`,
+                themeColor: color,
+                hexColor: colorHexMap[color] || '#1A56DB',
+                allowSponsors: true,
+                desc: '後台自訂主選單模組，支援彈性增刪與名單彙整。',
+                subEvents: subEvents.length > 0 ? subEvents : [`${name} 主活動`]
+            };
+
+            categoriesData.push(newCat);
+            saveToStorage();
+            closeAddCategoryModal();
+            selectCategory(newCat.id);
+            showToast(`✅ 已成功建立自訂主選單《${name}》！`);
+        }
+
+        // ================= TOAST NOTIFICATION HELPER =================
+
+        let toastTimer = null;
+        function showToast(message, icon = "✅") {
+            const toast = document.getElementById('toastNotification');
+            const toastMsg = document.getElementById('toastMessage');
+            const toastIco = document.getElementById('toastIcon');
+            if (!toast) return;
+
+            toastMsg.innerText = message;
+            toastIco.innerText = icon;
+            toast.style.opacity = '1';
+
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                toast.style.opacity = '0';
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
