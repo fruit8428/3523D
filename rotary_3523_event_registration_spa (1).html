@@ -17,6 +17,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- QRCode CDN for Cross-Device Mobile Linkage -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- SheetJS (XLSX) CDN for Native Excel (.xlsx) Export -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- Font Customizations & Tailwind Config -->
     <script>
         tailwind.config = {
@@ -586,25 +588,31 @@
                 <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
                     <div class="flex items-center gap-2.5 flex-wrap">
                         <h4 class="text-sm font-bold text-slate-800" id="chairRosterListTitle">📋 各社已提交報名明細與名冊清單</h4>
-                        <button id="btnToggleAllOrdersRoster" onclick="toggleAllChairOrdersRoster()" class="px-3 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-300 rounded-lg text-xs font-bold transition shadow-sm inline-flex items-center gap-1 active:scale-95 whitespace-nowrap">
-                            <span id="btnToggleAllOrdersRosterIcon">📂</span>
-                            <span id="btnToggleAllOrdersRosterText">全部展開</span>
-                        </button>
+                        <div class="inline-flex items-center gap-1.5 flex-wrap">
+                            <button id="btnToggleAllOrdersRoster" onclick="toggleAllChairOrdersRoster()" class="px-3 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border-2 border-purple-500 rounded-lg text-xs font-bold transition shadow-sm inline-flex items-center gap-1 active:scale-95 whitespace-nowrap">
+                                <span id="btnToggleAllOrdersRosterIcon">📂</span>
+                                <span id="btnToggleAllOrdersRosterText">全部展開 (合併Excel/CSV)</span>
+                            </button>
+                            <button id="btnExportMergedXlsx" onclick="exportMergedExcelXLSX()" class="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-xs font-bold transition shadow-sm inline-flex items-center gap-1 active:scale-95 whitespace-nowrap" title="下載各社合併 Excel 檔 (.xlsx)">
+                                <span>📗 匯出 Excel 檔</span>
+                            </button>
+                            <button id="btnExportMergedCsv" onclick="exportReportCSV()" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition shadow-sm inline-flex items-center gap-1 active:scale-95 whitespace-nowrap" title="下載各社合併 CSV 檔 (.csv)">
+                                <span>📄 匯出 CSV 檔</span>
+                            </button>
+                        </div>
                     </div>
                     <span class="text-xs text-slate-400" id="chairRosterListSub">點擊「🔍 名單明細」即可查看該社出席社友名冊</span>
                 </div>
+
+                <!-- Merged Excel/CSV Top Banner & Quick Actions (Shown when Merged View is active) -->
+                <div id="chairMergedExcelBanner" class="hidden mb-3 p-3 bg-purple-50/80 border border-purple-200 rounded-lg flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <!-- Populated dynamically by JS -->
+                </div>
+
                 <div class="overflow-x-auto touch-scroll">
                     <table class="w-full text-left text-xs min-w-[580px]">
-                        <thead class="bg-slate-100 text-slate-700 font-bold">
-                            <tr>
-                                <th class="p-2.5">扶輪社名稱</th>
-                                <th class="p-2.5">贊助等級</th>
-                                <th class="p-2.5">贊助金額</th>
-                                <th class="p-2.5">報名人數</th>
-                                <th class="p-2.5">素食人數</th>
-                                <th class="p-2.5">提交時間</th>
-                                <th class="p-2.5 text-center" id="chairThRosterAction">出席名冊明細</th>
-                            </tr>
+                        <thead id="chairDetailedOrdersThead" class="bg-slate-100 text-slate-700 font-bold">
+                            <!-- Populated dynamically by JS -->
                         </thead>
                         <tbody id="chairDetailedOrdersTable" class="divide-y divide-slate-100">
                             <!-- Populated by JS -->
@@ -1723,6 +1731,7 @@
 
         // Expanded roster state for Chair Dashboard (全部展開 / 單社展開)
         let expandedChairOrderIndices = new Set();
+        let isMergedExcelView = false; // 是否處於合併 Excel/CSV 全覽試算表模式
 
         // Chart.js References
         let chartClubsInstance = null;
@@ -1963,6 +1972,7 @@
 
             // Reset expanded roster state for Chair Dashboard
             if (expandedChairOrderIndices) expandedChairOrderIndices.clear();
+            isMergedExcelView = false;
 
             // Load existing selections for current club
             const activeOrders = registrationOrders[subEventName] || [];
@@ -2688,32 +2698,181 @@
             }
 
             // Render Detailed Orders Table in Chair View
+            const thead = document.getElementById('chairDetailedOrdersThead');
             const tbody = document.getElementById('chairDetailedOrdersTable');
             const btnToggleAll = document.getElementById('btnToggleAllOrdersRoster');
             const btnToggleAllText = document.getElementById('btnToggleAllOrdersRosterText');
             const btnToggleAllIcon = document.getElementById('btnToggleAllOrdersRosterIcon');
+            const bannerMerged = document.getElementById('chairMergedExcelBanner');
+
+            const isSports = isCurrentEventSports() || subEventName.includes("球") || subEventName.includes("賽");
 
             if (orders.length === 0) {
+                if (thead) {
+                    thead.innerHTML = `
+                        <tr>
+                            <th class="p-2.5">扶輪社名稱</th>
+                            <th class="p-2.5">贊助等級</th>
+                            <th class="p-2.5">贊助金額</th>
+                            <th class="p-2.5">報名人數</th>
+                            <th class="p-2.5">素食人數</th>
+                            <th class="p-2.5">提交時間</th>
+                            <th class="p-2.5 text-center" id="chairThRosterAction">${isGolf ? '出席明細與差點' : '出席名冊明細'}</th>
+                        </tr>
+                    `;
+                }
                 tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">目前尚無任何扶輪社送出報名表</td></tr>`;
+                if (bannerMerged) bannerMerged.classList.add('hidden');
                 if (btnToggleAll) {
                     btnToggleAll.disabled = true;
                     btnToggleAll.classList.add('opacity-50', 'cursor-not-allowed');
                 }
-            } else {
-                const allExpanded = orders.length > 0 && orders.every((_, idx) => expandedChairOrderIndices.has(idx));
+            } else if (isMergedExcelView) {
+                // ================= MERGED EXCEL/CSV FULL SPREADSHEET VIEW (合併 Excel/CSV 大表全覽) =================
                 if (btnToggleAll) {
                     btnToggleAll.disabled = false;
                     btnToggleAll.classList.remove('opacity-50', 'cursor-not-allowed');
-                    if (allExpanded) {
-                        btnToggleAll.className = "px-3 py-1 bg-purple-600 text-white border-2 border-purple-600 rounded-lg text-xs font-bold transition shadow-sm inline-flex items-center gap-1 active:scale-95 whitespace-nowrap hover:bg-purple-700";
-                    } else {
-                        btnToggleAll.className = "px-3 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border-2 border-purple-500 rounded-lg text-xs font-bold transition shadow-sm inline-flex items-center gap-1 active:scale-95 whitespace-nowrap";
-                    }
+                    btnToggleAll.className = "px-3 py-1 bg-purple-600 text-white border-2 border-purple-600 rounded-lg text-xs font-bold transition shadow-sm inline-flex items-center gap-1 active:scale-95 whitespace-nowrap hover:bg-purple-700";
                 }
-                if (btnToggleAllText) btnToggleAllText.innerText = allExpanded ? '全部收合' : '全部展開';
-                if (btnToggleAllIcon) btnToggleAllIcon.innerText = allExpanded ? '📁' : '📂';
+                if (btnToggleAllText) btnToggleAllText.innerText = '收合為各社總覽';
+                if (btnToggleAllIcon) btnToggleAllIcon.innerText = '📁';
 
-                const isSports = isCurrentEventSports() || subEventName.includes("球") || subEventName.includes("賽");
+                // Display Top Banner for Merged View
+                if (bannerMerged) {
+                    bannerMerged.classList.remove('hidden');
+                    const competeCount = allParticipants.filter(i => i.participation !== '只用餐').length;
+                    const mealOnlyCount = allParticipants.filter(i => i.participation === '只用餐').length;
+                    const overallAvgHcap = isGolf ? calculateAvgHandicap(allParticipants) : '--';
+                    const totalFees = isSports ? calculateTotalParticipantsFee(allParticipants) : 0;
+                    const grandTotalSum = totalFees + totalSponsorship;
+
+                    bannerMerged.innerHTML = `
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-extrabold text-purple-900 text-xs sm:text-sm">📊 【全體各社合併出席名冊 (Excel/CSV 試算表模式)】</span>
+                            <span class="px-2 py-0.5 bg-purple-100 text-purple-800 rounded font-bold">全體共 ${orders.length} 社 / ${allParticipants.length} 位參加者</span>
+                            ${isSports ? `
+                                <span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold">🏃 參賽 ${competeCount} 人</span>
+                                <span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold">🍽️ 只用餐 ${mealOnlyCount} 人</span>
+                            ` : ''}
+                            ${isGolf ? `
+                                <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold">⛳ 全體平均差點：${overallAvgHcap}</span>
+                            ` : ''}
+                            <span class="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded font-extrabold font-mono">應繳總額: $${grandTotalSum.toLocaleString()}元</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <button onclick="exportMergedExcelXLSX()" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold inline-flex items-center gap-1 shadow-sm active:scale-95">
+                                <span>📗 匯出 Excel 檔 (.xlsx)</span>
+                            </button>
+                            <button onclick="exportReportCSV()" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded text-xs font-bold inline-flex items-center gap-1 shadow-sm active:scale-95">
+                                <span>📄 匯出 CSV 檔 (.csv)</span>
+                            </button>
+                            <button onclick="copyAllMergedRosterText()" class="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded text-xs font-bold inline-flex items-center gap-1 shadow-sm active:scale-95">
+                                <span>📋 複製全體名冊</span>
+                            </button>
+                            <button onclick="toggleAllChairOrdersRoster()" class="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-300 rounded text-xs font-bold inline-flex items-center gap-1 shadow-sm active:scale-95">
+                                <span>📁 返回各社總覽</span>
+                            </button>
+                        </div>
+                    `;
+                }
+
+                if (thead) {
+                    thead.innerHTML = `
+                        <tr class="bg-purple-100/80 text-purple-950 font-bold border-b border-purple-200">
+                            <th class="p-2.5 text-center w-10">#</th>
+                            <th class="p-2.5">扶輪社名稱</th>
+                            <th class="p-2.5">贊助等級</th>
+                            <th class="p-2.5">出席社友姓名</th>
+                            <th class="p-2.5">今年職稱</th>
+                            <th class="p-2.5">Nick Name</th>
+                            ${isSports ? '<th class="p-2.5 text-center">參賽選項</th>' : ''}
+                            ${isGolf ? '<th class="p-2.5 text-center">⛳ 差點</th>' : ''}
+                            <th class="p-2.5">飲食需求</th>
+                            ${isSports ? '<th class="p-2.5 text-center">出席費用</th>' : ''}
+                            <th class="p-2.5">素食備註</th>
+                            <th class="p-2.5">提交時間</th>
+                        </tr>
+                    `;
+                }
+
+                let globalIdx = 1;
+                tbody.innerHTML = orders.flatMap((order, oIdx) => {
+                    const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
+                                     order.sponsorTier === 'ORGANIZER' ? '協辦社' :
+                                     order.sponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社';
+                    const tierClass = order.sponsorTier === 'CO_HOST' ? 'bg-amber-100 text-amber-800' :
+                                      order.sponsorTier === 'ORGANIZER' ? 'bg-blue-100 text-blue-800' :
+                                      order.sponsorTier === 'SPONSOR' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600';
+                    return order.items.map((item, iIdx) => {
+                        const isMealOnly = (item.participation === '只用餐');
+                        const partCell = isSports ? `
+                            <td class="p-2.5 text-center">
+                                ${isMealOnly ? '<span class="px-2 py-0.5 bg-amber-100 text-amber-800 font-bold rounded text-[10px]">🍽️ 只用餐</span>' : '<span class="px-2 py-0.5 bg-blue-100 text-blue-800 font-bold rounded text-[10px]">🏃 參賽</span>'}
+                            </td>
+                        ` : '';
+                        const handicapDisplay = (item.handicap !== undefined && item.handicap !== null && item.handicap !== '')
+                            ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded font-mono text-[10px]">${item.handicap}</span>`
+                            : `<span class="text-slate-300 font-mono">-</span>`;
+                        const handicapCell = isGolf ? `
+                            <td class="p-2.5 text-center bg-emerald-50/20">
+                                ${handicapDisplay}
+                            </td>
+                        ` : '';
+                        const rowFee = getMemberFee(item);
+                        const feeCell = isSports ? `
+                            <td class="p-2.5 text-center font-mono font-bold">
+                                <span class="${isMealOnly ? 'text-amber-700 bg-amber-50' : 'text-blue-700 bg-blue-50'} px-2 py-0.5 rounded text-[11px]">$${rowFee.toLocaleString()}</span>
+                            </td>
+                        ` : '';
+                        return `
+                            <tr class="hover:bg-purple-50/30 transition border-b border-slate-100 ${iIdx === 0 && oIdx > 0 ? 'border-t-2 border-slate-200' : ''}">
+                                <td class="p-2.5 text-center text-slate-400 font-mono font-bold">${globalIdx++}</td>
+                                <td class="p-2.5 font-bold text-slate-900 whitespace-nowrap">
+                                    <span class="text-purple-950 font-bold">${order.clubName}</span>
+                                </td>
+                                <td class="p-2.5 whitespace-nowrap">
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold ${tierClass}">${tierLabel}</span>
+                                </td>
+                                <td class="p-2.5 font-bold text-slate-900 whitespace-nowrap">${item.name}</td>
+                                <td class="p-2.5 font-medium text-slate-700 whitespace-nowrap">${item.role || '社友'}</td>
+                                <td class="p-2.5 font-mono text-slate-600 whitespace-nowrap">${item.nickname || ''}</td>
+                                ${partCell}
+                                ${handicapCell}
+                                <td class="p-2.5 whitespace-nowrap">
+                                    ${item.diet === 'VEGAN' ? `<span class="text-amber-700 font-bold">🌱 素食</span>` : '<span class="text-slate-600">葷食</span>'}
+                                </td>
+                                ${feeCell}
+                                <td class="p-2.5 text-slate-500 text-[11px]">${item.veganNote || '-'}</td>
+                                <td class="p-2.5 text-slate-400 font-mono text-[11px] whitespace-nowrap">${order.submittedAt || ''}</td>
+                            </tr>
+                        `;
+                    });
+                }).join('');
+            } else {
+                // ================= GROUPED BY CLUB VIEW (各社彙整檢視，支援單社展開) =================
+                if (bannerMerged) bannerMerged.classList.add('hidden');
+
+                if (btnToggleAll) {
+                    btnToggleAll.disabled = false;
+                    btnToggleAll.classList.remove('opacity-50', 'cursor-not-allowed');
+                    btnToggleAll.className = "px-3 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border-2 border-purple-500 rounded-lg text-xs font-bold transition shadow-sm inline-flex items-center gap-1 active:scale-95 whitespace-nowrap";
+                }
+                if (btnToggleAllText) btnToggleAllText.innerText = '全部展開 (合併Excel/CSV)';
+                if (btnToggleAllIcon) btnToggleAllIcon.innerText = '📂';
+
+                if (thead) {
+                    thead.innerHTML = `
+                        <tr>
+                            <th class="p-2.5">扶輪社名稱</th>
+                            <th class="p-2.5">贊助等級</th>
+                            <th class="p-2.5">贊助金額</th>
+                            <th class="p-2.5">報名人數</th>
+                            <th class="p-2.5">素食人數</th>
+                            <th class="p-2.5">提交時間</th>
+                            <th class="p-2.5 text-center" id="chairThRosterAction">${isGolf ? '出席明細與差點' : '出席名冊明細'}</th>
+                        </tr>
+                    `;
+                }
 
                 tbody.innerHTML = orders.map((o, idx) => {
                     const isExpanded = expandedChairOrderIndices.has(idx);
@@ -2766,12 +2925,11 @@
                         return mainRow;
                     }
 
-                    // Expanded roster sub-row
+                    // Expanded single club roster sub-row
                     const expandedRow = `
                         <tr id="chairOrderRosterRow_${idx}" class="bg-slate-50/80 border-b-2 border-purple-200">
                             <td colspan="7" class="p-2.5 sm:p-3.5">
                                 <div class="bg-white rounded-lg border border-purple-200 shadow-sm overflow-hidden">
-                                    <!-- Header summary bar of club's roster -->
                                     <div class="bg-purple-50/70 px-3.5 py-2 border-b border-purple-100 flex flex-wrap items-center justify-between gap-2 text-xs">
                                         <div class="flex items-center gap-2 flex-wrap">
                                             <span class="font-extrabold text-purple-900 text-xs sm:text-sm">👥 【${o.clubName}】出席名冊全覽 (${o.items.length} 位)</span>
@@ -2792,7 +2950,6 @@
                                             </button>
                                         </div>
                                     </div>
-                                    <!-- Participant Items Table -->
                                     <div class="overflow-x-auto touch-scroll">
                                         <table class="w-full text-left text-xs divide-y divide-slate-100">
                                             <thead class="bg-slate-50 text-slate-600 font-bold">
@@ -2860,7 +3017,7 @@
             updateChartsData(orders, meatCount, veganCount);
         }
 
-        // Toggle all clubs roster expand/collapse in chair view
+        // Toggle all clubs roster expand/collapse into Merged Excel/CSV View
         function toggleAllChairOrdersRoster() {
             const cat = categoriesData.find(c => c.id === currentCatId);
             if (!cat || !cat.subEvents || !cat.subEvents[currentSubEventIndex]) return;
@@ -2868,13 +3025,140 @@
             const orders = registrationOrders[subEventName] || [];
             if (orders.length === 0) return;
 
-            const allExpanded = orders.every((_, idx) => expandedChairOrderIndices.has(idx));
-            if (allExpanded) {
-                expandedChairOrderIndices.clear();
+            isMergedExcelView = !isMergedExcelView;
+            updateChairDashboard();
+            if (isMergedExcelView) {
+                showToast("📊 已展開為合併 Excel/CSV 格式全覽表！可直接檢視或點擊【📗 匯出 Excel 檔】下載");
+            }
+        }
+
+        // Toggle single club roster expand/collapse in chair view
+        function toggleSingleChairOrderRoster(idx, event) {
+            if (event) event.stopPropagation();
+            if (expandedChairOrderIndices.has(idx)) {
+                expandedChairOrderIndices.delete(idx);
             } else {
-                orders.forEach((_, idx) => expandedChairOrderIndices.add(idx));
+                expandedChairOrderIndices.add(idx);
             }
             updateChairDashboard();
+        }
+
+        // Quick copy club order roster text by sub-event name & order index
+        function copyClubOrderRosterTextByIndex(subEventName, orderIndex) {
+            const orders = registrationOrders[subEventName] || [];
+            const order = orders[orderIndex];
+            if (!order) return;
+            currentInspectedOrder = order;
+            currentInspectedSubEvent = subEventName;
+            copyClubOrderRosterText();
+        }
+
+        // Export merged Excel file (.xlsx) across all registered clubs (相容各平台)
+        function exportMergedExcelXLSX() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            if (!cat || !cat.subEvents || !cat.subEvents[currentSubEventIndex]) return;
+            const subEventName = cat.subEvents[currentSubEventIndex];
+            const orders = registrationOrders[subEventName] || [];
+            const isGolf = isCurrentEventGolf();
+            const isSports = isCurrentEventSports() || subEventName.includes("球") || subEventName.includes("賽");
+
+            if (orders.length === 0) {
+                alert("目前尚無任何扶輪社提交此活動報名，無法產生報表！");
+                return;
+            }
+
+            const data = [];
+            let pIdx = 1;
+            orders.forEach(order => {
+                const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
+                                 order.sponsorTier === 'ORGANIZER' ? '協辦社' :
+                                 order.sponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社';
+                order.items.forEach(item => {
+                    const rowObj = {
+                        "序號": pIdx++,
+                        "扶輪社名稱": order.clubName,
+                        "贊助等級": tierLabel,
+                        "贊助金額": order.sponsorAmount || 0,
+                        "出席社友姓名": item.name || '',
+                        "今年職稱": item.role || '',
+                        "Nick Name": item.nickname || '',
+                    };
+                    if (isSports) {
+                        rowObj["參賽選項"] = item.participation || '參賽';
+                    }
+                    if (isGolf) {
+                        rowObj["高爾夫差點"] = (item.handicap !== undefined && item.handicap !== null && item.handicap !== '') ? Number(item.handicap) : '-';
+                    }
+                    rowObj["飲食需求"] = item.diet === 'VEGAN' ? '素食' : '葷食';
+                    rowObj["素食細項備註"] = item.veganNote || '';
+                    if (isSports) {
+                        rowObj["出席費用"] = getMemberFee(item);
+                    }
+                    rowObj["報名提交時間"] = order.submittedAt || '';
+                    data.push(rowObj);
+                });
+            });
+
+            if (window.XLSX) {
+                const ws = XLSX.utils.json_to_sheet(data);
+                ws['!cols'] = [
+                    { wch: 6 },  // 序號
+                    { wch: 20 }, // 扶輪社名稱
+                    { wch: 12 }, // 贊助等級
+                    { wch: 10 }, // 贊助金額
+                    { wch: 14 }, // 出席社友姓名
+                    { wch: 12 }, // 今年職稱
+                    { wch: 12 }, // Nick Name
+                    { wch: 10 }, // 參賽選項
+                    { wch: 12 }, // 高爾夫差點
+                    { wch: 10 }, // 飲食需求
+                    { wch: 14 }, // 素食備註
+                    { wch: 10 }, // 出席費用
+                    { wch: 18 }  // 提交時間
+                ];
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "各社合併出席名冊");
+                const dateStr = new Date().toISOString().slice(0, 10);
+                XLSX.writeFile(wb, `3523地區報名名冊_合併全覽_${subEventName.replace(/[/\\s:]/g, '_')}_${dateStr}.xlsx`);
+                showToast("📗 合併 Excel 檔 (.xlsx) 已成功匯出！");
+            } else {
+                exportReportCSV();
+            }
+        }
+
+        // Copy all merged participants formatted text for LINE sharing
+        function copyAllMergedRosterText() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            if (!cat || !cat.subEvents || !cat.subEvents[currentSubEventIndex]) return;
+            const subEventName = cat.subEvents[currentSubEventIndex];
+            const orders = registrationOrders[subEventName] || [];
+            const isGolf = isCurrentEventGolf();
+            const isSports = isCurrentEventSports() || subEventName.includes("球") || subEventName.includes("賽");
+
+            if (orders.length === 0) return;
+
+            let lines = [];
+            lines.push(`【2026-27年度 國際扶輪3523地區 - ${subEventName}】`);
+            lines.push(`📋 全體各社合併出席名冊全覽清單`);
+            lines.push(`----------------------------------------`);
+            let idx = 1;
+            orders.forEach(order => {
+                const tierStr = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
+                                order.sponsorTier === 'ORGANIZER' ? '協辦社' :
+                                order.sponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社';
+                lines.push(`\n📌 【${order.clubName}】(${tierStr}${order.sponsorAmount ? ` 贊助 $${order.sponsorAmount.toLocaleString()}` : ''})：`);
+                order.items.forEach(item => {
+                    const partStr = isSports ? ` [${item.participation || '參賽'}]` : '';
+                    const hcapStr = (isGolf && item.handicap !== undefined && item.handicap !== null && item.handicap !== '') ? ` | 差點: ${item.handicap}` : '';
+                    const feeStr = isSports ? ` | 費用: $${getMemberFee(item).toLocaleString()}` : '';
+                    const dietStr = item.diet === 'VEGAN' ? `素食(${item.veganNote||'通用'})` : '葷食';
+                    lines.push(`${idx++}. [${item.role||'社友'}] ${item.name} (${item.nickname||''})${partStr}${hcapStr} - ${dietStr}${feeStr}`);
+                });
+            });
+
+            navigator.clipboard.writeText(lines.join("\n")).then(() => {
+                showToast("📋 已複製全體合併名冊文字！");
+            });
         }
 
         // Toggle single club roster expand/collapse in chair view
