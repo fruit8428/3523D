@@ -425,16 +425,18 @@
                     </div>
 
                     <!-- Submit Action Area -->
-                    <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3">
-                        <div class="text-xs text-slate-500 w-full sm:w-auto text-left">
-                            狀態：<span id="regStatusLabel" class="font-bold text-emerald-600">編輯中 (尚未鎖定)</span>
-                            <span id="regFeeTotalLabel" class="ml-2 text-slate-700 font-bold hidden">| 出席費用合計：<b id="regFeeTotalDisplay" class="text-emerald-700 font-mono">$0</b></span>
+                    <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-2.5">
+                        <div class="text-[11px] xl:text-xs text-slate-500 flex-1 min-w-0 text-left flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                            <span class="whitespace-nowrap">狀態：<span id="regStatusLabel" class="font-bold text-emerald-600">編輯中</span></span>
+                            <span id="regFeeTotalLabel" class="text-slate-700 font-bold whitespace-nowrap hidden">| 出席費用合計：<b id="regFeeTotalDisplay" class="text-emerald-700 font-mono">$0</b></span>
+                            <span id="regSponsorFeeLabel" class="text-slate-700 font-bold whitespace-nowrap hidden">| <span id="regSponsorTierName">共同主辦社</span>：<b id="regSponsorFeeDisplay" class="text-emerald-700 font-mono">$0</b></span>
+                            <span id="regGrandTotalLabel" class="font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-[11px] xl:text-xs whitespace-nowrap hidden">總計：<b id="regGrandTotalDisplay" class="text-red-600 font-mono font-extrabold">$0元</b></span>
                         </div>
-                        <div class="flex gap-2 w-full sm:w-auto justify-end">
-                            <button onclick="clearSelectedMembers()" class="px-3 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold active:scale-95 transition">
+                        <div class="flex gap-1.5 sm:gap-2 shrink-0 justify-end w-full sm:w-auto">
+                            <button onclick="clearSelectedMembers()" class="px-2.5 sm:px-3 py-1.5 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold active:scale-95 transition whitespace-nowrap">
                                 清空重選
                             </button>
-                            <button id="submitRegBtn" onclick="submitRegistration()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow transition flex-1 sm:flex-none text-center active:scale-95">
+                            <button id="submitRegBtn" onclick="submitRegistration()" class="px-3.5 sm:px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow transition flex-1 sm:flex-none text-center active:scale-95 whitespace-nowrap">
                                 🚀 送出本社報名表
                             </button>
                         </div>
@@ -2013,6 +2015,65 @@
             return members.reduce((sum, m) => sum + getMemberFee(m), 0);
         }
 
+        // 取得當前活動贊助設定與金額
+        function getCurrentSponsorshipInfo() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const allowSponsors = (cat ? cat.allowSponsors : true) && chairConfig.sponsorshipEnabled;
+            if (!allowSponsors) {
+                return { tierName: '', amount: 0, enabled: false };
+            }
+            let tierName = '一般參賽社';
+            let amount = 0;
+            if (currentSelectedSponsorTier === 'CO_HOST') {
+                tierName = '共同主辦社';
+                amount = Number(chairConfig.feeCoHost) || 50000;
+            } else if (currentSelectedSponsorTier === 'ORGANIZER') {
+                tierName = '協辦社';
+                amount = Number(chairConfig.feeOrganizer) || 20000;
+            } else if (currentSelectedSponsorTier === 'SPONSOR') {
+                tierName = '贊助社';
+                amount = Number(chairConfig.feeSponsor) || 10000;
+            }
+            return { tierName, amount, enabled: true };
+        }
+
+        // 即時更新報名表底部費用統計與應繳總計 (出席費用 + 贊助金額)
+        function updateTotalFeeSummaryDisplay() {
+            const isSports = isCurrentEventSports();
+            const totalParticipantFee = isSports ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
+            const sponsorInfo = getCurrentSponsorshipInfo();
+
+            // 1. 出席費用合計
+            const regFeeTotalLabel = document.getElementById('regFeeTotalLabel');
+            if (regFeeTotalLabel) {
+                regFeeTotalLabel.classList.toggle('hidden', !isSports);
+                const feeDisp = document.getElementById('regFeeTotalDisplay');
+                if (feeDisp) feeDisp.innerText = `$${totalParticipantFee.toLocaleString()}`;
+            }
+
+            // 2. 贊助等級費用 (例如 共同主辦社：$50,000)
+            const regSponsorFeeLabel = document.getElementById('regSponsorFeeLabel');
+            if (regSponsorFeeLabel) {
+                regSponsorFeeLabel.classList.toggle('hidden', !sponsorInfo.enabled);
+                if (sponsorInfo.enabled) {
+                    const nameEl = document.getElementById('regSponsorTierName');
+                    if (nameEl) nameEl.innerText = sponsorInfo.tierName;
+                    const dispEl = document.getElementById('regSponsorFeeDisplay');
+                    if (dispEl) dispEl.innerText = `$${sponsorInfo.amount.toLocaleString()}`;
+                }
+            }
+
+            // 3. 應繳總計 (出席費用合計 + 贊助金額)
+            const regGrandTotalLabel = document.getElementById('regGrandTotalLabel');
+            if (regGrandTotalLabel) {
+                const grandTotal = totalParticipantFee + (sponsorInfo.enabled ? sponsorInfo.amount : 0);
+                const showGrandTotal = isSports || (sponsorInfo.enabled && sponsorInfo.amount > 0);
+                regGrandTotalLabel.classList.toggle('hidden', !showGrandTotal);
+                const grandDisp = document.getElementById('regGrandTotalDisplay');
+                if (grandDisp) grandDisp.innerText = `$${grandTotal.toLocaleString()}元`;
+            }
+        }
+
         // 主委戰情室即時動態調整費用設定
         function liveUpdateChairFee() {
             const compInput = document.getElementById('cfgFeeCompete');
@@ -2025,6 +2086,7 @@
             }
             saveToStorage();
             renderSelectedMembersTable();
+            updateTotalFeeSummaryDisplay();
             updateLinePreviewText();
         }
 
@@ -2226,11 +2288,8 @@
                 document.getElementById('selectedTotalFee').innerText = `$${totalFee.toLocaleString()}`;
             }
 
-            const regFeeTotalLabel = document.getElementById('regFeeTotalLabel');
-            if (regFeeTotalLabel) {
-                regFeeTotalLabel.classList.toggle('hidden', !isSports);
-                document.getElementById('regFeeTotalDisplay').innerText = `$${totalFee.toLocaleString()}`;
-            }
+            // 即時更新底部狀態列費用與應繳總計
+            updateTotalFeeSummaryDisplay();
 
             const rosterTitle = document.getElementById('selectedRosterTitle');
             if (rosterTitle) {
@@ -2332,6 +2391,7 @@
             radios.forEach(r => {
                 if (r.checked) currentSelectedSponsorTier = r.value;
             });
+            updateTotalFeeSummaryDisplay();
             updateLinePreviewText();
         }
 
@@ -2360,11 +2420,14 @@
                 registrationOrders[subEventName] = [];
             }
 
+            const participantFee = isCurrentEventSports() ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             const existingIdx = registrationOrders[subEventName].findIndex(o => o.clubName === selectedClubName);
             const orderPayload = {
                 clubName: selectedClubName,
                 sponsorTier: currentSelectedSponsorTier,
                 sponsorAmount: amount,
+                participantFee: participantFee,
+                grandTotal: amount + participantFee,
                 submittedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
                 items: currentFormSelectedMembers.map(m => ({
                     ...JSON.parse(JSON.stringify(m)),
@@ -2517,6 +2580,8 @@
             document.getElementById('sponsorshipSelectionBox').classList.toggle('hidden', !enabled);
             document.getElementById('chairSponsorFeeInputs').classList.toggle('hidden', !enabled);
             saveToStorage();
+            updateTotalFeeSummaryDisplay();
+            updateLinePreviewText();
         }
 
         function saveChairSettings() {
@@ -2535,13 +2600,15 @@
             saveToStorage();
             showToast('💾 主委設定已成功更新！');
             renderSelectedMembersTable();
+            updateTotalFeeSummaryDisplay();
+            updateLinePreviewText();
             updateChairDashboard();
         }
 
         function simulateEventDayLock() {
             isEventLockedToday = !isEventLockedToday;
             document.getElementById('eventStatusBadge').innerHTML = isEventLockedToday ? '🔒 今日已自動封存唯讀' : '🟢 開放報名中';
-            document.getElementById('regStatusLabel').innerText = isEventLockedToday ? '🔒 已封存唯讀 (無法修改)' : '編輯中 (尚未鎖定)';
+            document.getElementById('regStatusLabel').innerText = isEventLockedToday ? '🔒 已封存唯讀' : '編輯中';
             document.getElementById('regStatusLabel').className = isEventLockedToday ? 'font-bold text-amber-600' : 'font-bold text-emerald-600';
             document.getElementById('submitRegBtn').disabled = isEventLockedToday;
             document.getElementById('submitRegBtn').classList.toggle('opacity-50', isEventLockedToday);
@@ -2726,8 +2793,17 @@
             document.getElementById('detailModalDietCount').innerText = `${meatCount} 葷 / ${veganCount} 素`;
 
             const totalOrderFee = calculateTotalParticipantsFee(order.items);
-            const feeSubStr = isSports ? ` | 出席費用：$${totalOrderFee.toLocaleString()}` : '';
-            document.getElementById('detailModalSubTitle').innerText = `贊助等級：${tierLabel} ($${(order.sponsorAmount||0).toLocaleString()})${feeSubStr} | 提交時間：${order.submittedAt}`;
+            const sponsorAmount = order.sponsorAmount || 0;
+            const grandTotal = totalOrderFee + sponsorAmount;
+            let feeSubStr = '';
+            if (isSports && sponsorAmount > 0) {
+                feeSubStr = ` | 出席費用：$${totalOrderFee.toLocaleString()} | 總計：$${grandTotal.toLocaleString()}元`;
+            } else if (isSports) {
+                feeSubStr = ` | 出席費用：$${totalOrderFee.toLocaleString()} | 總計：$${totalOrderFee.toLocaleString()}元`;
+            } else if (sponsorAmount > 0) {
+                feeSubStr = ` | 總計：$${sponsorAmount.toLocaleString()}元`;
+            }
+            document.getElementById('detailModalSubTitle').innerText = `贊助等級：${tierLabel} ($${sponsorAmount.toLocaleString()})${feeSubStr} | 提交時間：${order.submittedAt}`;
 
             const avgHcap = calculateAvgHandicap(order.items);
             document.getElementById('detailModalAvgHandicap').innerText = avgHcap !== '--' ? `${avgHcap}` : '無差點記錄';
@@ -2815,11 +2891,17 @@
                 const dietStr = item.diet === 'VEGAN' ? `素食(${item.veganNote||''})` : '葷食';
                 lines.push(`${idx + 1}. [${item.role}] ${item.name} (${item.nickname})${partStr}${hcapStr} - ${dietStr}${feeStr}`);
             });
-            if (isSports) {
-                const totalOrderFee = calculateTotalParticipantsFee(order.items);
-                const competeCount = order.items.filter(i => i.participation !== '只用餐').length;
-                const mealOnlyCount = order.items.filter(i => i.participation === '只用餐').length;
+            const totalOrderFee = isSports ? calculateTotalParticipantsFee(order.items) : 0;
+            const sponsorAmount = order.sponsorAmount || 0;
+            const grandTotal = totalOrderFee + sponsorAmount;
+            const competeCount = order.items.filter(i => i.participation !== '只用餐').length;
+            const mealOnlyCount = order.items.filter(i => i.participation === '只用餐').length;
+            if (isSports && sponsorAmount > 0) {
+                lines.push(`💰 應繳總計: NT$ ${grandTotal.toLocaleString()} 元 (出席費用 $${totalOrderFee.toLocaleString()} [參賽 ${competeCount}/用餐 ${mealOnlyCount}] + 贊助 $${sponsorAmount.toLocaleString()})`);
+            } else if (isSports) {
                 lines.push(`💰 出席費用合計: NT$ ${totalOrderFee.toLocaleString()} (參賽 ${competeCount} 人 / 只用餐 ${mealOnlyCount} 人)`);
+            } else if (sponsorAmount > 0) {
+                lines.push(`💰 贊助總計: NT$ ${sponsorAmount.toLocaleString()} 元`);
             }
             navigator.clipboard.writeText(lines.join("\n")).then(() => {
                 showToast("📋 已複製該社名冊文字！");
@@ -3020,12 +3102,21 @@
             const competeCount = currentFormSelectedMembers.filter(m => m.participation !== '只用餐').length;
             const mealOnlyCount = currentFormSelectedMembers.filter(m => m.participation === '只用餐').length;
 
+            const totalFee = isSports ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             if (isSports) {
-                const totalFee = calculateTotalParticipantsFee(currentFormSelectedMembers);
                 lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length} 位 (🏃參賽 ${competeCount} / 🍽️只用餐 ${mealOnlyCount} | 葷食 ${meatCount} / 素食 ${veganCount})`);
                 lines.push(`💰 出席費用：NT$ ${totalFee.toLocaleString()}`);
             } else {
                 lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length} 位 (葷食 ${meatCount} / 素食 ${veganCount})`);
+            }
+
+            const grandTotal = totalFee + amount;
+            if (chairConfig.sponsorshipEnabled && isSports && amount > 0) {
+                lines.push(`💳 應繳總計：NT$ ${grandTotal.toLocaleString()} 元 (${tierName} $${amount.toLocaleString()} + 出席費用 $${totalFee.toLocaleString()})`);
+            } else if (isSports) {
+                lines.push(`💳 應繳總計：NT$ ${grandTotal.toLocaleString()} 元`);
+            } else if (chairConfig.sponsorshipEnabled && amount > 0) {
+                lines.push(`💳 應繳總計：NT$ ${grandTotal.toLocaleString()} 元`);
             }
 
             if (isGolf && avgHcap !== '--') {
