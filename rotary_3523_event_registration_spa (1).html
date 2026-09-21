@@ -234,7 +234,6 @@
                 <div class="flex items-center space-x-2 flex-wrap gap-y-1">
                     <span id="rotaryYearTag" class="text-xs font-bold text-slate-500">2026-2027 年度</span>
                     <span id="golfSpecialBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 hidden">⛳ 高爾夫賽事 (差點連動已啟用)</span>
-                    <span id="eventColorBadge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-200 flex items-center gap-1 shadow-sm cursor-pointer select-none" onclick="toggleEventColorManual()" title="點擊切換款式：iPhone 17 Pro Orange / iPhone 18 Pro Dark Cherry">📱 iPhone 17 Pro Orange</span>
                 </div>
                 
                 <!-- Main Sub-event Title (Dynamically linked with top dropdown, 3D Embossed, 2款輪流) -->
@@ -243,8 +242,6 @@
                         <h2 id="catTitle" class="text-xl sm:text-2xl font-black title-text-orange leading-tight">1. 獎助金管理研討會 (GMS)</h2>
                     </div>
                 </div>
-
-                <p id="catDesc" class="text-xs text-slate-500 leading-normal">專為地區培育幹部與講習設計之研討會，費用由地區統籌，不開放共同主辦/協辦/贊助社機制。</p>
             </div>
             
             <div class="flex items-center sm:self-center shrink-0">
@@ -1723,26 +1720,17 @@
             
             const plaque = document.getElementById('titlePlaque');
             const title = document.getElementById('catTitle');
-            const colorBadge = document.getElementById('eventColorBadge');
             const banner = document.getElementById('categoryHeaderBanner');
 
             if (isOrange) {
                 if (plaque) plaque.className = 'title-plaque-orange shadow-lg cursor-pointer';
                 if (title) title.className = 'text-xl sm:text-2xl font-black title-text-orange leading-tight';
-                if (colorBadge) {
-                    colorBadge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-200 flex items-center gap-1 shadow-sm cursor-pointer select-none';
-                    colorBadge.innerHTML = '📱 iPhone 17 Pro Orange <span class="text-[9px] opacity-75">🔄</span>';
-                }
                 if (banner) {
                     banner.style.borderLeftColor = '#ea580c';
                 }
             } else {
                 if (plaque) plaque.className = 'title-plaque-cherry shadow-lg cursor-pointer';
                 if (title) title.className = 'text-xl sm:text-2xl font-black title-text-cherry leading-tight';
-                if (colorBadge) {
-                    colorBadge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-900 border border-rose-200 flex items-center gap-1 shadow-sm cursor-pointer select-none';
-                    colorBadge.innerHTML = '🍷 iPhone 18 Pro Dark Cherry <span class="text-[9px] opacity-75">🔄</span>';
-                }
                 if (banner) {
                     banner.style.borderLeftColor = '#881337';
                 }
@@ -1765,8 +1753,6 @@
             // Banner Title & Border Styling
             const banner = document.getElementById('categoryHeaderBanner');
             banner.className = `bg-white rounded-xl shadow-sm border p-4 sm:p-5 mb-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-8 theme-${cat.themeColor}`;
-            
-            document.getElementById('catDesc').innerText = cat.desc;
 
             // Sponsor capability flag
             chairConfig.sponsorshipEnabled = cat.allowSponsors;
@@ -1801,12 +1787,6 @@
             // Check if current event is Golf Tournament (Strict linkage with Golf Badge)
             const isGolf = subEventName.includes("高爾夫");
             document.getElementById('golfSpecialBadge').classList.toggle('hidden', !isGolf);
-
-            if (isGolf) {
-                document.getElementById('catDesc').innerText = '年度地區高爾夫球聯誼賽，已全面整合各社執秘高爾夫差點庫，即時動態計算球隊平均差點，利於大會編組與計分。';
-            } else {
-                document.getElementById('catDesc').innerText = cat.desc;
-            }
 
             // Apply iPhone Pro 2款輪流換色
             applyEventColorTheme();
