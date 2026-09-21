@@ -761,11 +761,29 @@
                 </div>
             </div>
 
-            <!-- Division & Club Standard Appendix Directory -->
+            <!-- Division & Club Standard Appendix Directory (支援增加、修改、刪除) -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sm:p-6">
-                <h3 class="text-base font-bold text-slate-800 mb-3">📍 3523 地區分區所屬扶輪社標準名單 (依地區排序，共 13 分區 80 社)</h3>
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+                    <div>
+                        <h3 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2 flex-wrap" id="divisionDirectoryHeaderTitle">
+                            <span>📍 3523 地區分區所屬扶輪社標準名單</span>
+                            <span id="divisionTotalSummaryBadge" class="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
+                                (依地區排序，共 13 分區 80 社)
+                            </span>
+                        </h3>
+                        <p class="text-xs text-slate-500 mt-1">完整提供地區 13 分區與所屬扶輪社標準名錄，支援「增加」、「修改」、「刪除」管理功能。</p>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button onclick="openAddClubModal()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 transition" title="增加新扶輪社">
+                            <span>➕</span><span>增加扶輪社</span>
+                        </button>
+                        <button onclick="resetDivisionsData()" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 rounded-lg text-xs font-medium whitespace-nowrap flex items-center gap-1 active:scale-95 transition" title="重置回初始標準 80 社名錄">
+                            <span>🔄</span><span>還原 80 社</span>
+                        </button>
+                    </div>
+                </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 text-xs" id="divisionDirectoryContainer">
-                    <!-- Dynamic rendering of Divisions 1-6 -->
+                    <!-- Dynamic rendering of Divisions with Add, Edit, Delete -->
                 </div>
             </div>
         </section>
@@ -1210,6 +1228,52 @@
         </div>
     </div>
 
+    <!-- ================= MODAL 8: ADD / EDIT ROTARY CLUB (扶輪社名錄增改管理) ================= -->
+    <div id="clubManageModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 sm:p-6">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                <div class="flex items-center gap-2 text-blue-600">
+                    <span class="text-lg" id="clubManageModalIcon">➕</span>
+                    <h3 class="font-bold text-slate-900 text-base" id="clubManageModalTitle">增加扶輪社至分區名冊</h3>
+                </div>
+                <button onclick="closeClubManageModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1 leading-none">&times;</button>
+            </div>
+
+            <form onsubmit="handleSaveClub(event)" class="space-y-3.5 text-xs">
+                <input type="hidden" id="clubManageOriginalName" value="">
+                <input type="hidden" id="clubManageOriginalDivId" value="">
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">所屬分區：</label>
+                    <select id="clubManageDivSelect" onchange="onClubManageDivChange()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500">
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+
+                <div id="newDivisionNameBox" class="hidden">
+                    <label class="block font-semibold text-slate-700 mb-1">新自訂分區名稱：</label>
+                    <input type="text" id="clubManageNewDivInput" placeholder="例如: 第十四分區" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:bg-white focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">分社代碼 (社號)：</label>
+                    <input type="text" id="clubManageCodeInput" required placeholder="例如: 01-10" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-medium focus:bg-white focus:ring-2 focus:ring-blue-500">
+                    <p class="text-[11px] text-slate-400 mt-0.5">格式例如：01-1、02-5 等，用於名單排序與社別檢索。</p>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">扶輪社中文全名：</label>
+                    <input type="text" id="clubManageNameInput" required placeholder="例如: 台北創新扶輪社" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div class="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+                    <button type="button" onclick="closeClubManageModal()" class="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-semibold hover:bg-slate-50">取消</button>
+                    <button type="submit" id="saveClubSubmitBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow active:scale-95 transition">確認儲存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Mobile Floating Bottom Action Bar (手機專屬快捷列) -->
     <div id="mobileBottomBar" class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-md text-white border-t border-slate-800 px-4 py-2 flex justify-around items-center z-40 text-[10px]">
         <button onclick="switchRole('secretary')" class="flex flex-col items-center text-blue-400 active:scale-95">
@@ -1251,7 +1315,7 @@
         const LOCAL_STORAGE_KEY = 'rotary_3523_spa_data_v3';
 
         // Appendix: Division & Clubs Dictionary (依據 3523地區現有社名排序.xlsx 完整 13 分區 80 社)
-        const DIVISIONS_DATA = [
+        const DEFAULT_DIVISIONS_DATA = [
                     {
                                 "id": 1,
                                 "name": "第一分區",
@@ -1814,6 +1878,7 @@
         let isEventLockedToday = false;
 
         let categoriesData = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+        let divisionsData = JSON.parse(JSON.stringify(DEFAULT_DIVISIONS_DATA));
         let clubMemberDatabase = JSON.parse(JSON.stringify(DEFAULT_MEMBERS_DB));
         let registrationOrders = JSON.parse(JSON.stringify(DEFAULT_ORDERS));
 
@@ -1849,6 +1914,7 @@
             try {
                 const data = {
                     categoriesData,
+                    divisionsData,
                     clubMemberDatabase,
                     registrationOrders,
                     chairConfig,
@@ -1873,6 +1939,9 @@
                             return { ...c, allowAddSubEvents: c.allowAddSubEvents !== false };
                         });
                     }
+                    if (parsed.divisionsData && Array.isArray(parsed.divisionsData)) {
+                        divisionsData = parsed.divisionsData;
+                    }
                     if (parsed.clubMemberDatabase) clubMemberDatabase = parsed.clubMemberDatabase;
                     if (parsed.registrationOrders) registrationOrders = parsed.registrationOrders;
                     if (parsed.chairConfig) {
@@ -1891,6 +1960,7 @@
             if (confirm("⚠️ 確定將所有社友名冊與報名資料重置為初始預設值？本機修改將被清除。")) {
                 localStorage.removeItem(LOCAL_STORAGE_KEY);
                 categoriesData = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+                divisionsData = JSON.parse(JSON.stringify(DEFAULT_DIVISIONS_DATA));
                 clubMemberDatabase = JSON.parse(JSON.stringify(DEFAULT_MEMBERS_DB));
                 registrationOrders = JSON.parse(JSON.stringify(DEFAULT_ORDERS));
                 chairConfig = {
@@ -1935,6 +2005,9 @@
 
             if (role === 'chair') {
                 updateChairDashboard();
+            }
+            if (role === 'arch') {
+                renderDivisionDirectory();
             }
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -2235,7 +2308,7 @@
             const selector = document.getElementById('clubSelector');
             let html = '';
             const allClubNames = [];
-            DIVISIONS_DATA.forEach(div => {
+            divisionsData.forEach(div => {
                 html += `<optgroup label="${div.name} (${div.clubs.length}社)">`;
                 div.clubs.forEach(c => {
                     const cName = typeof c === 'object' ? c.name : c;
@@ -3827,7 +3900,8 @@
                 clubMemberDatabase,
                 registrationOrders,
                 chairConfig,
-                categoriesData
+                categoriesData,
+                divisionsData
             };
             const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
@@ -3852,10 +3926,12 @@
                     if (data.registrationOrders) registrationOrders = data.registrationOrders;
                     if (data.chairConfig) chairConfig = data.chairConfig;
                     if (data.categoriesData) categoriesData = data.categoriesData;
+                    if (data.divisionsData) divisionsData = data.divisionsData;
                     saveToStorage();
                     renderNavTabs();
                     populateClubSelector();
                     loadCategoryView();
+                    renderDivisionDirectory();
                     showToast("✅ 跨裝置備份資料已成功還原！");
                     closeMobileSyncModal();
                 } catch (err) {
@@ -3903,23 +3979,277 @@
 
         // ================= LIFECYCLE & ARCHITECTURE HELPERS =================
 
+        // ================= ROTARY CLUBS & DIVISIONS CRUD (增加、修改、刪除) =================
+
         function renderDivisionDirectory() {
             const container = document.getElementById('divisionDirectoryContainer');
-            container.innerHTML = DIVISIONS_DATA.map(div => `
-                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 shadow-sm">
-                    <h4 class="font-bold text-slate-800 mb-2 pb-1 border-b border-slate-200 flex items-center justify-between text-xs sm:text-sm">
-                        <span>${div.name}</span>
-                        <span class="text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">${div.clubs.length} 社</span>
-                    </h4>
-                    <ul class="space-y-1 text-slate-600 font-medium text-xs">
-                        ${div.clubs.map(c => {
-                            const cName = typeof c === 'object' ? c.name : c;
-                            const cCode = typeof c === 'object' && c.code ? `<span class="font-mono text-slate-400 font-semibold mr-1 text-[11px]">${c.code}</span>` : '';
-                            return `<li class="flex items-center hover:text-blue-600 transition-colors py-0.5">${cCode}<span>${cName}</span></li>`;
-                        }).join('')}
-                    </ul>
-                </div>
-            `).join('');
+            if (!container) return;
+
+            const totalDivs = divisionsData.length;
+            const totalClubs = divisionsData.reduce((sum, d) => sum + (d.clubs ? d.clubs.length : 0), 0);
+
+            const badge = document.getElementById('divisionTotalSummaryBadge');
+            if (badge) {
+                badge.innerText = `(依地區排序，共 ${totalDivs} 分區 ${totalClubs} 社)`;
+            }
+
+            container.innerHTML = divisionsData.map(div => {
+                const clubsList = (div.clubs || []).map(c => {
+                    const cName = typeof c === 'object' ? c.name : c;
+                    const cCode = typeof c === 'object' && c.code ? c.code : '';
+                    return `
+                        <li class="flex items-center justify-between py-1 px-1.5 rounded hover:bg-white transition group border border-transparent hover:border-slate-200">
+                            <div class="flex items-center min-w-0 pr-1">
+                                ${cCode ? `<span class="font-mono text-slate-400 font-semibold mr-1.5 text-[11px] shrink-0">${cCode}</span>` : ''}
+                                <span class="font-medium text-slate-700 text-xs truncate group-hover:text-blue-600" title="${cName}">${cName}</span>
+                            </div>
+                            <div class="flex items-center gap-0.5 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity">
+                                <button onclick="openEditClubModal(${div.id}, '${cCode}', '${cName}')" class="p-1 hover:bg-blue-50 text-slate-500 hover:text-blue-600 rounded transition text-xs" title="修改社名/代碼">
+                                    ✏️
+                                </button>
+                                <button onclick="deleteClub(${div.id}, '${cName}')" class="p-1 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded transition text-xs" title="刪除此扶輪社">
+                                    🗑️
+                                </button>
+                            </div>
+                        </li>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="bg-slate-50/90 p-3 rounded-xl border border-slate-200 shadow-xs hover:shadow-sm transition flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-200">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="font-bold text-slate-800 text-xs sm:text-sm">${div.name}</span>
+                                    <span class="text-[11px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.2 rounded-full">${div.clubs ? div.clubs.length : 0} 社</span>
+                                </div>
+                                <button onclick="openAddClubModal(${div.id})" class="text-[11px] bg-white hover:bg-blue-50 text-blue-600 border border-blue-200 hover:border-blue-300 px-2 py-0.5 rounded-md font-bold transition flex items-center gap-0.5 active:scale-95 shadow-2xs" title="在此分區增加扶輪社">
+                                    <span>➕</span><span>新增</span>
+                                </button>
+                            </div>
+                            <ul class="space-y-0.5">
+                                ${clubsList}
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function openAddClubModal(defaultDivId = null) {
+            document.getElementById('clubManageOriginalName').value = '';
+            document.getElementById('clubManageOriginalDivId').value = '';
+            document.getElementById('clubManageModalIcon').innerText = '➕';
+            document.getElementById('clubManageModalTitle').innerText = '增加扶輪社至分區名冊';
+            document.getElementById('saveClubSubmitBtn').innerText = '確認增加';
+            document.getElementById('saveClubSubmitBtn').className = 'px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow active:scale-95 transition';
+
+            const select = document.getElementById('clubManageDivSelect');
+            select.innerHTML = divisionsData.map(d => `
+                <option value="${d.id}">${d.name}</option>
+            `).join('') + '<option value="__NEW__">➕ 新增自訂分區...</option>';
+
+            if (defaultDivId && divisionsData.some(d => d.id === defaultDivId)) {
+                select.value = defaultDivId;
+            } else if (divisionsData.length > 0) {
+                select.value = divisionsData[0].id;
+            }
+
+            document.getElementById('clubManageNameInput').value = '';
+            document.getElementById('clubManageNewDivInput').value = '';
+            document.getElementById('newDivisionNameBox').classList.add('hidden');
+
+            onClubManageDivChange();
+            document.getElementById('clubManageModal').classList.remove('hidden');
+        }
+
+        function openEditClubModal(divId, code, name) {
+            document.getElementById('clubManageOriginalName').value = name;
+            document.getElementById('clubManageOriginalDivId').value = divId;
+            document.getElementById('clubManageModalIcon').innerText = '✏️';
+            document.getElementById('clubManageModalTitle').innerText = `修改扶輪社資訊：${name}`;
+            document.getElementById('saveClubSubmitBtn').innerText = '儲存修改';
+            document.getElementById('saveClubSubmitBtn').className = 'px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow active:scale-95 transition';
+
+            const select = document.getElementById('clubManageDivSelect');
+            select.innerHTML = divisionsData.map(d => `
+                <option value="${d.id}" ${d.id === divId ? 'selected' : ''}>${d.name}</option>
+            `).join('') + '<option value="__NEW__">➕ 新增自訂分區...</option>';
+
+            select.value = divId;
+            document.getElementById('newDivisionNameBox').classList.add('hidden');
+            document.getElementById('clubManageCodeInput').value = code || '';
+            document.getElementById('clubManageNameInput').value = name || '';
+
+            document.getElementById('clubManageModal').classList.remove('hidden');
+        }
+
+        function closeClubManageModal() {
+            document.getElementById('clubManageModal').classList.add('hidden');
+        }
+
+        function onClubManageDivChange() {
+            const select = document.getElementById('clubManageDivSelect');
+            const isNewDiv = (select.value === '__NEW__');
+            document.getElementById('newDivisionNameBox').classList.toggle('hidden', !isNewDiv);
+
+            const isEditing = !!document.getElementById('clubManageOriginalName').value;
+            if (!isEditing) {
+                if (isNewDiv) {
+                    const nextDivNum = divisionsData.length + 1;
+                    document.getElementById('clubManageNewDivInput').value = `第${nextDivNum}分區`;
+                    const prefix = String(nextDivNum).padStart(2, '0');
+                    document.getElementById('clubManageCodeInput').value = `${prefix}-1`;
+                } else {
+                    const divId = parseInt(select.value);
+                    const div = divisionsData.find(d => d.id === divId);
+                    if (div) {
+                        const divPrefix = String(div.id).padStart(2, '0');
+                        const nextClubNum = (div.clubs ? div.clubs.length : 0) + 1;
+                        document.getElementById('clubManageCodeInput').value = `${divPrefix}-${nextClubNum}`;
+                    }
+                }
+            }
+        }
+
+        function handleSaveClub(e) {
+            e.preventDefault();
+            const originalName = document.getElementById('clubManageOriginalName').value.trim();
+            const originalDivId = parseInt(document.getElementById('clubManageOriginalDivId').value);
+            const select = document.getElementById('clubManageDivSelect');
+            const isNewDiv = (select.value === '__NEW__');
+            const code = document.getElementById('clubManageCodeInput').value.trim();
+            const name = document.getElementById('clubManageNameInput').value.trim();
+
+            if (!name) {
+                alert('請輸入扶輪社中文全名！');
+                return;
+            }
+
+            // 檢查是否同名社已存在（非本社的情況）
+            const allCurrentClubs = [];
+            divisionsData.forEach(d => {
+                (d.clubs || []).forEach(c => {
+                    const cName = typeof c === 'object' ? c.name : c;
+                    if (cName !== originalName) {
+                        allCurrentClubs.push(cName);
+                    }
+                });
+            });
+
+            if (allCurrentClubs.includes(name)) {
+                alert(`⚠️ 扶輪社名稱【${name}】已存在於地區名冊中，不可重複建立！`);
+                return;
+            }
+
+            let targetDiv = null;
+            if (isNewDiv) {
+                const newDivName = document.getElementById('clubManageNewDivInput').value.trim() || `第${divisionsData.length + 1}分區`;
+                const newDivId = Date.now();
+                targetDiv = {
+                    id: newDivId,
+                    name: newDivName,
+                    clubs: []
+                };
+                divisionsData.push(targetDiv);
+            } else {
+                const targetDivId = parseInt(select.value);
+                targetDiv = divisionsData.find(d => d.id === targetDivId);
+            }
+
+            if (!targetDiv) return;
+
+            const isEditing = !!originalName;
+
+            if (isEditing) {
+                // 從原分區移除
+                const oldDiv = divisionsData.find(d => d.id === originalDivId);
+                if (oldDiv && oldDiv.clubs) {
+                    const idx = oldDiv.clubs.findIndex(c => (typeof c === 'object' ? c.name : c) === originalName);
+                    if (idx !== -1) oldDiv.clubs.splice(idx, 1);
+                }
+
+                // 加入至新分區
+                targetDiv.clubs.push({ code, name });
+
+                // 若改名，同步更新 clubMemberDatabase 與 registrationOrders
+                if (name !== originalName) {
+                    if (clubMemberDatabase[originalName]) {
+                        clubMemberDatabase[name] = clubMemberDatabase[originalName];
+                        delete clubMemberDatabase[originalName];
+                    }
+                    if (selectedClubName === originalName) {
+                        selectedClubName = name;
+                    }
+                    // 更新報名資料庫中社名
+                    Object.keys(registrationOrders).forEach(subKey => {
+                        const orders = registrationOrders[subKey] || [];
+                        orders.forEach(o => {
+                            if (o.clubName === originalName) o.clubName = name;
+                        });
+                    });
+                }
+                showToast(`✅ 已成功修改扶輪社【${name}】！`);
+            } else {
+                // 增加新社
+                targetDiv.clubs.push({ code, name });
+
+                // 初始化社友資料庫預設社長名額
+                if (!clubMemberDatabase[name]) {
+                    const shortName = name.length >= 4 ? name.substring(2, 4) : name;
+                    clubMemberDatabase[name] = [
+                        { id: Date.now(), role: "社長", nickname: "P " + shortName, name: `${shortName}社長`, diet: "MEAT", veganNote: "", handicap: 18 }
+                    ];
+                }
+                showToast(`✅ 已成功增加扶輪社【${name}】至 ${targetDiv.name}！`);
+            }
+
+            saveToStorage();
+            closeClubManageModal();
+            renderDivisionDirectory();
+            populateClubSelector();
+        }
+
+        function deleteClub(divId, clubName) {
+            const div = divisionsData.find(d => d.id === divId);
+            if (!div) return;
+
+            const confirmMsg = `⚠️【主委確認】\n確定要自【${div.name}】刪除扶輪社【${clubName}】嗎？\n此動作將一併更新分區統計。`;
+            if (!confirm(confirmMsg)) return;
+
+            const idx = div.clubs.findIndex(c => (typeof c === 'object' ? c.name : c) === clubName);
+            if (idx !== -1) {
+                div.clubs.splice(idx, 1);
+            }
+
+            // 若目前選取的正是被刪除的社，自動切換至名冊第一家社
+            if (selectedClubName === clubName) {
+                let fallbackClub = null;
+                for (const d of divisionsData) {
+                    if (d.clubs && d.clubs.length > 0) {
+                        fallbackClub = typeof d.clubs[0] === 'object' ? d.clubs[0].name : d.clubs[0];
+                        break;
+                    }
+                }
+                if (fallbackClub) {
+                    selectedClubName = fallbackClub;
+                }
+            }
+
+            saveToStorage();
+            renderDivisionDirectory();
+            populateClubSelector();
+            showToast(`🗑️ 已成功刪除扶輪社【${clubName}】！`);
+        }
+
+        function resetDivisionsData() {
+            if (confirm("⚠️ 確定將地區分區與所屬扶輪社名冊還原為初始標準 13 分區 80 社？本機修改將被清除。")) {
+                divisionsData = JSON.parse(JSON.stringify(DEFAULT_DIVISIONS_DATA));
+                saveToStorage();
+                renderDivisionDirectory();
+                populateClubSelector();
+                showToast("🔄 已成功還原為標準 13 分區 80 社名單！");
+            }
         }
 
         function triggerLifecycleStep(step) {
