@@ -2268,7 +2268,6 @@
                 tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">目前尚無任何扶輪社送出報名表</td></tr>`;
             } else {
                 tbody.innerHTML = orders.map((o, idx) => {
-                    const avgHcap = calculateAvgHandicap(o.items);
                     return `
                         <tr class="hover:bg-slate-50 transition">
                             <td class="p-2.5 font-bold text-slate-900">${o.clubName}</td>
@@ -2288,9 +2287,8 @@
                             <td class="p-2.5 text-amber-700 font-bold">${o.items.filter(i => i.diet === 'VEGAN').length} 人</td>
                             <td class="p-2.5 text-slate-400 font-mono text-[11px]">${o.submittedAt}</td>
                             <td class="p-2.5 text-center">
-                                <button onclick="openOrderDetailModal('${subEventName}', ${idx})" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded font-bold text-[11px] flex items-center gap-1 mx-auto shadow-sm">
+                                <button onclick="openOrderDetailModal('${subEventName}', ${idx})" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded font-bold text-[11px] inline-flex items-center gap-1 mx-auto shadow-sm">
                                     <span>🔍 名單明細</span>
-                                    ${avgHcap !== '--' ? `<span class="bg-emerald-600 text-white rounded px-1 py-0.2 text-[9px]">差點 ${avgHcap}</span>` : ''}
                                 </button>
                             </td>
                         </tr>
