@@ -450,7 +450,7 @@
                         <button onclick="openAddCategoryModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-amber-400 border border-amber-400/40 text-xs font-bold rounded-lg shadow transition flex items-center gap-1 active:scale-95" title="主委專屬：新增主選單類別">
                             ➕ 新增主選單
                         </button>
-                        <button onclick="openAddSubEventModal()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-900 text-xs font-bold rounded-lg shadow transition flex items-center gap-1 active:scale-95" title="主委專屬：新增子活動">
+                        <button id="chairAddSubEventBtn" onclick="openAddSubEventModal()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-900 text-xs font-bold rounded-lg shadow transition flex items-center gap-1 active:scale-95" title="主委專屬：新增子活動">
                             ➕ 新增子活動
                         </button>
                         <button onclick="simulateEventDayLock()" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow transition active:scale-95">
@@ -1510,6 +1510,7 @@
                 themeColor: 'blue',
                 hexColor: '#1A56DB',
                 allowSponsors: false,
+                allowAddSubEvents: true,
                 desc: '專為地區幹部講習設計，無須贊助社/協辦社，免設贊助門檻。',
                 subEvents: [
                     '1. 獎助金管理研討會 (GMS)',
@@ -1528,6 +1529,7 @@
                 themeColor: 'green',
                 hexColor: '#16A34A',
                 allowSponsors: true,
+                allowAddSubEvents: true,
                 desc: '各類體育賽事，主委可指定共同主辦社/協辦社/贊助社之贊助金額，已整合高爾夫差點。',
                 subEvents: [
                     '1. 地區高爾夫球聯誼賽',
@@ -1543,6 +1545,7 @@
                 themeColor: 'orange',
                 hexColor: '#EA580C',
                 allowSponsors: true,
+                allowAddSubEvents: false, // 依附圖30：此項為年度單一專案，無新增子活動需求
                 desc: '地區 RYLA 青年領袖獎勵研習營，培養青年領導潛能。',
                 subEvents: [
                     '地區 RYLA 青年領袖獎勵研習營'
@@ -1554,6 +1557,7 @@
                 themeColor: 'red',
                 hexColor: '#DC2626',
                 allowSponsors: true,
+                allowAddSubEvents: true,
                 desc: '年度地區海外及偏鄉人道國際義診服務。',
                 subEvents: [
                     '年度地區海外/偏鄉國際義診服務'
@@ -1565,6 +1569,7 @@
                 themeColor: 'purple',
                 hexColor: '#9333EA',
                 allowSponsors: true,
+                allowAddSubEvents: false, // 依附圖30：此項為年度單一專案，無新增子活動需求
                 desc: 'End Polio 根除小兒麻痺症慈善籌款音樂會。',
                 subEvents: [
                     'End Polio 根除小兒麻痺慈善音樂會'
@@ -1691,7 +1696,14 @@
                 const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
                 if (stored) {
                     const parsed = JSON.parse(stored);
-                    if (parsed.categoriesData) categoriesData = parsed.categoriesData;
+                    if (parsed.categoriesData) {
+                        categoriesData = parsed.categoriesData.map(c => {
+                            if (c.id === 'ryla' || c.id === 'polio') {
+                                return { ...c, allowAddSubEvents: false };
+                            }
+                            return { ...c, allowAddSubEvents: c.allowAddSubEvents !== false };
+                        });
+                    }
                     if (parsed.clubMemberDatabase) clubMemberDatabase = parsed.clubMemberDatabase;
                     if (parsed.registrationOrders) registrationOrders = parsed.registrationOrders;
                     if (parsed.chairConfig) chairConfig = parsed.chairConfig;
@@ -1746,9 +1758,19 @@
 
         function updateRolePermissionsUI() {
             const isChair = (currentRole === 'chair');
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const allowsSubEvents = cat ? (cat.allowAddSubEvents !== false) : true;
+
+            // 導覽列子活動新增按鈕：僅限主委，且該主選單允許新增子活動（RYLA 與 End Polio 排除）
             const navAddSubBtn = document.getElementById('navAddSubEventBtn');
             if (navAddSubBtn) {
-                navAddSubBtn.classList.toggle('hidden', !isChair);
+                navAddSubBtn.classList.toggle('hidden', !(isChair && allowsSubEvents));
+            }
+
+            // 主委戰情控制面板按鈕：若該主選單無子活動需求，亦同步隱藏
+            const chairAddSubBtn = document.getElementById('chairAddSubEventBtn');
+            if (chairAddSubBtn) {
+                chairAddSubBtn.classList.toggle('hidden', !allowsSubEvents);
             }
         }
 
@@ -1838,6 +1860,7 @@
             select.value = currentSubEventIndex;
 
             updateSubEventContext();
+            updateRolePermissionsUI();
         }
 
         function changeSubEvent(idx) {
@@ -2907,10 +2930,17 @@
                 alert('⚠️ 權限限制：只有主委可以新增子活動！執秘報名端無法新增。\n如需新增，請先點擊右上角【📊 主委戰情】。');
                 return;
             }
+            // 排除 RYLA 與 End Polio（依附圖30：這二個不會有新增子活動的需求）
+            const eligibleCategories = categoriesData.filter(c => c.allowAddSubEvents !== false);
+            if (eligibleCategories.length === 0) {
+                alert('目前主選單類別皆為單一活動專案，無可新增子活動之類別！');
+                return;
+            }
             const catSelect = document.getElementById('subEventTargetCatSelect');
             if (catSelect) {
-                catSelect.innerHTML = categoriesData.map(c => `
-                    <option value="${c.id}" ${c.id === currentCatId ? 'selected' : ''}>${c.name}</option>
+                const defaultCatId = (eligibleCategories.some(c => c.id === currentCatId)) ? currentCatId : eligibleCategories[0].id;
+                catSelect.innerHTML = eligibleCategories.map(c => `
+                    <option value="${c.id}" ${c.id === defaultCatId ? 'selected' : ''}>${c.name}</option>
                 `).join('');
             }
             document.getElementById('subEventNameInput').value = '';
@@ -2935,6 +2965,12 @@
             }
             const cat = categoriesData.find(c => c.id === targetCatId);
             if (!cat) return;
+
+            // 依附圖30：RYLA 與 End Polio 不會有新增子活動的需求
+            if (cat.allowAddSubEvents === false) {
+                alert('⚠️ 【RYLA 青年領袖營】與【End Polio 慈善音樂會】為年度單一活動專案，不支援新增子活動！');
+                return;
+            }
 
             if (cat.subEvents.includes(newName)) {
                 alert('該主選單下已有同名子活動！');
