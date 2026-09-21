@@ -41,6 +41,13 @@
         }
     </script>
     <style>
+        .scrollbar-none::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-none {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
         .chart-container {
             position: relative;
             width: 100%;
@@ -224,6 +231,9 @@
                     </select>
                     <button id="navAddSubEventBtn" onclick="openAddSubEventModal()" class="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-900 rounded-md text-xs font-bold whitespace-nowrap flex items-center gap-1 shadow-sm transition hidden" title="主委專屬：新增子活動">
                         <span>➕</span><span class="hidden sm:inline">新增子活動</span>
+                    </button>
+                    <button id="navDeleteSubEventBtn" onclick="openDeleteSubEventModal()" class="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-xs font-bold whitespace-nowrap flex items-center gap-1 shadow-sm transition hidden active:scale-95" title="主委專屬：刪除子活動">
+                        <span>🗑️</span><span class="hidden sm:inline">刪除子活動</span>
                     </button>
                 </div>
             </div>
@@ -1098,6 +1108,85 @@
         </div>
     </div>
 
+    <!-- ================= MODAL 6: DELETE MENU CATEGORY (主委專屬刪除主選單) ================= -->
+    <div id="deleteCategoryModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 sm:p-6">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                <div class="flex items-center gap-2 text-rose-600">
+                    <span class="text-lg">🗑️</span>
+                    <h3 class="font-bold text-slate-900 text-base">主委專屬：刪除主選單類別</h3>
+                </div>
+                <button onclick="closeDeleteCategoryModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1">&times;</button>
+            </div>
+
+            <div class="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-[11px] mb-3 flex items-start gap-2">
+                <span class="text-sm">⚠️</span>
+                <span><strong>刪除警告：</strong>刪除主選單將同時永久清除其下所有子活動及各社友報名名冊，此動作無法復原。</span>
+            </div>
+
+            <form onsubmit="handleConfirmDeleteCategory(event)" class="space-y-3.5 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">請選擇欲刪除的主選單類別：</label>
+                    <select id="deleteCategorySelect" onchange="updateDeleteCategoryModalInfo()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800 focus:ring-2 focus:ring-rose-500">
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+
+                <div id="deleteCategoryPreviewBox" class="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5 text-slate-600 text-[11px]">
+                    <!-- Information preview populated by JS -->
+                </div>
+
+                <div class="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+                    <button type="button" onclick="closeDeleteCategoryModal()" class="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-semibold hover:bg-slate-50">取消</button>
+                    <button type="submit" id="confirmDeleteCategoryBtn" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold shadow active:scale-95 transition">確認刪除主選單</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================= MODAL 7: DELETE SUB-EVENT (主委專屬刪除子活動) ================= -->
+    <div id="deleteSubEventModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 sm:p-6">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                <div class="flex items-center gap-2 text-rose-600">
+                    <span class="text-lg">🗑️</span>
+                    <h3 class="font-bold text-slate-900 text-base">主委專屬：刪除子活動</h3>
+                </div>
+                <button onclick="closeDeleteSubEventModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1">&times;</button>
+            </div>
+
+            <div class="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-[11px] mb-3 flex items-start gap-2">
+                <span class="text-sm">⚠️</span>
+                <span><strong>刪除警告：</strong>刪除子活動將同時永久清除該子活動底下所有已報名社友名單，此動作無法復原。</span>
+            </div>
+
+            <form onsubmit="handleConfirmDeleteSubEvent(event)" class="space-y-3.5 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">所屬主選單類別：</label>
+                    <select id="deleteSubEventTargetCatSelect" onchange="onDeleteSubEventCatChange()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800 focus:ring-2 focus:ring-rose-500">
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">請選擇欲刪除的子活動：</label>
+                    <select id="deleteSubEventTargetSubSelect" onchange="updateDeleteSubEventInfo()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium text-slate-900 focus:ring-2 focus:ring-rose-500">
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+
+                <div id="deleteSubEventPreviewBox" class="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5 text-slate-600 text-[11px]">
+                    <!-- Information preview populated by JS -->
+                </div>
+
+                <div class="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+                    <button type="button" onclick="closeDeleteSubEventModal()" class="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-semibold hover:bg-slate-50">取消</button>
+                    <button type="submit" id="confirmDeleteSubEventBtn" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold shadow active:scale-95 transition">確認刪除子活動</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Mobile Floating Bottom Action Bar (手機專屬快捷列) -->
     <div id="mobileBottomBar" class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-md text-white border-t border-slate-800 px-4 py-2 flex justify-around items-center z-40 text-[10px]">
         <button onclick="switchRole('secretary')" class="flex flex-col items-center text-blue-400 active:scale-95">
@@ -1832,10 +1921,14 @@
             const cat = categoriesData.find(c => c.id === currentCatId);
             const allowsSubEvents = cat ? (cat.allowAddSubEvents !== false) : true;
 
-            // 導覽列子活動新增按鈕：僅限主委，且該主選單允許新增子活動（RYLA 與 End Polio 排除）
+            // 導覽列子活動新增與刪除按鈕：僅限主委，且該主選單允許增刪子活動（RYLA 與 End Polio 排除）
             const navAddSubBtn = document.getElementById('navAddSubEventBtn');
             if (navAddSubBtn) {
                 navAddSubBtn.classList.toggle('hidden', !(isChair && allowsSubEvents));
+            }
+            const navDeleteSubBtn = document.getElementById('navDeleteSubEventBtn');
+            if (navDeleteSubBtn) {
+                navDeleteSubBtn.classList.toggle('hidden', !(isChair && allowsSubEvents));
             }
         }
 
@@ -1853,14 +1946,19 @@
                 `;
             }).join('');
 
-            // 新增主選單按鈕：僅限主委可見與新增，執秘隱藏
-            const addCatBtnHtml = isChair ? `
-                <button onclick="openAddCategoryModal()" class="px-3 py-2 bg-slate-800 text-amber-400 hover:bg-slate-900 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1 shrink-0 shadow-sm border border-amber-400/40" title="主委專屬：新增主選單類別">
-                    ➕ 新增主選單
-                </button>
+            // 主委專屬：新增與刪除主選單按鈕（執秘端隱藏）
+            const chairCatActionsHtml = isChair ? `
+                <div class="flex items-center gap-1.5 shrink-0 pl-1">
+                    <button onclick="openAddCategoryModal()" class="px-3 py-2 bg-slate-800 text-amber-400 hover:bg-slate-900 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1 shadow-sm border border-amber-400/40 active:scale-95 transition" title="主委專屬：新增主選單類別">
+                        ➕ 新增主選單
+                    </button>
+                    <button onclick="openDeleteCategoryModal()" class="px-3 py-2 bg-slate-800 text-rose-300 hover:text-white hover:bg-rose-900 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1 shadow-sm border border-rose-500/40 active:scale-95 transition" title="主委專屬：刪除主選單類別">
+                        🗑️ 刪除主選單
+                    </button>
+                </div>
             ` : '';
 
-            container.innerHTML = catButtons + addCatBtnHtml;
+            container.innerHTML = catButtons + chairCatActionsHtml;
         }
 
         // ================= iPhone Pro 2款輪流配色邏輯 (點一次換一次) =================
@@ -2630,7 +2728,18 @@
         }
 
         function updateChairDashboard() {
-            const cat = categoriesData.find(c => c.id === currentCatId);
+            let cat = categoriesData.find(c => c.id === currentCatId);
+            if (!cat) {
+                cat = categoriesData[0];
+                if (!cat) return;
+                currentCatId = cat.id;
+            }
+            if (!cat.subEvents || cat.subEvents.length === 0) {
+                cat.subEvents = [`${cat.name} 活動`];
+            }
+            if (currentSubEventIndex >= cat.subEvents.length || currentSubEventIndex < 0) {
+                currentSubEventIndex = 0;
+            }
             const subEventName = cat.subEvents[currentSubEventIndex];
             const orders = registrationOrders[subEventName] || [];
 
@@ -3796,7 +3905,7 @@
             }
         }
 
-        // ================= CATEGORY & SUB-EVENT CREATION (主委專屬權限) =================
+        // ================= CATEGORY & SUB-EVENT CREATION & DELETION (主委專屬權限：增刪功能) =================
 
         // Custom Category Modal (主委專屬新增主選單)
         function openAddCategoryModal() {
@@ -3828,10 +3937,11 @@
 
             const newCat = {
                 id: 'custom_' + Date.now(),
-                name: `➕ ${name}`,
+                name: name,
                 themeColor: color,
                 hexColor: colorHexMap[color] || '#1A56DB',
                 allowSponsors: true,
+                allowAddSubEvents: true,
                 desc: '後台自訂主選單模組，支援彈性增刪與名單彙整。',
                 subEvents: subEvents.length > 0 ? subEvents : [`${name} 主活動`]
             };
@@ -3845,6 +3955,130 @@
                 updateChairDashboard();
             }
             showToast(`✅ 主委已成功建立自訂主選單《${name}》！`);
+        }
+
+        // Delete Category Modal (主委專屬刪除主選單)
+        function openDeleteCategoryModal() {
+            if (currentRole !== 'chair') {
+                alert('⚠️ 權限限制：只有主委可以刪除主選單！執秘報名端無法操作。\n如需操作，請先點擊右上角【📊 主委戰情】。');
+                return;
+            }
+            if (categoriesData.length <= 1) {
+                alert('⚠️ 系統至少需保留一個主選單類別，無法全數刪除！');
+                return;
+            }
+            const catSelect = document.getElementById('deleteCategorySelect');
+            if (catSelect) {
+                catSelect.innerHTML = categoriesData.map(c => `
+                    <option value="${c.id}" ${c.id === currentCatId ? 'selected' : ''}>${c.name}</option>
+                `).join('');
+            }
+            updateDeleteCategoryModalInfo();
+            document.getElementById('deleteCategoryModal').classList.remove('hidden');
+        }
+
+        function closeDeleteCategoryModal() {
+            document.getElementById('deleteCategoryModal').classList.add('hidden');
+        }
+
+        function updateDeleteCategoryModalInfo() {
+            const catSelect = document.getElementById('deleteCategorySelect');
+            const previewBox = document.getElementById('deleteCategoryPreviewBox');
+            const submitBtn = document.getElementById('confirmDeleteCategoryBtn');
+            if (!catSelect || !previewBox) return;
+
+            const selectedCatId = catSelect.value;
+            const cat = categoriesData.find(c => c.id === selectedCatId);
+            if (!cat) return;
+
+            // 統計該主選單下所有子活動的報名筆數
+            let totalOrders = 0;
+            let totalPeople = 0;
+            (cat.subEvents || []).forEach(subName => {
+                const orders = registrationOrders[subName] || [];
+                totalOrders += orders.length;
+                orders.forEach(o => {
+                    totalPeople += (o.members || []).length;
+                });
+            });
+
+            const subEventsListStr = (cat.subEvents && cat.subEvents.length > 0)
+                ? cat.subEvents.map(s => `• ${s}`).join('<br>')
+                : '無子活動';
+
+            previewBox.innerHTML = `
+                <div><span class="font-bold text-slate-800">類別名稱：</span>${cat.name}</div>
+                <div><span class="font-bold text-slate-800">包含子活動 (${cat.subEvents ? cat.subEvents.length : 0} 項)：</span></div>
+                <div class="max-h-24 overflow-y-auto pl-2 text-slate-700 bg-white p-1.5 rounded border border-slate-100 font-mono text-[10px] leading-relaxed">
+                    ${subEventsListStr}
+                </div>
+                <div class="pt-1 text-slate-700">
+                    <span class="font-bold text-slate-800">報名現況：</span>
+                    ${totalOrders > 0 
+                        ? `<span class="text-rose-600 font-bold">已有 ${totalOrders} 個扶輪社報名 (共 ${totalPeople} 位社友)</span>` 
+                        : '<span class="text-emerald-600 font-semibold">目前無任何報名記錄</span>'}
+                </div>
+            `;
+
+            if (categoriesData.length <= 1) {
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            } else {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        }
+
+        function handleConfirmDeleteCategory(e) {
+            e.preventDefault();
+            if (currentRole !== 'chair') {
+                alert('⚠️ 權限限制：只有主委可以刪除主選單！');
+                return;
+            }
+            if (categoriesData.length <= 1) {
+                alert('⚠️ 系統至少需保留一個主選單類別，無法全數刪除！');
+                return;
+            }
+            const catSelect = document.getElementById('deleteCategorySelect');
+            const targetCatId = catSelect.value;
+            const cat = categoriesData.find(c => c.id === targetCatId);
+            if (!cat) return;
+
+            const confirmMsg = `⚠️【主委最終確認】\n確定要永久刪除主選單【${cat.name}】嗎？\n其下 ${cat.subEvents ? cat.subEvents.length : 0} 項子活動及所有報名資料將一併被移除！`;
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+
+            // 清除該主選單下各子活動的報名記錄
+            (cat.subEvents || []).forEach(subName => {
+                delete registrationOrders[subName];
+            });
+
+            // 從 categoriesData 移除
+            const idx = categoriesData.findIndex(c => c.id === targetCatId);
+            if (idx !== -1) {
+                categoriesData.splice(idx, 1);
+            }
+
+            // 若目前選取的正是被刪除的主選單，切換至第一項主選單
+            if (currentCatId === targetCatId) {
+                currentCatId = categoriesData[0].id;
+                currentSubEventIndex = 0;
+            }
+
+            currentFormSelectedMembers = [];
+            saveToStorage();
+            closeDeleteCategoryModal();
+            renderNavTabs();
+            loadCategoryView();
+            if (currentRole === 'chair') {
+                updateChairDashboard();
+            }
+            showToast(`🗑️ 主委已成功刪除主選單《${cat.name}》！`);
         }
 
         // Sub-Event Modal (主委專屬新增子活動)
@@ -3913,6 +4147,174 @@
                 updateChairDashboard();
             }
             showToast(`✅ 主委已成功在【${cat.name}】新增子活動《${newName}》！`);
+        }
+
+        // Delete Sub-Event Modal (主委專屬刪除子活動)
+        function openDeleteSubEventModal() {
+            if (currentRole !== 'chair') {
+                alert('⚠️ 權限限制：只有主委可以刪除子活動！執秘報名端無法操作。\n如需操作，請先點擊右上角【📊 主委戰情】。');
+                return;
+            }
+            // 排除單一專案活動（RYLA 與 End Polio，因不可增刪子活動）
+            const eligibleCategories = categoriesData.filter(c => c.allowAddSubEvents !== false);
+            if (eligibleCategories.length === 0) {
+                alert('目前無可刪除子活動的主選單類別！');
+                return;
+            }
+
+            const catSelect = document.getElementById('deleteSubEventTargetCatSelect');
+            if (catSelect) {
+                const defaultCatId = eligibleCategories.some(c => c.id === currentCatId) ? currentCatId : eligibleCategories[0].id;
+                catSelect.innerHTML = eligibleCategories.map(c => `
+                    <option value="${c.id}" ${c.id === defaultCatId ? 'selected' : ''}>${c.name}</option>
+                `).join('');
+            }
+            onDeleteSubEventCatChange();
+            document.getElementById('deleteSubEventModal').classList.remove('hidden');
+        }
+
+        function closeDeleteSubEventModal() {
+            document.getElementById('deleteSubEventModal').classList.add('hidden');
+        }
+
+        function onDeleteSubEventCatChange() {
+            const catSelect = document.getElementById('deleteSubEventTargetCatSelect');
+            const subSelect = document.getElementById('deleteSubEventTargetSubSelect');
+            if (!catSelect || !subSelect) return;
+
+            const catId = catSelect.value;
+            const cat = categoriesData.find(c => c.id === catId);
+            if (!cat || !cat.subEvents || cat.subEvents.length === 0) {
+                subSelect.innerHTML = '<option value="">(無子活動)</option>';
+                updateDeleteSubEventInfo();
+                return;
+            }
+
+            // 若選取的是當前主選單，優先預設當前選取的子活動
+            const currentSubName = (cat.id === currentCatId && cat.subEvents[currentSubEventIndex]) 
+                ? cat.subEvents[currentSubEventIndex] 
+                : cat.subEvents[0];
+
+            subSelect.innerHTML = cat.subEvents.map(se => `
+                <option value="${se}" ${se === currentSubName ? 'selected' : ''}>${se}</option>
+            `).join('');
+
+            updateDeleteSubEventInfo();
+        }
+
+        function updateDeleteSubEventInfo() {
+            const catSelect = document.getElementById('deleteSubEventTargetCatSelect');
+            const subSelect = document.getElementById('deleteSubEventTargetSubSelect');
+            const previewBox = document.getElementById('deleteSubEventPreviewBox');
+            const submitBtn = document.getElementById('confirmDeleteSubEventBtn');
+            if (!catSelect || !subSelect || !previewBox) return;
+
+            const catId = catSelect.value;
+            const cat = categoriesData.find(c => c.id === catId);
+            const subEventName = subSelect.value;
+
+            if (!cat || !subEventName) {
+                previewBox.innerHTML = '<div class="text-slate-400">請先選擇子活動</div>';
+                if (submitBtn) submitBtn.disabled = true;
+                return;
+            }
+
+            const orders = registrationOrders[subEventName] || [];
+            let totalPeople = 0;
+            orders.forEach(o => {
+                totalPeople += (o.members || []).length;
+            });
+
+            const isOnlyOne = (cat.subEvents.length <= 1);
+
+            let statusHtml = '';
+            if (isOnlyOne) {
+                statusHtml = `
+                    <div class="text-rose-600 font-bold mt-1">
+                        ⚠️ 此主選單目前僅剩 1 個子活動，無法單獨刪除！若不再需要此活動，請直接使用「刪除主選單」功能。
+                    </div>
+                `;
+            } else if (orders.length > 0) {
+                statusHtml = `
+                    <div class="text-rose-600 font-bold mt-1">
+                        ⚠️ 已有 ${orders.length} 個扶輪社報名 (共 ${totalPeople} 位社友)，刪除將一併清除所有報名名冊！
+                    </div>
+                `;
+            } else {
+                statusHtml = `
+                    <div class="text-emerald-600 font-semibold mt-1">
+                        目前尚無任何扶輪社報名此子活動。
+                    </div>
+                `;
+            }
+
+            previewBox.innerHTML = `
+                <div><span class="font-bold text-slate-800">所屬主選單：</span>${cat.name}</div>
+                <div><span class="font-bold text-slate-800">欲刪除子活動：</span><span class="text-rose-700 font-bold">${subEventName}</span></div>
+                <div><span class="font-bold text-slate-800">目前子活動總數：</span>${cat.subEvents.length} 項</div>
+                ${statusHtml}
+            `;
+
+            if (submitBtn) {
+                if (isOnlyOne) {
+                    submitBtn.disabled = true;
+                    submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        }
+
+        function handleConfirmDeleteSubEvent(e) {
+            e.preventDefault();
+            if (currentRole !== 'chair') {
+                alert('⚠️ 權限限制：只有主委可以刪除子活動！');
+                return;
+            }
+            const catSelect = document.getElementById('deleteSubEventTargetCatSelect');
+            const subSelect = document.getElementById('deleteSubEventTargetSubSelect');
+            const catId = catSelect.value;
+            const subEventName = subSelect.value;
+
+            const cat = categoriesData.find(c => c.id === catId);
+            if (!cat) return;
+
+            if (cat.subEvents.length <= 1) {
+                alert(`⚠️ 主選單【${cat.name}】底下僅剩 1 個子活動，無法刪除！\n若不再需要此活動，請直接刪除整個主選單。`);
+                return;
+            }
+
+            const confirmMsg = `⚠️【主委最終確認】\n確定要永久刪除【${cat.name}】底下的子活動《${subEventName}》嗎？\n相關報名資料將一併清除！`;
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+
+            // 清除該子活動報名記錄
+            delete registrationOrders[subEventName];
+
+            // 從 cat.subEvents 移除
+            const sIdx = cat.subEvents.indexOf(subEventName);
+            if (sIdx !== -1) {
+                cat.subEvents.splice(sIdx, 1);
+            }
+
+            // 若目前選取的正是該主選單
+            if (currentCatId === catId) {
+                if (currentSubEventIndex >= cat.subEvents.length) {
+                    currentSubEventIndex = 0;
+                }
+            }
+
+            currentFormSelectedMembers = [];
+            saveToStorage();
+            closeDeleteSubEventModal();
+            renderNavTabs();
+            loadCategoryView();
+            if (currentRole === 'chair') {
+                updateChairDashboard();
+            }
+            showToast(`🗑️ 主委已成功刪除子活動《${subEventName}》！`);
         }
 
         // ================= TOAST NOTIFICATION HELPER =================
