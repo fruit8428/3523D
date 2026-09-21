@@ -1707,34 +1707,19 @@
             `;
         }
 
-        // ================= iPhone Pro 2款輪流配色邏輯 =================
+        // ================= iPhone Pro 2款輪流配色邏輯 (點一次換一次) =================
         // 1. iPhone 17 pro orange
         // 2. iPhone 18 pro Dark cherry
-        let manualColorOverride = null; // null: 自動輪流, 0: Orange, 1: Dark Cherry
-
-        function getActiveColorMode() {
-            if (manualColorOverride !== null) return manualColorOverride;
-            
-            // 根據目前活動輪流交替 (換一次活動就換顏色)
-            let catOffset = 0;
-            const catIdx = categoriesData.findIndex(c => c.id === currentCatId);
-            if (catIdx > 0) {
-                for (let i = 0; i < catIdx; i++) {
-                    catOffset += (categoriesData[i].subEvents || []).length;
-                }
-            }
-            return (catOffset + currentSubEventIndex) % 2; // 0: iPhone 17 Pro Orange, 1: iPhone 18 Pro Dark Cherry
-        }
+        let currentThemeColorIndex = 0; // 0: iPhone 17 Pro Orange, 1: iPhone 18 Pro Dark Cherry
 
         function toggleEventColorManual() {
-            const current = getActiveColorMode();
-            manualColorOverride = current === 0 ? 1 : 0;
+            // 點一次換一次：手動點擊切換
+            currentThemeColorIndex = (currentThemeColorIndex === 0 ? 1 : 0);
             applyEventColorTheme();
         }
 
         function applyEventColorTheme() {
-            const mode = getActiveColorMode();
-            const isOrange = (mode === 0);
+            const isOrange = (currentThemeColorIndex === 0);
             
             const plaque = document.getElementById('titlePlaque');
             const title = document.getElementById('catTitle');
@@ -1746,7 +1731,7 @@
                 if (title) title.className = 'text-xl sm:text-2xl font-black title-text-orange leading-tight';
                 if (colorBadge) {
                     colorBadge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-200 flex items-center gap-1 shadow-sm cursor-pointer select-none';
-                    colorBadge.innerHTML = '📱 iPhone 17 Pro Orange';
+                    colorBadge.innerHTML = '📱 iPhone 17 Pro Orange <span class="text-[9px] opacity-75">🔄</span>';
                 }
                 if (banner) {
                     banner.style.borderLeftColor = '#ea580c';
@@ -1756,7 +1741,7 @@
                 if (title) title.className = 'text-xl sm:text-2xl font-black title-text-cherry leading-tight';
                 if (colorBadge) {
                     colorBadge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-900 border border-rose-200 flex items-center gap-1 shadow-sm cursor-pointer select-none';
-                    colorBadge.innerHTML = '🍷 iPhone 18 Pro Dark Cherry';
+                    colorBadge.innerHTML = '🍷 iPhone 18 Pro Dark Cherry <span class="text-[9px] opacity-75">🔄</span>';
                 }
                 if (banner) {
                     banner.style.borderLeftColor = '#881337';
@@ -1765,9 +1750,10 @@
         }
 
         function selectCategory(catId) {
-            manualColorOverride = null;
             currentCatId = catId;
             currentSubEventIndex = 0;
+            // 點一次換一次：切換主分類立即輪流換色
+            currentThemeColorIndex = (currentThemeColorIndex === 0 ? 1 : 0);
             renderNavTabs();
             loadCategoryView();
         }
@@ -1797,8 +1783,9 @@
         }
 
         function changeSubEvent(idx) {
-            manualColorOverride = null;
             currentSubEventIndex = parseInt(idx);
+            // 點一次換一次：切換子活動立即輪流換色
+            currentThemeColorIndex = (currentThemeColorIndex === 0 ? 1 : 0);
             updateSubEventContext();
         }
 
