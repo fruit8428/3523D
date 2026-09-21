@@ -386,10 +386,12 @@
                         <!-- Selected Participants Table -->
                         <div class="mb-4">
                             <div class="flex flex-wrap justify-between items-center mb-2 gap-1.5">
-                                <h4 class="text-xs font-bold text-slate-700" id="selectedRosterTitle">本次出席社友名冊 (自動帶入差點與快照):</h4>
+                                <h4 class="text-xs font-bold text-slate-700" id="selectedRosterTitle">本次出席社友名冊:</h4>
                                 <div class="text-[11px] flex items-center gap-1.5 flex-wrap">
                                     <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">總人數: <b id="selectedTotalCount">0</b> 名</span>
-                                    <span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-medium">素食: <b id="selectedVeganCount">0</b> 名</span>
+                                    <span id="selectedCompeteCountBox" class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-bold hidden">🏃 參賽: <b id="selectedCompeteCount">0</b> 名</span>
+                                    <span id="selectedMealOnlyCountBox" class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold hidden">🍽️ 只用餐: <b id="selectedMealOnlyCount">0</b> 名</span>
+                                    <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">素食: <b id="selectedVeganCount">0</b> 名</span>
                                     <span id="selectedAvgHandicapBox" class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">⛳ 平均差點: <b id="selectedAvgHandicap">--</b></span>
                                 </div>
                             </div>
@@ -401,6 +403,7 @@
                                             <th class="p-2">職務</th>
                                             <th class="p-2">Nick Name</th>
                                             <th class="p-2">中文姓名</th>
+                                            <th id="thParticipation" class="p-2 text-center bg-indigo-50/70 text-indigo-900 border-x border-indigo-100 whitespace-nowrap hidden">參賽選項</th>
                                             <th id="thSelectedHandicap" class="p-2 text-center bg-emerald-50 text-emerald-800 border-x border-emerald-100">⛳ 差點</th>
                                             <th class="p-2">飲食需求</th>
                                             <th class="p-2 text-center w-12">操作</th>
@@ -956,6 +959,7 @@
                             <th class="p-2.5">職務</th>
                             <th class="p-2.5">Nick Name</th>
                             <th class="p-2.5">中文姓名</th>
+                            <th id="detailModalThParticipation" class="p-2.5 text-center bg-indigo-50 text-indigo-900 border-x border-indigo-100 hidden">參賽選項</th>
                             <th id="detailModalThHandicap" class="p-2.5 text-center bg-emerald-50 text-emerald-800 border-x border-emerald-100">⛳ 高爾夫差點</th>
                             <th class="p-2.5">飲食習慣 / 備註</th>
                         </tr>
@@ -1627,8 +1631,8 @@
                     sponsorAmount: 50000,
                     submittedAt: "2026-09-05 11:00",
                     items: [
-                        { role: "社長", nickname: "P Ken", name: "張建國", diet: "MEAT", veganNote: "", handicap: 18 },
-                        { role: "社友", nickname: "Joy", name: "李快樂", diet: "VEGAN", veganNote: "蛋奶素", handicap: 22 }
+                        { role: "社長", nickname: "P Ken", name: "張建國", diet: "MEAT", veganNote: "", handicap: 18, participation: "參賽" },
+                        { role: "社友", nickname: "Joy", name: "李快樂", diet: "VEGAN", veganNote: "蛋奶素", handicap: 22, participation: "參賽" }
                     ]
                 },
                 {
@@ -1637,8 +1641,20 @@
                     sponsorAmount: 10000,
                     submittedAt: "2026-09-06 16:40",
                     items: [
-                        { role: "社長", nickname: "P John", name: "陳約翰", diet: "MEAT", veganNote: "", handicap: 16 },
-                        { role: "社友", nickname: "Golf King", name: "蔡一桿", diet: "MEAT", veganNote: "", handicap: 8 }
+                        { role: "社長", nickname: "P John", name: "陳約翰", diet: "MEAT", veganNote: "", handicap: 16, participation: "參賽" },
+                        { role: "社友", nickname: "Golf King", name: "蔡一桿", diet: "MEAT", veganNote: "", handicap: 8, participation: "參賽" }
+                    ]
+                }
+            ],
+            '2. 地區保齡球聯誼賽': [
+                {
+                    clubName: "臺北市南區扶輪社",
+                    sponsorTier: "CO_HOST",
+                    sponsorAmount: 50000,
+                    submittedAt: "2026-09-08 14:00",
+                    items: [
+                        { role: "社長", nickname: "P Ken", name: "張建國", diet: "MEAT", veganNote: "", participation: "參賽" },
+                        { role: "社友", nickname: "Joy", name: "李快樂", diet: "VEGAN", veganNote: "素食", participation: "只用餐" }
                     ]
                 }
             ]
@@ -1893,6 +1909,9 @@
 
             if (existingClubOrder) {
                 currentFormSelectedMembers = JSON.parse(JSON.stringify(existingClubOrder.items));
+                currentFormSelectedMembers.forEach(item => {
+                    if (!item.participation) item.participation = '參賽';
+                });
                 currentSelectedSponsorTier = existingClubOrder.sponsorTier;
             } else {
                 currentFormSelectedMembers = [];
@@ -1909,13 +1928,20 @@
             if (currentRole === 'chair') updateChairDashboard();
         }
 
-        // Calculate Average Handicap
+        // Calculate Average Handicap (只計算參賽選手，只用餐者不計入平均差點)
         function calculateAvgHandicap(items) {
             if (!items || items.length === 0) return '--';
-            const valid = items.filter(m => m.handicap !== undefined && m.handicap !== null && m.handicap !== '' && !isNaN(Number(m.handicap)));
+            const valid = items.filter(m => m.participation !== '只用餐' && m.handicap !== undefined && m.handicap !== null && m.handicap !== '' && !isNaN(Number(m.handicap)));
             if (valid.length === 0) return '--';
             const sum = valid.reduce((acc, m) => acc + Number(m.handicap), 0);
             return (sum / valid.length).toFixed(1);
+        }
+
+        // 判斷當前活動是否為運動賽事 (參賽選項僅運動賽事顯示)
+        function isCurrentEventSports() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            if (!cat) return false;
+            return cat.id === 'sports' || (cat.name && (cat.name.includes('運動') || cat.name.includes('賽事') || cat.name.includes('體育')));
         }
 
         // 判斷當前子活動是否為高爾夫賽事 (差點僅高爾夫顯示)
@@ -2065,7 +2091,8 @@
                     name: target.name,
                     diet: target.diet,
                     veganNote: target.veganNote,
-                    handicap: target.handicap !== undefined ? target.handicap : ''
+                    handicap: target.handicap !== undefined ? target.handicap : '',
+                    participation: '參賽'
                 });
             }
 
@@ -2074,13 +2101,42 @@
             updateLinePreviewText();
         }
 
+        // 更新個別社友的參賽選項 (參賽 / 只用餐)
+        function updateMemberParticipation(index, value) {
+            if (isEventLockedToday) return;
+            if (currentFormSelectedMembers[index]) {
+                currentFormSelectedMembers[index].participation = value;
+                renderSelectedMembersTable();
+                updateLinePreviewText();
+            }
+        }
+
         function renderSelectedMembersTable() {
             const isGolf = isCurrentEventGolf();
+            const isSports = isCurrentEventSports();
+
+            const thPart = document.getElementById('thParticipation');
+            if (thPart) thPart.classList.toggle('hidden', !isSports);
+
             const thHcap = document.getElementById('thSelectedHandicap');
             if (thHcap) thHcap.classList.toggle('hidden', !isGolf);
 
             const avgBox = document.getElementById('selectedAvgHandicapBox');
             if (avgBox) avgBox.classList.toggle('hidden', !isGolf);
+
+            // 統計參賽與只用餐人數
+            const competeCount = currentFormSelectedMembers.filter(m => m.participation !== '只用餐').length;
+            const mealOnlyCount = currentFormSelectedMembers.filter(m => m.participation === '只用餐').length;
+            const competeBox = document.getElementById('selectedCompeteCountBox');
+            if (competeBox) {
+                competeBox.classList.toggle('hidden', !isSports);
+                document.getElementById('selectedCompeteCount').innerText = competeCount;
+            }
+            const mealBox = document.getElementById('selectedMealOnlyCountBox');
+            if (mealBox) {
+                mealBox.classList.toggle('hidden', !isSports);
+                document.getElementById('selectedMealOnlyCount').innerText = mealOnlyCount;
+            }
 
             const rosterTitle = document.getElementById('selectedRosterTitle');
             if (rosterTitle) {
@@ -2098,10 +2154,14 @@
             const avgHcap = calculateAvgHandicap(currentFormSelectedMembers);
             document.getElementById('selectedAvgHandicap').innerText = avgHcap;
 
+            let colSpan = 5;
+            if (isSports) colSpan += 1;
+            if (isGolf) colSpan += 1;
+
             if (currentFormSelectedMembers.length === 0) {
                 tbody.innerHTML = `
                     <tr id="emptySelectionRow">
-                        <td colspan="${isGolf ? 6 : 5}" class="p-6 text-center text-slate-400">
+                        <td colspan="${colSpan}" class="p-6 text-center text-slate-400">
                             👈 請從左側「社友名冊庫」勾選欲報名的社友
                         </td>
                     </tr>
@@ -2110,6 +2170,16 @@
             }
 
             tbody.innerHTML = currentFormSelectedMembers.map((m, idx) => {
+                const isMealOnly = (m.participation === '只用餐');
+                const participationCell = isSports ? `
+                    <td class="p-2 text-center bg-indigo-50/20 border-x border-indigo-50/60 whitespace-nowrap">
+                        <div class="inline-flex rounded-md p-0.5 bg-slate-100 border border-slate-200 text-[11px] font-bold">
+                            <button type="button" onclick="updateMemberParticipation(${idx}, '參賽')" class="px-2 py-0.5 rounded transition ${!isMealOnly ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}">參賽</button>
+                            <button type="button" onclick="updateMemberParticipation(${idx}, '只用餐')" class="px-2 py-0.5 rounded transition ${isMealOnly ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}">只用餐</button>
+                        </div>
+                    </td>
+                ` : '';
+
                 const handicapDisplay = (m.handicap !== undefined && m.handicap !== null && m.handicap !== '')
                     ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded font-mono text-[11px]">${m.handicap}</span>`
                     : `<span class="text-slate-300 font-mono">-</span>`;
@@ -2121,10 +2191,11 @@
                 ` : '';
 
                 return `
-                    <tr class="hover:bg-slate-50">
+                    <tr class="hover:bg-slate-50 transition">
                         <td class="p-2 font-medium text-slate-700">${m.role}</td>
                         <td class="p-2 font-mono text-slate-600">${m.nickname}</td>
                         <td class="p-2 font-bold text-slate-900">${m.name}</td>
+                        ${participationCell}
                         ${handicapCell}
                         <td class="p-2">
                             ${m.diet === 'VEGAN' ? `<span class="text-amber-700 font-bold">🌱 ${m.veganNote || '素食'}</span>` : '葷食'}
@@ -2527,6 +2598,7 @@
             currentInspectedOrder = order;
             currentInspectedSubEvent = subEventName;
             const isGolf = subEventName.includes("高爾夫");
+            const isSports = isCurrentEventSports() || subEventName.includes("球") || subEventName.includes("賽");
 
             document.getElementById('detailModalClubTitle').innerText = `${order.clubName} - 《${subEventName}》出席名冊`;
             
@@ -2535,13 +2607,19 @@
                               order.sponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社';
             document.getElementById('detailModalSubTitle').innerText = `贊助等級：${tierLabel} ($${(order.sponsorAmount||0).toLocaleString()}) | 提交時間：${order.submittedAt}`;
 
-            document.getElementById('detailModalTotalCount').innerText = `${order.items.length} 人`;
+            const competeCount = order.items.filter(i => i.participation !== '只用餐').length;
+            const mealOnlyCount = order.items.filter(i => i.participation === '只用餐').length;
+            document.getElementById('detailModalTotalCount').innerText = isSports ? `${order.items.length} 人 (${competeCount} 參賽 / ${mealOnlyCount} 只用餐)` : `${order.items.length} 人`;
+
             const veganCount = order.items.filter(i => i.diet === 'VEGAN').length;
             const meatCount = order.items.length - veganCount;
             document.getElementById('detailModalDietCount').innerText = `${meatCount} 葷 / ${veganCount} 素`;
 
             const avgHcap = calculateAvgHandicap(order.items);
             document.getElementById('detailModalAvgHandicap').innerText = avgHcap !== '--' ? `${avgHcap}` : '無差點記錄';
+
+            const thPart = document.getElementById('detailModalThParticipation');
+            if (thPart) thPart.classList.toggle('hidden', !isSports);
 
             const thHcap = document.getElementById('detailModalThHandicap');
             if (thHcap) thHcap.classList.toggle('hidden', !isGolf);
@@ -2560,6 +2638,13 @@
 
             const tbody = document.getElementById('detailModalTableBody');
             tbody.innerHTML = order.items.map(item => {
+                const isMealOnly = (item.participation === '只用餐');
+                const partCell = isSports ? `
+                    <td class="p-2.5 text-center bg-indigo-50/30 border-x border-indigo-50">
+                        ${isMealOnly ? '<span class="px-2 py-0.5 bg-amber-100 text-amber-800 font-bold rounded text-[11px]">🍽️ 只用餐</span>' : '<span class="px-2 py-0.5 bg-blue-100 text-blue-800 font-bold rounded text-[11px]">🏃 參賽</span>'}
+                    </td>
+                ` : '';
+
                 const handicapDisplay = (item.handicap !== undefined && item.handicap !== null && item.handicap !== '')
                     ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded font-mono text-[11px]">${item.handicap}</span>`
                     : `<span class="text-slate-300 font-mono">-</span>`;
@@ -2575,6 +2660,7 @@
                         <td class="p-2.5 font-medium text-slate-700">${item.role}</td>
                         <td class="p-2.5 font-mono text-slate-600">${item.nickname}</td>
                         <td class="p-2.5 font-bold text-slate-900">${item.name}</td>
+                        ${partCell}
                         ${handicapCell}
                         <td class="p-2.5">
                             ${item.diet === 'VEGAN' ? `<span class="text-amber-700 font-bold">🌱 素食 (${item.veganNote || '通用'})</span>` : '葷食'}
@@ -2594,12 +2680,14 @@
             if (!currentInspectedOrder) return;
             const order = currentInspectedOrder;
             const isGolf = (currentInspectedSubEvent || '').includes("高爾夫");
+            const isSports = isCurrentEventSports() || (currentInspectedSubEvent || '').includes("球") || (currentInspectedSubEvent || '').includes("賽");
             let lines = [];
             lines.push(isGolf ? `【${order.clubName} 出席名冊與高爾夫差點】` : `【${order.clubName} 出席名冊】`);
             order.items.forEach((item, idx) => {
+                const partStr = isSports ? ` [${item.participation || '參賽'}]` : '';
                 const hcapStr = (isGolf && item.handicap !== undefined && item.handicap !== '') ? ` | 差點: ${item.handicap}` : '';
                 const dietStr = item.diet === 'VEGAN' ? `素食(${item.veganNote||''})` : '葷食';
-                lines.push(`${idx + 1}. [${item.role}] ${item.name} (${item.nickname})${hcapStr} - ${dietStr}`);
+                lines.push(`${idx + 1}. [${item.role}] ${item.name} (${item.nickname})${partStr}${hcapStr} - ${dietStr}`);
             });
             navigator.clipboard.writeText(lines.join("\n")).then(() => {
                 showToast("📋 已複製該社名冊文字！");
@@ -2612,7 +2700,8 @@
             const cat = categoriesData.find(c => c.id === currentCatId);
             const subEventName = cat.subEvents[currentSubEventIndex];
             const orders = registrationOrders[subEventName] || [];
-            const isGolf = subEventName.includes("高爾夫");
+            const isGolf = isCurrentEventGolf();
+            const isSports = isCurrentEventSports();
 
             if (orders.length === 0) {
                 alert("目前尚無任何扶輪社提交此活動報名，無法產生報表！");
@@ -2622,7 +2711,9 @@
             // UTF-8 BOM (\uFEFF) ensures Windows Excel, Mac Numbers & Mobile Office apps open with zero gibberish
             let csvContent = "\uFEFF";
             if (isGolf) {
-                csvContent += "扶輪社名稱,贊助等級,贊助金額,出席社友姓名,今年職稱,Nick Name,高爾夫差點,飲食需求,素食細項備註,報名提交時間\n";
+                csvContent += "扶輪社名稱,贊助等級,贊助金額,出席社友姓名,今年職稱,Nick Name,參賽選項,高爾夫差點,飲食需求,素食細項備註,報名提交時間\n";
+            } else if (isSports) {
+                csvContent += "扶輪社名稱,贊助等級,贊助金額,出席社友姓名,今年職稱,Nick Name,參賽選項,飲食需求,素食細項備註,報名提交時間\n";
             } else {
                 csvContent += "扶輪社名稱,贊助等級,贊助金額,出席社友姓名,今年職稱,Nick Name,飲食需求,素食細項備註,報名提交時間\n";
             }
@@ -2634,28 +2725,48 @@
                 order.items.forEach(item => {
                     const dietLabel = item.diet === 'VEGAN' ? '素食' : '葷食';
                     const hcap = (item.handicap !== undefined && item.handicap !== null && item.handicap !== '') ? item.handicap : '-';
-                    const row = isGolf ? [
-                        `"${order.clubName}"`,
-                        `"${tierLabel}"`,
-                        order.sponsorAmount || 0,
-                        `"${item.name || ''}"`,
-                        `"${item.role || ''}"`,
-                        `"${item.nickname || ''}"`,
-                        `"${hcap}"`,
-                        `"${dietLabel}"`,
-                        `"${(item.veganNote || '').replace(/"/g, '""')}"`,
-                        `"${order.submittedAt || ''}"`
-                    ] : [
-                        `"${order.clubName}"`,
-                        `"${tierLabel}"`,
-                        order.sponsorAmount || 0,
-                        `"${item.name || ''}"`,
-                        `"${item.role || ''}"`,
-                        `"${item.nickname || ''}"`,
-                        `"${dietLabel}"`,
-                        `"${(item.veganNote || '').replace(/"/g, '""')}"`,
-                        `"${order.submittedAt || ''}"`
-                    ];
+                    const partLabel = item.participation || '參賽';
+                    let row;
+                    if (isGolf) {
+                        row = [
+                            `"${order.clubName}"`,
+                            `"${tierLabel}"`,
+                            order.sponsorAmount || 0,
+                            `"${item.name || ''}"`,
+                            `"${item.role || ''}"`,
+                            `"${item.nickname || ''}"`,
+                            `"${partLabel}"`,
+                            `"${hcap}"`,
+                            `"${dietLabel}"`,
+                            `"${(item.veganNote || '').replace(/"/g, '""')}"`,
+                            `"${order.submittedAt || ''}"`
+                        ];
+                    } else if (isSports) {
+                        row = [
+                            `"${order.clubName}"`,
+                            `"${tierLabel}"`,
+                            order.sponsorAmount || 0,
+                            `"${item.name || ''}"`,
+                            `"${item.role || ''}"`,
+                            `"${item.nickname || ''}"`,
+                            `"${partLabel}"`,
+                            `"${dietLabel}"`,
+                            `"${(item.veganNote || '').replace(/"/g, '""')}"`,
+                            `"${order.submittedAt || ''}"`
+                        ];
+                    } else {
+                        row = [
+                            `"${order.clubName}"`,
+                            `"${tierLabel}"`,
+                            order.sponsorAmount || 0,
+                            `"${item.name || ''}"`,
+                            `"${item.role || ''}"`,
+                            `"${item.nickname || ''}"`,
+                            `"${dietLabel}"`,
+                            `"${(item.veganNote || '').replace(/"/g, '""')}"`,
+                            `"${order.submittedAt || ''}"`
+                        ];
+                    }
                     csvContent += row.join(",") + "\n";
                 });
             });
@@ -2758,7 +2869,8 @@
                 else if (currentSelectedSponsorTier === 'SPONSOR') amount = chairConfig.feeSponsor;
             }
 
-            const isGolf = subEventName.includes("高爾夫");
+            const isGolf = isCurrentEventGolf();
+            const isSports = isCurrentEventSports();
             const avgHcap = calculateAvgHandicap(currentFormSelectedMembers);
 
             let lines = [];
@@ -2770,7 +2882,15 @@
             }
             const meatCount = currentFormSelectedMembers.filter(m => m.diet !== 'VEGAN').length;
             const veganCount = currentFormSelectedMembers.filter(m => m.diet === 'VEGAN').length;
-            lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length} 位 (葷食 ${meatCount} / 素食 ${veganCount})`);
+            const competeCount = currentFormSelectedMembers.filter(m => m.participation !== '只用餐').length;
+            const mealOnlyCount = currentFormSelectedMembers.filter(m => m.participation === '只用餐').length;
+
+            if (isSports) {
+                lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length} 位 (🏃參賽 ${competeCount} / 🍽️只用餐 ${mealOnlyCount} | 葷食 ${meatCount} / 素食 ${veganCount})`);
+            } else {
+                lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length} 位 (葷食 ${meatCount} / 素食 ${veganCount})`);
+            }
+
             if (isGolf && avgHcap !== '--') {
                 lines.push(`⛳ 球隊統計：平均差點 ${avgHcap}`);
             }
@@ -2782,7 +2902,8 @@
                 currentFormSelectedMembers.forEach((m, idx) => {
                     const dietStr = m.diet === 'VEGAN' ? `素食(${m.veganNote || '通用'})` : '葷食';
                     const hcapStr = (isGolf && m.handicap !== undefined && m.handicap !== null && m.handicap !== '') ? ` | ⛳差點: ${m.handicap}` : '';
-                    lines.push(`${idx + 1}. [${m.role}] ${m.name} (${m.nickname})${hcapStr} | ${dietStr}`);
+                    const partStr = isSports ? ` [${m.participation || '參賽'}]` : '';
+                    lines.push(`${idx + 1}. [${m.role}] ${m.name} (${m.nickname})${partStr}${hcapStr} | ${dietStr}`);
                 });
             }
             lines.push(`----------------------------------`);
