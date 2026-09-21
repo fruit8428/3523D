@@ -560,8 +560,8 @@
                 </div>
             </div>
 
-            <!-- Visual Charts Dashboard Section (Chart.js) -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
+            <!-- Visual Charts Dashboard Section (Chart.js) - 依附圖38：所有運動賽事自動隱藏此區塊 -->
+            <div id="chairVisualChartsSection" class="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
                 <!-- Chart 1: Registrations by Club -->
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 lg:col-span-2">
                     <h4 class="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
@@ -2707,6 +2707,12 @@
 
             const isSports = isCurrentEventSports() || subEventName.includes("球") || subEventName.includes("賽");
 
+            // 依附圖38：所有運動賽事皆不需要圖表 (隱藏各社即時報名人數分佈與飲食需求比例圖表)
+            const visualChartsSection = document.getElementById('chairVisualChartsSection');
+            if (visualChartsSection) {
+                visualChartsSection.classList.toggle('hidden', isSports);
+            }
+
             if (orders.length === 0) {
                 if (thead) {
                     thead.innerHTML = `
@@ -3224,6 +3230,8 @@
         }
 
         function updateChartsData(orders, meat, vegan) {
+            const visualChartsSection = document.getElementById('chairVisualChartsSection');
+            if (visualChartsSection && visualChartsSection.classList.contains('hidden')) return;
             if (!chartClubsInstance || !chartDietInstance) return;
 
             chartClubsInstance.data.labels = orders.map(o => o.clubName.replace('扶輪社', ''));
