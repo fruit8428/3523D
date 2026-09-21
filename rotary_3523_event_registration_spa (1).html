@@ -302,7 +302,7 @@
                             <h3 class="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-1.5">
                                 👥 <span id="currentClubNameTitle">臺北市南區扶輪社</span> 社友庫
                             </h3>
-                            <p class="text-[11px] text-slate-500">已整合<strong>高爾夫差點</strong>，預先維護一勞永逸</p>
+                            <p class="text-[11px] text-slate-500" id="masterDbSubDesc">已整合<strong>高爾夫差點</strong>，預先維護一勞永逸</p>
                         </div>
                         <button onclick="openAddMemberModal()" class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95">
                             ➕ 新增社友
@@ -322,7 +322,7 @@
                                     <th class="p-2 text-center w-10">選取</th>
                                     <th class="p-2">姓名 / 職務</th>
                                     <th class="p-2">Nick Name</th>
-                                    <th class="p-2 text-center bg-emerald-50 text-emerald-800 border-x border-emerald-100" title="高爾夫差點 (0-54)">⛳ 差點</th>
+                                    <th id="thMasterHandicap" class="p-2 text-center bg-emerald-50 text-emerald-800 border-x border-emerald-100" title="高爾夫差點 (0-54)">⛳ 差點</th>
                                     <th class="p-2">飲食</th>
                                     <th class="p-2 text-center w-14">操作</th>
                                 </tr>
@@ -334,7 +334,7 @@
                     </div>
 
                     <div class="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-400 flex justify-between items-center">
-                        <span>勾選社友自動代入右側報名表；點 ✏️ 可直接修正差點</span>
+                        <span id="masterDbFooterHint">勾選社友自動代入右側報名表；點 ✏️ 可直接修正差點</span>
                         <span id="masterMemberCount" class="font-bold text-slate-600">共 0 位社友</span>
                     </div>
                 </div>
@@ -386,7 +386,7 @@
                         <!-- Selected Participants Table -->
                         <div class="mb-4">
                             <div class="flex flex-wrap justify-between items-center mb-2 gap-1.5">
-                                <h4 class="text-xs font-bold text-slate-700">本次出席社友名冊 (自動帶入差點與快照):</h4>
+                                <h4 class="text-xs font-bold text-slate-700" id="selectedRosterTitle">本次出席社友名冊 (自動帶入差點與快照):</h4>
                                 <div class="text-[11px] flex items-center gap-1.5 flex-wrap">
                                     <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">總人數: <b id="selectedTotalCount">0</b> 名</span>
                                     <span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-medium">素食: <b id="selectedVeganCount">0</b> 名</span>
@@ -401,7 +401,7 @@
                                             <th class="p-2">職務</th>
                                             <th class="p-2">Nick Name</th>
                                             <th class="p-2">中文姓名</th>
-                                            <th class="p-2 text-center bg-emerald-50 text-emerald-800 border-x border-emerald-100">⛳ 差點</th>
+                                            <th id="thSelectedHandicap" class="p-2 text-center bg-emerald-50 text-emerald-800 border-x border-emerald-100">⛳ 差點</th>
                                             <th class="p-2">飲食需求</th>
                                             <th class="p-2 text-center w-12">操作</th>
                                         </tr>
@@ -556,8 +556,8 @@
             <!-- Detailed Club Registration Table in Chair View -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
                 <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
-                    <h4 class="text-sm font-bold text-slate-800">📋 各社已提交報名明細與名冊清單 (支援檢視各社差點)</h4>
-                    <span class="text-xs text-slate-400">點擊「🔍 名單明細」即可查看該社出席社友名冊與高爾夫差點</span>
+                    <h4 class="text-sm font-bold text-slate-800" id="chairRosterListTitle">📋 各社已提交報名明細與名冊清單</h4>
+                    <span class="text-xs text-slate-400" id="chairRosterListSub">點擊「🔍 名單明細」即可查看該社出席社友名冊</span>
                 </div>
                 <div class="overflow-x-auto touch-scroll">
                     <table class="w-full text-left text-xs min-w-[580px]">
@@ -569,7 +569,7 @@
                                 <th class="p-2.5">報名人數</th>
                                 <th class="p-2.5">素食人數</th>
                                 <th class="p-2.5">提交時間</th>
-                                <th class="p-2.5 text-center">出席明細與差點</th>
+                                <th class="p-2.5 text-center" id="chairThRosterAction">出席名冊明細</th>
                             </tr>
                         </thead>
                         <tbody id="chairDetailedOrdersTable" class="divide-y divide-slate-100">
@@ -744,8 +744,8 @@
                     </div>
                 </div>
 
-                <!-- GOLF HANDICAP FIELD (高爾夫差點) -->
-                <div class="bg-emerald-50/80 p-3 rounded-xl border border-emerald-200">
+                <!-- GOLF HANDICAP FIELD (高爾夫差點 - 僅高爾夫賽事顯示) -->
+                <div id="modalHandicapContainer" class="bg-emerald-50/80 p-3 rounded-xl border border-emerald-200">
                     <div class="flex justify-between items-center mb-1">
                         <label class="font-bold text-emerald-900 flex items-center gap-1">
                             <span>⛳ 高爾夫差點 (Handicap)：</span>
@@ -933,7 +933,7 @@
             </div>
 
             <!-- Stats Bar -->
-            <div class="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4 text-center text-xs">
+            <div id="detailModalStatsGrid" class="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4 text-center text-xs">
                 <div>
                     <span class="text-slate-500 block text-[10px]">總報名人數</span>
                     <strong class="text-base text-slate-900" id="detailModalTotalCount">0 人</strong>
@@ -942,7 +942,7 @@
                     <span class="text-slate-500 block text-[10px]">葷 / 素統計</span>
                     <strong class="text-base text-amber-700" id="detailModalDietCount">0 / 0</strong>
                 </div>
-                <div>
+                <div id="detailModalAvgHandicapBox">
                     <span class="text-slate-500 block text-[10px]">⛳ 選手平均差點</span>
                     <strong class="text-base text-emerald-700" id="detailModalAvgHandicap">--</strong>
                 </div>
@@ -956,7 +956,7 @@
                             <th class="p-2.5">職務</th>
                             <th class="p-2.5">Nick Name</th>
                             <th class="p-2.5">中文姓名</th>
-                            <th class="p-2.5 text-center bg-emerald-50 text-emerald-800 border-x border-emerald-100">⛳ 高爾夫差點</th>
+                            <th id="detailModalThHandicap" class="p-2.5 text-center bg-emerald-50 text-emerald-800 border-x border-emerald-100">⛳ 高爾夫差點</th>
                             <th class="p-2.5">飲食習慣 / 備註</th>
                         </tr>
                     </thead>
@@ -1669,6 +1669,7 @@
 
         // Current selected order for detail modal inspection
         let currentInspectedOrder = null;
+        let currentInspectedSubEvent = null;
 
         // Chart.js References
         let chartClubsInstance = null;
@@ -1917,6 +1918,13 @@
             return (sum / valid.length).toFixed(1);
         }
 
+        // 判斷當前子活動是否為高爾夫賽事 (差點僅高爾夫顯示)
+        function isCurrentEventGolf() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            if (!cat || !cat.subEvents || !cat.subEvents[currentSubEventIndex]) return false;
+            return cat.subEvents[currentSubEventIndex].includes("高爾夫");
+        }
+
         // ================= SECRETARY & MEMBER MASTER LOGIC =================
 
         function populateClubSelector() {
@@ -1960,6 +1968,25 @@
         }
 
         function renderMemberMasterTable() {
+            const isGolf = isCurrentEventGolf();
+            const thMaster = document.getElementById('thMasterHandicap');
+            if (thMaster) thMaster.classList.toggle('hidden', !isGolf);
+
+            const searchInput = document.getElementById('memberSearchInput');
+            if (searchInput) {
+                searchInput.placeholder = isGolf ? "🔍 快速搜尋社友姓名 / 職稱 / 差點..." : "🔍 快速搜尋社友姓名 / 職稱 / Nick Name...";
+            }
+
+            const subDesc = document.getElementById('masterDbSubDesc');
+            if (subDesc) {
+                subDesc.innerHTML = isGolf ? "已整合<strong>高爾夫差點</strong>，預先維護一勞永逸" : "點選社友即可自動代入報名名冊，支援跨平台即時同步";
+            }
+
+            const footerHint = document.getElementById('masterDbFooterHint');
+            if (footerHint) {
+                footerHint.innerText = isGolf ? "勾選社友自動代入右側報名表；點 ✏️ 可直接修正差點" : "勾選社友自動代入右側報名表；點 ✏️ 可直接修改社友資料";
+            }
+
             const members = clubMemberDatabase[selectedClubName] || [];
             const tbody = document.getElementById('memberMasterTableBody');
             const searchKeyword = (document.getElementById('memberSearchInput').value || '').trim().toLowerCase();
@@ -1970,13 +1997,13 @@
                 return (m.name && m.name.toLowerCase().includes(searchKeyword)) ||
                        (m.nickname && m.nickname.toLowerCase().includes(searchKeyword)) ||
                        (m.role && m.role.toLowerCase().includes(searchKeyword)) ||
-                       hcapStr.includes(searchKeyword);
+                       (isGolf && hcapStr.includes(searchKeyword));
             });
 
             document.getElementById('masterMemberCount').innerText = `共 ${members.length} 位社友`;
 
             if (filteredMembers.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">查無符合社友，請新增或修改搜尋關鍵字</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="${isGolf ? 6 : 5}" class="p-4 text-center text-slate-400">查無符合社友，請新增或修改搜尋關鍵字</td></tr>`;
                 return;
             }
 
@@ -1985,6 +2012,12 @@
                 const handicapDisplay = (m.handicap !== undefined && m.handicap !== null && m.handicap !== '')
                     ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded font-mono text-[11px]">${m.handicap}</span>`
                     : `<span class="text-slate-300 font-mono">-</span>`;
+
+                const handicapCell = isGolf ? `
+                    <td class="p-2 text-center bg-emerald-50/40 border-x border-emerald-50">
+                        ${handicapDisplay}
+                    </td>
+                ` : '';
 
                 return `
                     <tr class="hover:bg-slate-50 transition">
@@ -1996,16 +2029,14 @@
                             <span class="px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded text-[10px] font-semibold">${m.role}</span>
                         </td>
                         <td class="p-2 font-mono font-medium text-slate-600">${m.nickname || '-'}</td>
-                        <td class="p-2 text-center bg-emerald-50/40 border-x border-emerald-50">
-                            ${handicapDisplay}
-                        </td>
+                        ${handicapCell}
                         <td class="p-2">
                             ${m.diet === 'VEGAN' 
                                 ? `<span class="text-amber-700 font-bold" title="${m.veganNote || ''}">🌱 素食</span>`
                                 : `<span class="text-slate-400">葷食</span>`}
                         </td>
                         <td class="p-2 text-center space-x-1 whitespace-nowrap">
-                            <button onclick="openAddMemberModal(${m.id})" title="編輯社友/差點" class="text-blue-600 hover:text-blue-800 p-1 font-bold">✏️</button>
+                            <button onclick="openAddMemberModal(${m.id})" title="${isGolf ? '編輯社友/差點' : '編輯社友'}" class="text-blue-600 hover:text-blue-800 p-1 font-bold">✏️</button>
                             <button onclick="deleteMember(${m.id})" title="刪除社友" class="text-red-400 hover:text-red-600 p-1 font-bold">🗑️</button>
                         </td>
                     </tr>
@@ -2044,6 +2075,18 @@
         }
 
         function renderSelectedMembersTable() {
+            const isGolf = isCurrentEventGolf();
+            const thHcap = document.getElementById('thSelectedHandicap');
+            if (thHcap) thHcap.classList.toggle('hidden', !isGolf);
+
+            const avgBox = document.getElementById('selectedAvgHandicapBox');
+            if (avgBox) avgBox.classList.toggle('hidden', !isGolf);
+
+            const rosterTitle = document.getElementById('selectedRosterTitle');
+            if (rosterTitle) {
+                rosterTitle.innerText = isGolf ? '本次出席社友名冊 (自動帶入差點與快照):' : '本次出席社友名冊 (快照固化保護):';
+            }
+
             const tbody = document.getElementById('selectedMembersTableBody');
             const total = currentFormSelectedMembers.length;
             document.getElementById('selectedTotalCount').innerText = total;
@@ -2058,7 +2101,7 @@
             if (currentFormSelectedMembers.length === 0) {
                 tbody.innerHTML = `
                     <tr id="emptySelectionRow">
-                        <td colspan="6" class="p-6 text-center text-slate-400">
+                        <td colspan="${isGolf ? 6 : 5}" class="p-6 text-center text-slate-400">
                             👈 請從左側「社友名冊庫」勾選欲報名的社友
                         </td>
                     </tr>
@@ -2071,14 +2114,18 @@
                     ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded font-mono text-[11px]">${m.handicap}</span>`
                     : `<span class="text-slate-300 font-mono">-</span>`;
 
+                const handicapCell = isGolf ? `
+                    <td class="p-2 text-center bg-emerald-50/40 border-x border-emerald-50">
+                        ${handicapDisplay}
+                    </td>
+                ` : '';
+
                 return `
                     <tr class="hover:bg-slate-50">
                         <td class="p-2 font-medium text-slate-700">${m.role}</td>
                         <td class="p-2 font-mono text-slate-600">${m.nickname}</td>
                         <td class="p-2 font-bold text-slate-900">${m.name}</td>
-                        <td class="p-2 text-center bg-emerald-50/40 border-x border-emerald-50">
-                            ${handicapDisplay}
-                        </td>
+                        ${handicapCell}
                         <td class="p-2">
                             ${m.diet === 'VEGAN' ? `<span class="text-amber-700 font-bold">🌱 ${m.veganNote || '素食'}</span>` : '葷食'}
                         </td>
@@ -2168,12 +2215,18 @@
             const modal = document.getElementById('addMemberModal');
             const title = document.getElementById('memberModalTitle');
             const editIdInput = document.getElementById('mEditId');
+            const isGolf = isCurrentEventGolf();
+
+            const hcapBox = document.getElementById('modalHandicapContainer');
+            if (hcapBox) hcapBox.classList.toggle('hidden', !isGolf);
 
             if (memberId) {
                 const members = clubMemberDatabase[selectedClubName] || [];
                 const target = members.find(m => m.id === memberId);
                 if (target) {
-                    title.innerHTML = `✏️ 編輯社友資料與差點：<span class="text-blue-600">${target.name}</span>`;
+                    title.innerHTML = isGolf 
+                        ? `✏️ 編輯社友資料與差點：<span class="text-blue-600">${target.name}</span>`
+                        : `✏️ 編輯社友資料：<span class="text-blue-600">${target.name}</span>`;
                     editIdInput.value = target.id;
                     document.getElementById('mRole').value = target.role || '社友';
                     document.getElementById('mNickname').value = target.nickname || '';
@@ -2215,8 +2268,15 @@
             const role = document.getElementById('mRole').value;
             const nickname = document.getElementById('mNickname').value.trim();
             const name = document.getElementById('mChineseName').value.trim();
-            const handicapVal = document.getElementById('mHandicap').value.trim();
-            const handicap = handicapVal !== '' ? parseFloat(handicapVal) : '';
+            const isGolf = isCurrentEventGolf();
+            let handicap = '';
+            if (isGolf) {
+                const handicapVal = document.getElementById('mHandicap').value.trim();
+                handicap = handicapVal !== '' ? parseFloat(handicapVal) : '';
+            } else if (editId) {
+                const existing = clubMemberDatabase[selectedClubName]?.find(m => m.id === parseInt(editId));
+                handicap = existing && existing.handicap !== undefined ? existing.handicap : '';
+            }
             const diet = document.querySelector('input[name="mDiet"]:checked').value;
             const veganNote = diet === 'VEGAN' ? document.getElementById('mVeganNote').value.trim() : '';
 
@@ -2236,7 +2296,7 @@
                         handicap
                     };
                 }
-                showToast(`✅ 已更新社友【${name}】的資料與高爾夫差點！`);
+                showToast(isGolf ? `✅ 已更新社友【${name}】的資料與高爾夫差點！` : `✅ 已更新社友【${name}】的資料！`);
             } else {
                 // Add new member
                 const newMember = {
@@ -2344,17 +2404,27 @@
             document.getElementById('kpiTotalSponsorship').innerText = `$${totalSponsorship.toLocaleString()}`;
             document.getElementById('kpiSponsorClubsDetail').innerText = `共同主辦 ${countCoHost} | 協辦 ${countOrganizer} | 贊助 ${countSponsor}`;
 
-            // Calculate overall golf stats for 4th card
+            // Calculate overall golf stats for 4th card & table titles
             const isGolf = subEventName.includes("高爾夫");
+            const titleEl = document.getElementById('chairRosterListTitle');
+            const subEl = document.getElementById('chairRosterListSub');
+            const thActionEl = document.getElementById('chairThRosterAction');
+
             if (isGolf) {
                 document.getElementById('kpiFourthCardTitle').innerText = '⛳ 參賽選手平均差點';
                 const overallAvgHcap = calculateAvgHandicap(allParticipants);
                 document.getElementById('kpiGolfSummary').innerText = overallAvgHcap !== '--' ? `${overallAvgHcap}` : '尚無差點數據';
                 document.getElementById('kpiGolfSub').innerText = `共 ${allParticipants.filter(p => p.handicap !== '' && p.handicap !== undefined).length} 位選手已登記差點`;
+                if (titleEl) titleEl.innerText = '📋 各社已提交報名明細與名冊清單 (支援檢視各社差點)';
+                if (subEl) subEl.innerText = '點擊「🔍 名單明細」即可查看該社出席社友名冊與高爾夫差點';
+                if (thActionEl) thActionEl.innerText = '出席明細與差點';
             } else {
                 document.getElementById('kpiFourthCardTitle').innerText = '系統封存狀態';
                 document.getElementById('kpiGolfSummary').innerText = isEventLockedToday ? '🔒 已封存唯讀' : '🟢 進行中 (可編修)';
                 document.getElementById('kpiGolfSub').innerText = '當天 00:00 觸發唯讀';
+                if (titleEl) titleEl.innerText = '📋 各社已提交報名明細與名冊清單';
+                if (subEl) subEl.innerText = '點擊「🔍 名單明細」即可查看該社出席社友名冊';
+                if (thActionEl) thActionEl.innerText = '出席名冊明細';
             }
 
             // Render Detailed Orders Table in Chair View
@@ -2455,6 +2525,9 @@
             if (!order) return;
 
             currentInspectedOrder = order;
+            currentInspectedSubEvent = subEventName;
+            const isGolf = subEventName.includes("高爾夫");
+
             document.getElementById('detailModalClubTitle').innerText = `${order.clubName} - 《${subEventName}》出席名冊`;
             
             const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
@@ -2470,22 +2543,41 @@
             const avgHcap = calculateAvgHandicap(order.items);
             document.getElementById('detailModalAvgHandicap').innerText = avgHcap !== '--' ? `${avgHcap}` : '無差點記錄';
 
+            const thHcap = document.getElementById('detailModalThHandicap');
+            if (thHcap) thHcap.classList.toggle('hidden', !isGolf);
+
+            const avgBox = document.getElementById('detailModalAvgHandicapBox');
+            if (avgBox) avgBox.classList.toggle('hidden', !isGolf);
+
+            const statsGrid = document.getElementById('detailModalStatsGrid');
+            if (statsGrid) {
+                if (isGolf) {
+                    statsGrid.className = "grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4 text-center text-xs";
+                } else {
+                    statsGrid.className = "grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4 text-center text-xs";
+                }
+            }
+
             const tbody = document.getElementById('detailModalTableBody');
             tbody.innerHTML = order.items.map(item => {
                 const handicapDisplay = (item.handicap !== undefined && item.handicap !== null && item.handicap !== '')
                     ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded font-mono text-[11px]">${item.handicap}</span>`
                     : `<span class="text-slate-300 font-mono">-</span>`;
 
+                const handicapCell = isGolf ? `
+                    <td class="p-2.5 text-center bg-emerald-50/40 border-x border-emerald-50">
+                        ${handicapDisplay}
+                    </td>
+                ` : '';
+
                 return `
                     <tr class="hover:bg-slate-50">
                         <td class="p-2.5 font-medium text-slate-700">${item.role}</td>
                         <td class="p-2.5 font-mono text-slate-600">${item.nickname}</td>
                         <td class="p-2.5 font-bold text-slate-900">${item.name}</td>
-                        <td class="p-2.5 text-center bg-emerald-50/40 border-x border-emerald-50">
-                            ${handicapDisplay}
-                        </td>
+                        ${handicapCell}
                         <td class="p-2.5">
-                            ${item.diet === 'VEGAN' ? `<span class="text-amber-700 font-bold">🌱 素食 (${item.veganNote || '通用'})` : '葷食'}
+                            ${item.diet === 'VEGAN' ? `<span class="text-amber-700 font-bold">🌱 素食 (${item.veganNote || '通用'})</span>` : '葷食'}
                         </td>
                     </tr>
                 `;
@@ -2501,10 +2593,11 @@
         function copyClubOrderRosterText() {
             if (!currentInspectedOrder) return;
             const order = currentInspectedOrder;
+            const isGolf = (currentInspectedSubEvent || '').includes("高爾夫");
             let lines = [];
-            lines.push(`【${order.clubName} 出席名冊與高爾夫差點】`);
+            lines.push(isGolf ? `【${order.clubName} 出席名冊與高爾夫差點】` : `【${order.clubName} 出席名冊】`);
             order.items.forEach((item, idx) => {
-                const hcapStr = (item.handicap !== undefined && item.handicap !== '') ? ` | 差點: ${item.handicap}` : '';
+                const hcapStr = (isGolf && item.handicap !== undefined && item.handicap !== '') ? ` | 差點: ${item.handicap}` : '';
                 const dietStr = item.diet === 'VEGAN' ? `素食(${item.veganNote||''})` : '葷食';
                 lines.push(`${idx + 1}. [${item.role}] ${item.name} (${item.nickname})${hcapStr} - ${dietStr}`);
             });
@@ -2519,6 +2612,7 @@
             const cat = categoriesData.find(c => c.id === currentCatId);
             const subEventName = cat.subEvents[currentSubEventIndex];
             const orders = registrationOrders[subEventName] || [];
+            const isGolf = subEventName.includes("高爾夫");
 
             if (orders.length === 0) {
                 alert("目前尚無任何扶輪社提交此活動報名，無法產生報表！");
@@ -2527,7 +2621,11 @@
 
             // UTF-8 BOM (\uFEFF) ensures Windows Excel, Mac Numbers & Mobile Office apps open with zero gibberish
             let csvContent = "\uFEFF";
-            csvContent += "扶輪社名稱,贊助等級,贊助金額,出席社友姓名,今年職稱,Nick Name,高爾夫差點,飲食需求,素食細項備註,報名提交時間\n";
+            if (isGolf) {
+                csvContent += "扶輪社名稱,贊助等級,贊助金額,出席社友姓名,今年職稱,Nick Name,高爾夫差點,飲食需求,素食細項備註,報名提交時間\n";
+            } else {
+                csvContent += "扶輪社名稱,贊助等級,贊助金額,出席社友姓名,今年職稱,Nick Name,飲食需求,素食細項備註,報名提交時間\n";
+            }
 
             orders.forEach(order => {
                 const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
@@ -2536,7 +2634,7 @@
                 order.items.forEach(item => {
                     const dietLabel = item.diet === 'VEGAN' ? '素食' : '葷食';
                     const hcap = (item.handicap !== undefined && item.handicap !== null && item.handicap !== '') ? item.handicap : '-';
-                    const row = [
+                    const row = isGolf ? [
                         `"${order.clubName}"`,
                         `"${tierLabel}"`,
                         order.sponsorAmount || 0,
@@ -2544,6 +2642,16 @@
                         `"${item.role || ''}"`,
                         `"${item.nickname || ''}"`,
                         `"${hcap}"`,
+                        `"${dietLabel}"`,
+                        `"${(item.veganNote || '').replace(/"/g, '""')}"`,
+                        `"${order.submittedAt || ''}"`
+                    ] : [
+                        `"${order.clubName}"`,
+                        `"${tierLabel}"`,
+                        order.sponsorAmount || 0,
+                        `"${item.name || ''}"`,
+                        `"${item.role || ''}"`,
+                        `"${item.nickname || ''}"`,
                         `"${dietLabel}"`,
                         `"${(item.veganNote || '').replace(/"/g, '""')}"`,
                         `"${order.submittedAt || ''}"`
@@ -2673,7 +2781,7 @@
             } else {
                 currentFormSelectedMembers.forEach((m, idx) => {
                     const dietStr = m.diet === 'VEGAN' ? `素食(${m.veganNote || '通用'})` : '葷食';
-                    const hcapStr = (m.handicap !== undefined && m.handicap !== null && m.handicap !== '') ? ` | ⛳差點: ${m.handicap}` : '';
+                    const hcapStr = (isGolf && m.handicap !== undefined && m.handicap !== null && m.handicap !== '') ? ` | ⛳差點: ${m.handicap}` : '';
                     lines.push(`${idx + 1}. [${m.role}] ${m.name} (${m.nickname})${hcapStr} | ${dietStr}`);
                 });
             }
