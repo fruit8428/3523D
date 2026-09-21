@@ -584,7 +584,13 @@
             <!-- Detailed Club Registration Table in Chair View -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
                 <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
-                    <h4 class="text-sm font-bold text-slate-800" id="chairRosterListTitle">📋 各社已提交報名明細與名冊清單</h4>
+                    <div class="flex items-center gap-2.5 flex-wrap">
+                        <h4 class="text-sm font-bold text-slate-800" id="chairRosterListTitle">📋 各社已提交報名明細與名冊清單</h4>
+                        <button id="btnToggleAllOrdersRoster" onclick="toggleAllChairOrdersRoster()" class="px-3 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-300 rounded-lg text-xs font-bold transition shadow-sm inline-flex items-center gap-1 active:scale-95 whitespace-nowrap">
+                            <span id="btnToggleAllOrdersRosterIcon">📂</span>
+                            <span id="btnToggleAllOrdersRosterText">全部展開</span>
+                        </button>
+                    </div>
                     <span class="text-xs text-slate-400" id="chairRosterListSub">點擊「🔍 名單明細」即可查看該社出席社友名冊</span>
                 </div>
                 <div class="overflow-x-auto touch-scroll">
@@ -1715,6 +1721,9 @@
         let currentInspectedOrder = null;
         let currentInspectedSubEvent = null;
 
+        // Expanded roster state for Chair Dashboard (全部展開 / 單社展開)
+        let expandedChairOrderIndices = new Set();
+
         // Chart.js References
         let chartClubsInstance = null;
         let chartDietInstance = null;
@@ -1951,6 +1960,9 @@
 
             // Apply iPhone Pro 2款輪流換色
             applyEventColorTheme();
+
+            // Reset expanded roster state for Chair Dashboard
+            if (expandedChairOrderIndices) expandedChairOrderIndices.clear();
 
             // Load existing selections for current club
             const activeOrders = registrationOrders[subEventName] || [];
@@ -2677,13 +2689,51 @@
 
             // Render Detailed Orders Table in Chair View
             const tbody = document.getElementById('chairDetailedOrdersTable');
+            const btnToggleAll = document.getElementById('btnToggleAllOrdersRoster');
+            const btnToggleAllText = document.getElementById('btnToggleAllOrdersRosterText');
+            const btnToggleAllIcon = document.getElementById('btnToggleAllOrdersRosterIcon');
+
             if (orders.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">目前尚無任何扶輪社送出報名表</td></tr>`;
+                if (btnToggleAll) {
+                    btnToggleAll.disabled = true;
+                    btnToggleAll.classList.add('opacity-50', 'cursor-not-allowed');
+                }
             } else {
+                const allExpanded = orders.length > 0 && orders.every((_, idx) => expandedChairOrderIndices.has(idx));
+                if (btnToggleAll) {
+                    btnToggleAll.disabled = false;
+                    btnToggleAll.classList.remove('opacity-50', 'cursor-not-allowed');
+                    if (allExpanded) {
+                        btnToggleAll.className = "px-3 py-1 bg-purple-600 text-white border-2 border-purple-600 rounded-lg text-xs font-bold transition shadow-sm inline-flex items-center gap-1 active:scale-95 whitespace-nowrap hover:bg-purple-700";
+                    } else {
+                        btnToggleAll.className = "px-3 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border-2 border-purple-500 rounded-lg text-xs font-bold transition shadow-sm inline-flex items-center gap-1 active:scale-95 whitespace-nowrap";
+                    }
+                }
+                if (btnToggleAllText) btnToggleAllText.innerText = allExpanded ? '全部收合' : '全部展開';
+                if (btnToggleAllIcon) btnToggleAllIcon.innerText = allExpanded ? '📁' : '📂';
+
+                const isSports = isCurrentEventSports() || subEventName.includes("球") || subEventName.includes("賽");
+
                 tbody.innerHTML = orders.map((o, idx) => {
-                    return `
-                        <tr class="hover:bg-slate-50 transition">
-                            <td class="p-2.5 font-bold text-slate-900">${o.clubName}</td>
+                    const isExpanded = expandedChairOrderIndices.has(idx);
+                    const competeCount = o.items.filter(i => i.participation !== '只用餐').length;
+                    const mealOnlyCount = o.items.filter(i => i.participation === '只用餐').length;
+                    const totalOrderFee = isSports ? calculateTotalParticipantsFee(o.items) : 0;
+                    const sponsorAmount = o.sponsorAmount || 0;
+                    const grandTotal = totalOrderFee + sponsorAmount;
+                    const avgHcap = isGolf ? calculateAvgHandicap(o.items) : '--';
+
+                    const mainRow = `
+                        <tr class="hover:bg-slate-50 transition border-t border-slate-100 ${isExpanded ? 'bg-purple-50/20' : ''}">
+                            <td class="p-2.5 font-bold text-slate-900">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="cursor-pointer select-none text-purple-600 text-xs hover:scale-110 transition" onclick="toggleSingleChairOrderRoster(${idx}, event)" title="${isExpanded ? '點擊收合名冊' : '點擊展開名冊'}">
+                                        ${isExpanded ? '▼' : '▶'}
+                                    </span>
+                                    <span>${o.clubName}</span>
+                                </div>
+                            </td>
                             <td class="p-2.5">
                                 <span class="px-2 py-0.5 rounded text-[10px] font-bold ${
                                     o.sponsorTier === 'CO_HOST' ? 'bg-amber-100 text-amber-800' :
@@ -2699,18 +2749,153 @@
                             <td class="p-2.5 font-bold text-slate-900">${o.items.length} 人</td>
                             <td class="p-2.5 text-amber-700 font-bold">${o.items.filter(i => i.diet === 'VEGAN').length} 人</td>
                             <td class="p-2.5 text-slate-400 font-mono text-[11px]">${o.submittedAt}</td>
-                            <td class="p-2.5 text-center">
-                                <button onclick="openOrderDetailModal('${subEventName}', ${idx})" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded font-bold text-[11px] inline-flex items-center gap-1 mx-auto shadow-sm">
-                                    <span>🔍 名單明細</span>
-                                </button>
+                            <td class="p-2.5 text-center whitespace-nowrap">
+                                <div class="inline-flex items-center gap-1.5 justify-center">
+                                    <button onclick="toggleSingleChairOrderRoster(${idx}, event)" class="px-2 py-1 ${isExpanded ? 'bg-purple-100 text-purple-800 border-purple-300' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-300'} border rounded font-bold text-[11px] inline-flex items-center gap-1 shadow-sm transition active:scale-95">
+                                        <span>${isExpanded ? '▲ 收合' : '▼ 展開'}</span>
+                                    </button>
+                                    <button onclick="openOrderDetailModal('${subEventName}', ${idx})" class="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded font-bold text-[11px] inline-flex items-center gap-1 shadow-sm active:scale-95">
+                                        <span>🔍 名單明細</span>
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     `;
+
+                    if (!isExpanded) {
+                        return mainRow;
+                    }
+
+                    // Expanded roster sub-row
+                    const expandedRow = `
+                        <tr id="chairOrderRosterRow_${idx}" class="bg-slate-50/80 border-b-2 border-purple-200">
+                            <td colspan="7" class="p-2.5 sm:p-3.5">
+                                <div class="bg-white rounded-lg border border-purple-200 shadow-sm overflow-hidden">
+                                    <!-- Header summary bar of club's roster -->
+                                    <div class="bg-purple-50/70 px-3.5 py-2 border-b border-purple-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <span class="font-extrabold text-purple-900 text-xs sm:text-sm">👥 【${o.clubName}】出席名冊全覽 (${o.items.length} 位)</span>
+                                            ${isSports ? `
+                                                <span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[11px]">🏃 參賽 ${competeCount} 人</span>
+                                                <span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold text-[11px]">🍽️ 只用餐 ${mealOnlyCount} 人</span>
+                                            ` : ''}
+                                            ${isGolf ? `
+                                                <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold text-[11px]">⛳ 平均差點：${avgHcap}</span>
+                                            ` : ''}
+                                        </div>
+                                        <div class="flex items-center gap-2 flex-wrap text-slate-600 font-medium">
+                                            ${isSports ? `<span class="text-blue-700 font-bold">出席費用: $${totalOrderFee.toLocaleString()}</span>` : ''}
+                                            ${sponsorAmount > 0 ? `<span class="text-emerald-700 font-bold">贊助: $${sponsorAmount.toLocaleString()}</span>` : ''}
+                                            ${(isSports || sponsorAmount > 0) ? `<span class="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded font-extrabold font-mono text-xs">應繳總計: $${grandTotal.toLocaleString()}元</span>` : ''}
+                                            <button onclick="copyClubOrderRosterTextByIndex('${subEventName}', ${idx})" class="ml-1 px-2 py-0.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded text-[11px] font-bold inline-flex items-center gap-1 shadow-sm active:scale-95" title="複製此社報名名冊文字">
+                                                📋 複製名冊
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <!-- Participant Items Table -->
+                                    <div class="overflow-x-auto touch-scroll">
+                                        <table class="w-full text-left text-xs divide-y divide-slate-100">
+                                            <thead class="bg-slate-50 text-slate-600 font-bold">
+                                                <tr>
+                                                    <th class="p-2 text-center w-10">#</th>
+                                                    <th class="p-2">職務</th>
+                                                    <th class="p-2">Nick Name</th>
+                                                    <th class="p-2">中文姓名</th>
+                                                    ${isSports ? '<th class="p-2 text-center">參賽選項</th>' : ''}
+                                                    ${isGolf ? '<th class="p-2 text-center">⛳ 差點</th>' : ''}
+                                                    <th class="p-2">飲食需求</th>
+                                                    ${isSports ? '<th class="p-2 text-center">費用</th>' : ''}
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-slate-100">
+                                                ${o.items.map((item, pIdx) => {
+                                                    const isMealOnly = (item.participation === '只用餐');
+                                                    const partCell = isSports ? `
+                                                        <td class="p-2 text-center">
+                                                            ${isMealOnly ? '<span class="px-2 py-0.5 bg-amber-100 text-amber-800 font-bold rounded text-[10px]">🍽️ 只用餐</span>' : '<span class="px-2 py-0.5 bg-blue-100 text-blue-800 font-bold rounded text-[10px]">🏃 參賽</span>'}
+                                                        </td>
+                                                    ` : '';
+                                                    const handicapDisplay = (item.handicap !== undefined && item.handicap !== null && item.handicap !== '')
+                                                        ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded font-mono text-[10px]">${item.handicap}</span>`
+                                                        : `<span class="text-slate-300 font-mono">-</span>`;
+                                                    const handicapCell = isGolf ? `
+                                                        <td class="p-2 text-center">
+                                                            ${handicapDisplay}
+                                                        </td>
+                                                    ` : '';
+                                                    const rowFee = getMemberFee(item);
+                                                    const feeCell = isSports ? `
+                                                        <td class="p-2 text-center font-mono font-bold">
+                                                            <span class="${isMealOnly ? 'text-amber-700 bg-amber-50' : 'text-blue-700 bg-blue-50'} px-2 py-0.5 rounded text-[11px]">$${rowFee.toLocaleString()}</span>
+                                                        </td>
+                                                    ` : '';
+                                                    return `
+                                                        <tr class="hover:bg-purple-50/30 transition">
+                                                            <td class="p-2 text-center text-slate-400 font-mono">${pIdx + 1}</td>
+                                                            <td class="p-2 font-medium text-slate-700">${item.role || '社友'}</td>
+                                                            <td class="p-2 font-mono text-slate-600">${item.nickname || ''}</td>
+                                                            <td class="p-2 font-bold text-slate-900">${item.name}</td>
+                                                            ${partCell}
+                                                            ${handicapCell}
+                                                            <td class="p-2">
+                                                                ${item.diet === 'VEGAN' ? `<span class="text-amber-700 font-bold">🌱 素食 (${item.veganNote || '通用'})</span>` : '<span class="text-slate-600">葷食</span>'}
+                                                            </td>
+                                                            ${feeCell}
+                                                        </tr>
+                                                    `;
+                                                }).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+
+                    return mainRow + expandedRow;
                 }).join('');
             }
 
             // Update Chart.js Graphics
             updateChartsData(orders, meatCount, veganCount);
+        }
+
+        // Toggle all clubs roster expand/collapse in chair view
+        function toggleAllChairOrdersRoster() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            if (!cat || !cat.subEvents || !cat.subEvents[currentSubEventIndex]) return;
+            const subEventName = cat.subEvents[currentSubEventIndex];
+            const orders = registrationOrders[subEventName] || [];
+            if (orders.length === 0) return;
+
+            const allExpanded = orders.every((_, idx) => expandedChairOrderIndices.has(idx));
+            if (allExpanded) {
+                expandedChairOrderIndices.clear();
+            } else {
+                orders.forEach((_, idx) => expandedChairOrderIndices.add(idx));
+            }
+            updateChairDashboard();
+        }
+
+        // Toggle single club roster expand/collapse in chair view
+        function toggleSingleChairOrderRoster(idx, event) {
+            if (event) event.stopPropagation();
+            if (expandedChairOrderIndices.has(idx)) {
+                expandedChairOrderIndices.delete(idx);
+            } else {
+                expandedChairOrderIndices.add(idx);
+            }
+            updateChairDashboard();
+        }
+
+        // Quick copy club order roster text by sub-event name & order index
+        function copyClubOrderRosterTextByIndex(subEventName, orderIndex) {
+            const orders = registrationOrders[subEventName] || [];
+            const order = orders[orderIndex];
+            if (!order) return;
+            currentInspectedOrder = order;
+            currentInspectedSubEvent = subEventName;
+            copyClubOrderRosterText();
         }
 
         function initCharts() {
