@@ -457,12 +457,6 @@
                         <h3 class="text-base sm:text-lg font-bold text-slate-900">當屆主委後台控制與跨系統資料彙整</h3>
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
-                        <button onclick="openAddCategoryModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-amber-400 border border-amber-400/40 text-xs font-bold rounded-lg shadow transition flex items-center gap-1 active:scale-95" title="主委專屬：新增主選單類別">
-                            ➕ 新增主選單
-                        </button>
-                        <button id="chairAddSubEventBtn" onclick="openAddSubEventModal()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-900 text-xs font-bold rounded-lg shadow transition flex items-center gap-1 active:scale-95" title="主委專屬：新增子活動">
-                            ➕ 新增子活動
-                        </button>
                         <button onclick="simulateEventDayLock()" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow transition active:scale-95">
                             🔒 模擬「活動當日 00:00」封存
                         </button>
@@ -1842,12 +1836,6 @@
             const navAddSubBtn = document.getElementById('navAddSubEventBtn');
             if (navAddSubBtn) {
                 navAddSubBtn.classList.toggle('hidden', !(isChair && allowsSubEvents));
-            }
-
-            // 主委戰情控制面板按鈕：若該主選單無子活動需求，亦同步隱藏
-            const chairAddSubBtn = document.getElementById('chairAddSubEventBtn');
-            if (chairAddSubBtn) {
-                chairAddSubBtn.classList.toggle('hidden', !allowsSubEvents);
             }
         }
 
