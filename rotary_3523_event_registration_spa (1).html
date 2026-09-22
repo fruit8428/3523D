@@ -680,18 +680,8 @@
                         </p>
                     </div>
 
-                    <!-- Event Quick-Switch Buttons & Main Meeting Actions -->
-                    <div class="flex flex-wrap items-center gap-2">
-                        <!-- Quick switch between Seminars & Conference -->
-                        <div class="inline-flex rounded-lg border border-slate-300 p-0.5 bg-slate-100 shadow-inner">
-                            <button type="button" id="btnPayTabSeminars" onclick="switchPaymentEventCategory('seminars')" class="px-3 py-1 text-xs font-bold rounded-md transition shadow bg-blue-600 text-white">
-                                📘 研討會及講習會
-                            </button>
-                            <button type="button" id="btnPayTabConference" onclick="switchPaymentEventCategory('conference')" class="px-3 py-1 text-xs font-bold rounded-md transition text-slate-600 hover:text-slate-900">
-                                🏛️ 地區年會
-                            </button>
-                        </div>
-
+                    <!-- Meeting Actions (依附圖45指示：依上方子活動與分類連動，移除重複手動切換標籤) -->
+                    <div class="flex items-center gap-2">
                         <!-- Fullscreen Meeting Presentation Mode Trigger -->
                         <button type="button" onclick="openMeetingPresentationMode()" class="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-extrabold rounded-lg shadow-md transition flex items-center gap-1.5 active:scale-95">
                             <span class="text-sm">📺</span>
@@ -2480,6 +2470,10 @@
             if (roleParam && ['secretary', 'chair', 'arch'].includes(roleParam)) {
                 switchRole(roleParam);
             }
+            const catParam = urlParams.get('cat');
+            if (catParam) {
+                selectCategory(catParam);
+            }
             const presParam = urlParams.get('pres');
             if (presParam) {
                 setTimeout(() => {
@@ -2641,6 +2635,7 @@
             // 點一次換一次：切換子活動立即輪流換色
             currentThemeColorIndex = (currentThemeColorIndex === 0 ? 1 : 0);
             updateSubEventContext();
+            renderDivisionPaymentSection();
         }
 
         function updateSubEventContext() {
@@ -2691,7 +2686,10 @@
             renderMemberMasterTable();
             renderSelectedMembersTable();
             updateLinePreviewText();
-            if (currentRole === 'chair') updateChairDashboard();
+            if (currentRole === 'chair') {
+                updateChairDashboard();
+                renderDivisionPaymentSection();
+            }
         }
 
         // Calculate Average Handicap (只計算參賽選手，只用餐者不計入平均差點)
@@ -2703,11 +2701,14 @@
             return (sum / valid.length).toFixed(1);
         }
 
-        // 判斷當前活動是否為運動賽事 (參賽選項僅運動賽事顯示)
+        // 判斷當前活動是否為運動賽事 (依附圖45指示：運動賽事不需各分區繳費狀況即時總表)
         function isCurrentEventSports() {
             const cat = categoriesData.find(c => c.id === currentCatId);
             if (!cat) return false;
-            return cat.id === 'sports' || (cat.name && (cat.name.includes('運動') || cat.name.includes('賽事') || cat.name.includes('體育')));
+            const subEventName = (cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : '';
+            return cat.id === 'sports' || 
+                   (cat.name && (cat.name.includes('運動') || cat.name.includes('賽事') || cat.name.includes('體育') || cat.name.includes('球賽'))) ||
+                   subEventName.includes('球') || subEventName.includes('賽') || subEventName.includes('運動');
         }
 
         // 判斷當前子活動是否為高爾夫賽事 (差點僅高爾夫顯示)
@@ -5554,34 +5555,28 @@
             const section = document.getElementById('chairDivisionPaymentSection');
             if (!section) return;
 
-            // 僅在研討會及講習會、地區年會，或主委主動切換時顯示
-            const shouldShow = (currentRole === 'chair');
+            // 依附圖45指示：如果是運動賽事,因為不需要，就不用顯示
+            const isSports = isCurrentEventSports();
+            const shouldShow = (currentRole === 'chair') && !isSports;
             section.classList.toggle('hidden', !shouldShow);
             if (!shouldShow) return;
 
-            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
-            const isConf = (activeCatKey === 'conference');
+            const cat = categoriesData.find(c => c.id === currentCatId) || categoriesData[0];
+            const isConf = (currentCatId === 'conference' || (cat.name && cat.name.includes('年會')));
+            activePaymentCategory = isConf ? 'conference' : 'seminars';
+            const activeCatKey = activePaymentCategory;
 
-            // 更新選中分類標籤按鈕
-            const btnSeminars = document.getElementById('btnPayTabSeminars');
-            const btnConf = document.getElementById('btnPayTabConference');
+            // 依附圖45指示：左邊不用顯示，依上面所指來顯示 (完全連動上方子活動下拉選單選取之名稱)
+            const subEventName = (cat.subEvents && cat.subEvents[currentSubEventIndex]) 
+                ? cat.subEvents[currentSubEventIndex] 
+                : cat.name;
+
             const badgeSub = document.getElementById('paymentSectionSubEventBadge');
-
-            if (btnSeminars) {
-                btnSeminars.className = !isConf 
-                    ? 'px-3 py-1 text-xs font-bold rounded-md transition shadow bg-blue-600 text-white'
-                    : 'px-3 py-1 text-xs font-bold rounded-md transition text-slate-600 hover:text-slate-900';
-            }
-            if (btnConf) {
-                btnConf.className = isConf 
-                    ? 'px-3 py-1 text-xs font-bold rounded-md transition shadow bg-indigo-600 text-white'
-                    : 'px-3 py-1 text-xs font-bold rounded-md transition text-slate-600 hover:text-slate-900';
-            }
             if (badgeSub) {
-                badgeSub.innerText = isConf ? '🏛️ 地區年會 (大會暨晚宴)' : '📘 研討會及講習會 (GMS / 講習會)';
+                badgeSub.innerText = subEventName;
                 badgeSub.className = isConf 
-                    ? 'text-xs px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg font-bold'
-                    : 'text-xs px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg font-bold';
+                    ? 'text-xs px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg font-bold shadow-sm'
+                    : 'text-xs px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg font-bold shadow-sm';
             }
 
             // 更新分區下拉選單
@@ -5955,11 +5950,17 @@
                 presActiveDivision = 1; // 依要求：每一個分區獨立一頁，開會投影預設從第1分區展開
             }
 
-            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
-            const isConf = (activeCatKey === 'conference');
+            const cat = categoriesData.find(c => c.id === currentCatId) || categoriesData[0];
+            const isConf = (currentCatId === 'conference' || (cat.name && cat.name.includes('年會')));
+            activePaymentCategory = isConf ? 'conference' : 'seminars';
+
+            const subEventName = (cat.subEvents && cat.subEvents[currentSubEventIndex]) 
+                ? cat.subEvents[currentSubEventIndex] 
+                : cat.name;
+
             const titleEl = document.getElementById('presEventTitle');
             if (titleEl) {
-                titleEl.innerText = isConf ? '🏛️ 3523 地區年度年會 各分區各社繳費狀況總表' : '📘 3523 地區研討會及講習會 各分區各社繳費狀況總表';
+                titleEl.innerText = `3523 地區《${subEventName}》各分區各社繳費狀況總表`;
             }
 
             renderMeetingPresentationContent();
@@ -6306,9 +6307,13 @@
         // ================= 📋 開會專用催繳名單一鍵複製 (LINE / EMAIL 格式) =================
 
         function copyUnpaidClubsToClipboard() {
-            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
-            const isConf = (activeCatKey === 'conference');
-            const eventTitle = isConf ? '2026-27 年度 地區年會' : '2026-27 年度 研討會及講習會';
+            const cat = categoriesData.find(c => c.id === currentCatId) || categoriesData[0];
+            const isConf = (currentCatId === 'conference' || (cat.name && cat.name.includes('年會')));
+            const activeCatKey = isConf ? 'conference' : 'seminars';
+            const subEventName = (cat.subEvents && cat.subEvents[currentSubEventIndex]) 
+                ? cat.subEvents[currentSubEventIndex] 
+                : cat.name;
+            const eventTitle = `2026-27 年度 ${subEventName}`;
             const records = chairPaymentRecords[activeCatKey] || {};
 
             let unpaidListByDiv = [];
