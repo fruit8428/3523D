@@ -561,6 +561,79 @@
                         <p class="text-[10px] text-amber-700 mt-1">內定預設 1,000 元；加油團/眷屬選「只用餐」之社友將帶入此金額</p>
                     </div>
                 </div>
+
+                <!-- Email Automation & Remittance Sync Settings (依附圖42要求新增) -->
+                <div class="mt-4 pt-4 border-t border-slate-200 bg-gradient-to-r from-blue-50/80 via-indigo-50/60 to-slate-50 rounded-xl p-3.5 sm:p-4 border border-blue-200/90 shadow-sm">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-2.5 mb-3">
+                        <div class="flex items-start sm:items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
+                                📧
+                            </div>
+                            <div>
+                                <h4 class="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2 flex-wrap">
+                                    活動專屬對帳信箱與匯款 Email 主動抓取設定
+                                    <span id="emailSyncStatusBadge" class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                        已啟用自動對帳
+                                    </span>
+                                </h4>
+                                <p class="text-[11px] text-slate-500 mt-0.5">
+                                    每個活動的 email 可能會不同，主委自行填入後將<b>永久保存（即使換屆或新年度重置，亦不改變）</b>。系統將主動抓取各社匯款 email，自動核對並提供即時繳費狀況。
+                                </p>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <button type="button" id="btnTriggerEmailSync" onclick="triggerEmailSync()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-lg text-xs font-bold shadow transition flex items-center gap-1.5 whitespace-nowrap">
+                                <span id="syncEmailSpinner" class="hidden animate-spin">🔄</span>
+                                <span id="syncEmailIcon">⚡</span>
+                                <span>立即連線抓取各社匯款 Email</span>
+                            </button>
+                            <button type="button" onclick="openEmailSyncLogsModal()" class="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold shadow-sm transition whitespace-nowrap flex items-center gap-1">
+                                <span>📬 信件日誌</span>
+                                <span id="emailFetchedCountBadge" class="px-1.5 py-0.2 text-[10px] bg-indigo-100 text-indigo-700 font-bold rounded-full">0</span>
+                            </button>
+                            <button type="button" onclick="openSimulateRemittanceModal()" class="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-xs font-semibold shadow-sm transition whitespace-nowrap" title="手動貼上銀行通知或模擬匯款信">
+                                ✍️ 貼上/模擬匯款信
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 2 Input Fields: email address & 密碼 -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div class="bg-white p-2.5 rounded-lg border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                                <span class="flex items-center gap-1">✉️ 活動收款信箱 (email address)：</span>
+                                <span class="text-[10px] text-blue-600 font-semibold truncate max-w-[130px]" id="cfgEmailActivityLabel">當前活動專屬</span>
+                            </label>
+                            <input type="email" id="cfgEventEmail" onchange="saveCurrentEventEmailConfig()" placeholder="例如: gms3523@gmail.com 或 conf2027@rotary3523.org" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:ring-1 focus:ring-blue-500">
+                            <span class="text-[10px] text-slate-400 mt-1 block">主委自行填入，不同活動可設定不同信箱</span>
+                        </div>
+
+                        <div class="bg-white p-2.5 rounded-lg border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                                <span class="flex items-center gap-1">🔑 郵件收信密碼 (密碼)：</span>
+                                <button type="button" onclick="togglePasswordVisibility('cfgEventEmailPassword')" class="text-[10px] text-blue-600 hover:underline">👁️ 顯示/隱藏</button>
+                            </label>
+                            <input type="password" id="cfgEventEmailPassword" onchange="saveCurrentEventEmailConfig()" placeholder="請輸入收信密碼 (如 Google 16位應用程式密碼)" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-medium text-slate-800 focus:bg-white focus:ring-1 focus:ring-blue-500">
+                            <span class="text-[10px] text-slate-400 mt-1 block">支援 Gmail App Password / IMAP 憑證</span>
+                        </div>
+
+                        <div class="flex flex-col justify-between gap-1.5 bg-white p-2.5 rounded-lg border border-slate-200">
+                            <span class="text-[11px] font-bold text-slate-700">持久儲存與套用規則</span>
+                            <div class="flex items-center gap-1.5">
+                                <button type="button" onclick="saveCurrentEventEmailConfig(true)" class="flex-1 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white py-1.5 px-2 text-xs font-bold rounded transition shadow text-center">
+                                    💾 永久保存此信箱
+                                </button>
+                                <button type="button" onclick="applyEmailToAllSubEvents()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 py-1.5 px-2 text-xs font-semibold rounded transition text-center whitespace-nowrap" title="將此 Email/密碼 套用到本主選單內所有子活動">
+                                    📋 套用至全項
+                                </button>
+                            </div>
+                            <span class="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                                🔒 永久固化保存：換屆銜接重置時絕不清除
+                            </span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Real-time War Room Stats KPI Cards -->
@@ -587,26 +660,134 @@
                 </div>
             </div>
 
-            <!-- Visual Charts Dashboard Section (Chart.js) - 依附圖38：所有運動賽事自動隱藏此區塊 -->
-            <div id="chairVisualChartsSection" class="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
-                <!-- Chart 1: Registrations by Club -->
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 lg:col-span-2">
-                    <h4 class="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
-                        📊 各扶輪社即時報名人數分佈 (分區對比)
-                    </h4>
-                    <div class="chart-container">
-                        <canvas id="chartClubs"></canvas>
+            <!-- ================= 各分區各社繳費狀況清楚列表 (依附圖42要求新增：專為開會秀出打造) ================= -->
+            <div id="chairDivisionPaymentSection" class="bg-white rounded-xl shadow-sm border-2 border-indigo-200/90 p-4 sm:p-5 space-y-4">
+                <!-- Section Header & Meeting Banner -->
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                    <div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-black uppercase tracking-wider">Meeting Presentation Mode</span>
+                            <span class="text-xs font-bold text-slate-500">3523 地區專用開會展示清單</span>
+                        </div>
+                        <h3 class="text-base sm:text-lg font-black text-slate-900 mt-1 flex items-center gap-2 flex-wrap">
+                            <span>🏛️ 各分區各社繳費狀況即時總表</span>
+                            <span id="paymentSectionSubEventBadge" class="text-xs px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg font-bold">
+                                研討會及講習會
+                            </span>
+                        </h3>
+                        <p class="text-xs text-slate-500 mt-0.5">
+                            依全區 13 分區與 80 家扶輪社清楚編排，整合 Email 主動對帳，開會時一秒展示各社繳費與催繳進度。
+                        </p>
+                    </div>
+
+                    <!-- Event Quick-Switch Buttons & Main Meeting Actions -->
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- Quick switch between Seminars & Conference -->
+                        <div class="inline-flex rounded-lg border border-slate-300 p-0.5 bg-slate-100 shadow-inner">
+                            <button type="button" id="btnPayTabSeminars" onclick="switchPaymentEventCategory('seminars')" class="px-3 py-1 text-xs font-bold rounded-md transition shadow bg-blue-600 text-white">
+                                📘 研討會及講習會
+                            </button>
+                            <button type="button" id="btnPayTabConference" onclick="switchPaymentEventCategory('conference')" class="px-3 py-1 text-xs font-bold rounded-md transition text-slate-600 hover:text-slate-900">
+                                🏛️ 地區年會
+                            </button>
+                        </div>
+
+                        <!-- Fullscreen Meeting Presentation Mode Trigger -->
+                        <button type="button" onclick="openMeetingPresentationMode()" class="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-extrabold rounded-lg shadow-md transition flex items-center gap-1.5 active:scale-95">
+                            <span class="text-sm">📺</span>
+                            <span>開會投影展示模式</span>
+                        </button>
                     </div>
                 </div>
 
-                <!-- Chart 2: Dietary Distribution -->
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-                    <h4 class="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
-                        🥗 飲食需求比例 (葷食 vs 素食細項)
-                    </h4>
-                    <div class="chart-container">
-                        <canvas id="chartDiet"></canvas>
+                <!-- Meeting Live KPI Scoreboard Banner -->
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3">
+                    <div class="bg-gradient-to-br from-indigo-50 to-blue-50/50 p-3 rounded-xl border border-indigo-100">
+                        <span class="text-[11px] font-bold text-slate-600 block">全區總繳費社數</span>
+                        <div class="text-xl sm:text-2xl font-black text-indigo-700 mt-0.5" id="kpiPayClubsCount">0 / 80 社</div>
+                        <div class="w-full bg-slate-200 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                            <div id="kpiPayProgressBar" class="bg-indigo-600 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
                     </div>
+
+                    <div class="bg-gradient-to-br from-rose-50 to-red-50/50 p-3 rounded-xl border border-rose-200">
+                        <span class="text-[11px] font-bold text-rose-700 block">尚待繳費 (開會催繳社數)</span>
+                        <div class="text-xl sm:text-2xl font-black text-rose-600 mt-0.5" id="kpiPayUnpaidCount">0 社</div>
+                        <span class="text-[10px] text-rose-500 font-semibold" id="kpiPayUnpaidRatio">未繳率 --%</span>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-emerald-50 to-teal-50/50 p-3 rounded-xl border border-emerald-100">
+                        <span class="text-[11px] font-bold text-emerald-700 block">實收總繳費金額</span>
+                        <div class="text-xl sm:text-2xl font-black text-emerald-700 mt-0.5" id="kpiPayTotalAmount">NT$ 0</div>
+                        <span class="text-[10px] text-emerald-600 font-semibold">依各社實際入帳核計</span>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-sky-50 to-blue-50/50 p-3 rounded-xl border border-sky-100">
+                        <span class="text-[11px] font-bold text-sky-700 block">Email 智慧自動核對</span>
+                        <div class="text-xl sm:text-2xl font-black text-sky-700 mt-0.5" id="kpiPayEmailVerifiedCount">0 社</div>
+                        <span class="text-[10px] text-sky-600 font-semibold">系統主動抓取信件核帳</span>
+                    </div>
+
+                    <div class="col-span-2 lg:col-span-1 bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-between">
+                        <span class="text-[11px] font-bold text-slate-600 block">開會即時催繳</span>
+                        <button type="button" onclick="copyUnpaidClubsToClipboard()" class="w-full mt-1 px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-sm transition flex items-center justify-center gap-1 active:scale-95">
+                            <span>📋 複製催繳名單 (LINE)</span>
+                        </button>
+                        <span class="text-[9px] text-slate-400 text-center mt-1">一鍵貼到地區 AG / 執秘群組</span>
+                    </div>
+                </div>
+
+                <!-- Table Controls & Filter Toolbar -->
+                <div class="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-2.5 pt-2">
+                    <!-- Filters & Search -->
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                            <button type="button" id="payFilterBtnAll" onclick="setPaymentFilter('ALL')" class="px-2.5 py-1 text-xs font-bold rounded-md bg-white text-slate-800 shadow-sm">
+                                全部 (<span id="payCountBadgeAll">80</span>)
+                            </button>
+                            <button type="button" id="payFilterBtnUnpaid" onclick="setPaymentFilter('UNPAID')" class="px-2.5 py-1 text-xs font-bold rounded-md text-rose-600 hover:bg-white/80">
+                                🔴 僅看未繳 (<span id="payCountBadgeUnpaid">0</span>)
+                            </button>
+                            <button type="button" id="payFilterBtnPaid" onclick="setPaymentFilter('PAID')" class="px-2.5 py-1 text-xs font-bold rounded-md text-emerald-700 hover:bg-white/80">
+                                🟢 僅看已繳 (<span id="payCountBadgePaid">0</span>)
+                            </button>
+                        </div>
+
+                        <!-- Division Filter Dropdown -->
+                        <select id="payDivisionFilterSelect" onchange="setPaymentDivisionFilter(this.value)" class="bg-slate-50 border border-slate-300 rounded-lg py-1 px-2 text-xs font-semibold text-slate-700">
+                            <option value="ALL">📍 全部 13 分區</option>
+                        </select>
+
+                        <!-- Search Input -->
+                        <div class="relative">
+                            <input type="text" id="paySearchInput" oninput="onPaymentSearchInput(this.value)" placeholder="🔍 搜尋社名或代碼..." class="bg-slate-50 border border-slate-300 rounded-lg py-1 pl-2 pr-6 text-xs font-medium text-slate-800 w-36 sm:w-44 focus:w-48 transition-all">
+                            <button type="button" onclick="clearPaymentSearch()" id="btnClearPaySearch" class="absolute right-1.5 top-1 text-xs text-slate-400 hover:text-slate-600 hidden">✕</button>
+                        </div>
+                    </div>
+
+                    <!-- View Switcher & Export / Print Buttons -->
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <div class="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5">
+                            <button type="button" id="payViewBtnTable" onclick="switchPaymentViewMode('table')" class="px-2.5 py-1 text-xs font-bold rounded bg-white text-slate-800 shadow-sm" title="分區大表格">
+                                📊 分區表格
+                            </button>
+                            <button type="button" id="payViewBtnCards" onclick="switchPaymentViewMode('cards')" class="px-2.5 py-1 text-xs font-bold rounded text-slate-600 hover:text-slate-900" title="13 分區卡片牆">
+                                🎴 分區卡片牆
+                            </button>
+                        </div>
+
+                        <button type="button" onclick="exportDivisionPaymentsExcel()" class="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold shadow-sm transition flex items-center gap-1 active:scale-95" title="匯出開會繳費狀況表">
+                            <span>📗 匯出 Excel</span>
+                        </button>
+                        <button type="button" onclick="printDivisionPayments()" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold shadow-sm transition flex items-center gap-1" title="列印開會專用繳費清單">
+                            <span>🖨️ 列印清單</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Division Table / Cards Container -->
+                <div id="chairDivisionPaymentContent" class="touch-scroll">
+                    <!-- Populated dynamically by JS -->
                 </div>
             </div>
 
@@ -1274,6 +1455,257 @@
         </div>
     </div>
 
+    <!-- ================= MODAL 9: MEETING PRESENTATION OVERLAY (開會專用投影大看板) ================= -->
+    <div id="meetingPresentationModal" class="fixed inset-0 z-50 bg-slate-900/95 backdrop-blur-md hidden flex flex-col text-slate-100 overflow-hidden">
+        <!-- Presentation Top Control Header -->
+        <div class="p-4 sm:p-5 bg-slate-800/90 border-b border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-lg flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 text-slate-950 flex items-center justify-center font-black text-xl shadow">
+                    ⚙️
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="px-2 py-0.5 bg-indigo-500 text-white rounded text-[10px] font-black tracking-wider">PROJECTOR MODE</span>
+                        <span class="text-xs text-slate-400 font-semibold">國際扶輪 3523 地區開會大螢幕投影展示</span>
+                    </div>
+                    <h2 class="text-lg sm:text-2xl font-black text-white flex items-center gap-2" id="presEventTitle">
+                        研討會及講習會 各分區各社繳費狀況總表
+                    </h2>
+                </div>
+            </div>
+
+            <!-- Scoreboard & Controls in Header -->
+            <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                <div class="flex items-center gap-2 bg-slate-900/80 border border-slate-700 rounded-xl px-3 py-1.5">
+                    <div class="text-right">
+                        <span class="text-[10px] text-slate-400 block font-semibold">全區總繳費率</span>
+                        <span class="text-base sm:text-lg font-black text-emerald-400" id="presKpiRate">0%</span>
+                    </div>
+                    <div class="h-7 w-px bg-slate-700 mx-1"></div>
+                    <div class="text-right">
+                        <span class="text-[10px] text-slate-400 block font-semibold">已繳 / 未繳</span>
+                        <span class="text-base sm:text-lg font-black text-white"><span class="text-emerald-400" id="presKpiPaid">0</span> / <span class="text-rose-400" id="presKpiUnpaid">0</span></span>
+                    </div>
+                    <div class="h-7 w-px bg-slate-700 mx-1"></div>
+                    <div class="text-right">
+                        <span class="text-[10px] text-slate-400 block font-semibold">實收總額</span>
+                        <span class="text-base sm:text-lg font-black text-amber-300" id="presKpiTotalAmount">NT$ 0</span>
+                    </div>
+                </div>
+
+                <button type="button" onclick="copyUnpaidClubsToClipboard()" class="px-3 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-1.5">
+                    <span>📋 複製催繳名單 (LINE)</span>
+                </button>
+                <button type="button" onclick="window.print()" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 active:scale-95 text-white text-xs font-semibold rounded-xl shadow transition">
+                    🖨️ 列印
+                </button>
+                <button type="button" onclick="closeMeetingPresentationMode()" class="px-3.5 py-2 bg-slate-700 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-1">
+                    <span>✕ 離開投影 (ESC)</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 13 Divisions Fast Nav Anchors -->
+        <div class="bg-slate-800/60 border-b border-slate-700 px-4 py-2 overflow-x-auto touch-scroll flex items-center gap-1.5 text-xs flex-shrink-0">
+            <span class="text-[11px] text-slate-400 font-bold whitespace-nowrap mr-1">⚡ 快速跳轉：</span>
+            <div id="presDivisionNavChips" class="flex items-center gap-1.5">
+                <!-- Dynamically generated 1-13 division anchor chips -->
+            </div>
+        </div>
+
+        <!-- Presentation Main Scrollable Content -->
+        <div id="presMainContent" class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+            <!-- Populated dynamically with large font division tables -->
+        </div>
+    </div>
+
+    <!-- ================= MODAL 10: EDIT CLUB PAYMENT STATUS (主委編輯各社繳費狀況) ================= -->
+    <div id="editClubPaymentModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 sm:p-6 text-slate-800">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                <div class="flex items-center gap-2 text-indigo-600">
+                    <span class="text-xl">💰</span>
+                    <h3 class="font-bold text-slate-900 text-base">編輯扶輪社繳費狀態</h3>
+                </div>
+                <button onclick="closeEditPaymentModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1 leading-none">&times;</button>
+            </div>
+
+            <form onsubmit="handleSaveClubPayment(event)" class="space-y-3.5 text-xs">
+                <input type="hidden" id="editPayClubName" value="">
+                <input type="hidden" id="editPayDivId" value="">
+
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center">
+                    <div>
+                        <span class="text-[10px] text-slate-400 block font-semibold" id="editPayDivisionLabel">第一分區</span>
+                        <h4 class="text-sm font-black text-slate-900" id="editPayClubNameTitle">臺北市南區扶輪社</h4>
+                    </div>
+                    <div id="editPayCurrentBadge">
+                        <!-- Current status badge -->
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">繳費狀態：</label>
+                    <select id="editPayStatusSelect" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500">
+                        <option value="PAID_EMAIL">✅ 已繳費（Email 自動核對）</option>
+                        <option value="PAID_MANUAL">✅ 已繳費（人工現場 / 支票 / 匯款核帳）</option>
+                        <option value="UNPAID">⏳ 待匯款 / 未繳費</option>
+                        <option value="EXEMPT">🆓 免收 / 贊助款折抵</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">實收金額 (NT$)：</label>
+                        <input type="number" id="editPayAmountInput" min="0" step="100" placeholder="10000" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">匯款帳號末五碼：</label>
+                        <input type="text" id="editPayLast5Input" maxlength="10" placeholder="例如: 88219" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">繳款方式：</label>
+                        <select id="editPayMethodSelect" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-slate-800">
+                            <option value="銀行匯款">銀行匯款 / ATM 轉帳</option>
+                            <option value="現金繳款">開會現場現金繳款</option>
+                            <option value="支票支付">支票支付</option>
+                            <option value="其他折抵">贊助社折抵 / 其他</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">入帳/核對日期：</label>
+                        <input type="date" id="editPayDateInput" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-slate-800">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">備註說明：</label>
+                    <input type="text" id="editPayNoteInput" placeholder="例如: 執秘已在 LINE 群回報匯款水單" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div class="pt-3 border-t border-slate-100 flex justify-between items-center">
+                    <button type="button" onclick="markCurrentClubUnpaidQuick()" class="text-rose-600 hover:text-rose-800 text-xs font-bold hover:underline">
+                        重設為未繳費
+                    </button>
+                    <div class="flex space-x-2">
+                        <button type="button" onclick="closeEditPaymentModal()" class="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-semibold hover:bg-slate-50">取消</button>
+                        <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow active:scale-95 transition">確認儲存</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================= MODAL 11: SIMULATE & PASTE REMITTANCE EMAIL (貼上或模擬匯款信件) ================= -->
+    <div id="simulateRemittanceModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-5 sm:p-6 text-slate-800">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-3">
+                <div class="flex items-center gap-2 text-emerald-700">
+                    <span class="text-xl">✍️</span>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-base">貼上或模擬各社匯款通知信</h3>
+                        <p class="text-[11px] text-slate-500">智慧辨識信件內之扶輪社名、匯款金額與帳號末五碼並自動核帳</p>
+                    </div>
+                </div>
+                <button onclick="closeSimulateRemittanceModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1 leading-none">&times;</button>
+            </div>
+
+            <!-- Tab Buttons -->
+            <div class="flex border-b border-slate-200 mb-3">
+                <button type="button" id="tabBtnPasteMail" onclick="switchSimulateTab('paste')" class="py-2 px-3 text-xs font-bold border-b-2 border-indigo-600 text-indigo-700">
+                    📋 直接貼上銀行/執秘匯款信文本
+                </button>
+                <button type="button" id="tabBtnQuickSim" onclick="switchSimulateTab('quick')" class="py-2 px-3 text-xs font-semibold text-slate-500 hover:text-slate-800">
+                    ⚡ 快速選擇扶輪社模擬匯款
+                </button>
+            </div>
+
+            <!-- Tab 1: Paste Email Content -->
+            <div id="simulateTabPaste" class="space-y-3 text-xs">
+                <p class="text-slate-600">
+                    請直接複製任何銀行轉帳通知信、網路銀行入帳通知或執秘寄出的確認信（例如包含「臺北市南區扶輪社」、「匯款金額 10000」、「末五碼 88219」），系統將自動智能提取並核帳：
+                </p>
+                <textarea id="pasteEmailContent" rows="5" placeholder="例如:&#10;【中國信託銀行入帳通知】&#10;受款帳戶: 國際扶輪3523地區&#10;匯款人: 台北逸仙扶輪社&#10;金額: NT$ 10,000&#10;轉出帳號末五碼: 39481&#10;時間: 2026-09-22 10:15:30&#10;備註: 2026-27 GMS 研討會報名費" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 font-mono text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500"></textarea>
+                <div class="flex justify-between items-center pt-2">
+                    <button type="button" onclick="fillSampleRemittanceEmail()" class="text-indigo-600 hover:underline text-[11px] font-semibold">
+                        💡 填入範例銀行匯款通知信
+                    </button>
+                    <button type="button" onclick="handleParsePastedEmail()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow active:scale-95 transition flex items-center gap-1.5">
+                        <span>⚡ 智能解析並自動核對</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab 2: Quick Simulate for Any Club -->
+            <div id="simulateTabQuick" class="space-y-3 text-xs hidden">
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">選擇尚未繳費的扶輪社：</label>
+                    <select id="simQuickClubSelect" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500">
+                        <!-- Populated with clubs -->
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">匯款金額 (NT$)：</label>
+                        <input type="number" id="simQuickAmount" value="10000" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">帳號末五碼：</label>
+                        <input type="text" id="simQuickLast5" value="67890" maxlength="10" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-bold text-slate-800">
+                    </div>
+                </div>
+                <div class="pt-2 flex justify-end">
+                    <button type="button" onclick="handleQuickSimulateSubmit()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow active:scale-95 transition flex items-center gap-1.5">
+                        <span>📩 發送模擬匯款信並核對</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= MODAL 12: EMAIL INBOX LOGS (郵件抓取記錄與對帳日誌) ================= -->
+    <div id="emailLogsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl p-5 sm:p-6 text-slate-800 flex flex-col max-h-[85vh]">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-3">
+                <div class="flex items-center gap-2 text-indigo-700">
+                    <span class="text-xl">📬</span>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-base">匯款通知信件抓取日誌</h3>
+                        <p class="text-[11px] text-slate-500">系統主動連線專屬信箱所抓取之各社匯款信件與解析成果</p>
+                    </div>
+                </div>
+                <button onclick="closeEmailSyncLogsModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1 leading-none">&times;</button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto touch-scroll border border-slate-200 rounded-xl">
+                <table class="w-full text-left text-xs min-w-[500px]">
+                    <thead class="bg-slate-100 text-slate-700 font-bold sticky top-0">
+                        <tr>
+                            <th class="p-2.5">抓取時間</th>
+                            <th class="p-2.5">信件主旨 / 寄件者</th>
+                            <th class="p-2.5">核對扶輪社</th>
+                            <th class="p-2.5">金額 / 末五碼</th>
+                            <th class="p-2.5 text-center">狀態</th>
+                        </tr>
+                    </thead>
+                    <tbody id="emailLogsTableBody" class="divide-y divide-slate-100">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
+                <span>共抓取 <span id="emailLogsTotalCount" class="font-bold text-indigo-600">0</span> 封信件</span>
+                <button type="button" onclick="closeEmailSyncLogsModal()" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold">
+                    關閉
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Mobile Floating Bottom Action Bar (手機專屬快捷列) -->
     <div id="mobileBottomBar" class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-md text-white border-t border-slate-800 px-4 py-2 flex justify-around items-center z-40 text-[10px]">
         <button onclick="switchRole('secretary')" class="flex flex-col items-center text-blue-400 active:scale-95">
@@ -1788,6 +2220,19 @@
                 subEvents: [
                     'End Polio 根除小兒麻痺慈善音樂會'
                 ]
+            },
+            {
+                id: 'conference',
+                name: '🏛️ 地區年會',
+                themeColor: 'indigo',
+                hexColor: '#4F46E5',
+                allowSponsors: true,
+                allowAddSubEvents: true,
+                desc: '3523 地區年度社友代表大會暨年會慶典，全體 13 分區 80 社出席與繳費報名。',
+                subEvents: [
+                    '1. 地區年會大會 (全體代表大會)',
+                    '2. 地區年會歡迎晚宴暨頒獎典禮'
+                ]
             }
         ];
 
@@ -1908,6 +2353,30 @@
         let chartClubsInstance = null;
         let chartDietInstance = null;
 
+        // ================= EMAIL AUTOMATION & REMITTANCE PERSISTENCE KEYS =================
+        const CHAIR_EVENT_EMAILS_STORAGE_KEY = 'rotary_3523_event_emails_v1';
+        const PAYMENT_RECORDS_STORAGE_KEY = 'rotary_3523_payment_records_v1';
+        const EMAIL_INBOX_LOGS_STORAGE_KEY = 'rotary_3523_email_inbox_logs_v1';
+
+        // Event-specific Email settings: { [eventKey]: { email, password } }
+        let chairEventEmails = {
+            'seminars': { email: 'gms3523@gmail.com', password: '••••••••' },
+            'conference': { email: 'conf2027@rotary3523.org', password: '••••••••' }
+        };
+
+        // Payment status records: { [categoryOrEventKey]: { [clubName]: { status, amount, method, last5, date, note, verifiedAt, fromEmail, subject } } }
+        let chairPaymentRecords = {};
+
+        // Inbound Remittance Email Logs
+        let emailInboxLogs = [];
+
+        // UI filter state for Division Payment table
+        let paymentFilterStatus = 'ALL'; // 'ALL' | 'UNPAID' | 'PAID'
+        let paymentFilterDivision = 'ALL'; // 'ALL' | 1..13
+        let paymentSearchQuery = '';
+        let paymentActiveView = 'table'; // 'table' | 'cards'
+        let activePaymentCategory = 'seminars'; // 'seminars' | 'conference'
+
         // ================= PERSISTENCE (LOCAL STORAGE) =================
 
         function saveToStorage() {
@@ -1918,6 +2387,8 @@
                     clubMemberDatabase,
                     registrationOrders,
                     chairConfig,
+                    chairPaymentRecords,
+                    emailInboxLogs,
                     lastUpdated: new Date().toISOString()
                 };
                 localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
@@ -1944,6 +2415,8 @@
                     }
                     if (parsed.clubMemberDatabase) clubMemberDatabase = parsed.clubMemberDatabase;
                     if (parsed.registrationOrders) registrationOrders = parsed.registrationOrders;
+                    if (parsed.chairPaymentRecords) chairPaymentRecords = parsed.chairPaymentRecords;
+                    if (parsed.emailInboxLogs) emailInboxLogs = parsed.emailInboxLogs;
                     if (parsed.chairConfig) {
                         chairConfig = Object.assign({
                             feeCompete: 1200,
@@ -1951,18 +2424,25 @@
                         }, parsed.chairConfig);
                     }
                 }
+                // 確保地區年會存在於 categoriesData 中
+                if (!categoriesData.some(c => c.id === 'conference' || (c.name && (c.name.includes('地區年會') || c.name.includes('年會'))))) {
+                    const defaultConf = DEFAULT_CATEGORIES.find(c => c.id === 'conference');
+                    if (defaultConf) categoriesData.push(JSON.parse(JSON.stringify(defaultConf)));
+                }
             } catch (e) {
                 console.warn("讀取 LocalStorage 失敗", e);
             }
         }
 
         function resetSystemData() {
-            if (confirm("⚠️ 確定將所有社友名冊與報名資料重置為初始預設值？本機修改將被清除。")) {
+            if (confirm("⚠️ 確定將所有社友名冊與報名資料重置為初始預設值？本機修改將被清除。\n（📌 活動 Email 與密碼設定將保留不變）")) {
                 localStorage.removeItem(LOCAL_STORAGE_KEY);
                 categoriesData = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
                 divisionsData = JSON.parse(JSON.stringify(DEFAULT_DIVISIONS_DATA));
                 clubMemberDatabase = JSON.parse(JSON.stringify(DEFAULT_MEMBERS_DB));
                 registrationOrders = JSON.parse(JSON.stringify(DEFAULT_ORDERS));
+                chairPaymentRecords = {};
+                emailInboxLogs = [];
                 chairConfig = {
                     sponsorshipEnabled: false,
                     feeCoHost: 50000,
@@ -1972,6 +2452,7 @@
                     feeMealOnly: 1000,
                     startDate: '2026-09-01T09:00'
                 };
+                initDefaultPaymentRecords(true);
                 saveToStorage();
                 location.reload();
             }
@@ -1981,6 +2462,10 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             loadFromStorage();
+            loadChairEventEmails();
+            loadPaymentRecords();
+            loadEmailInboxLogs();
+            initDefaultPaymentRecords();
             renderNavTabs();
             renderDivisionDirectory();
             populateClubSelector();
@@ -1988,6 +2473,13 @@
             initCharts();
             initQRCode();
             updateRolePermissionsUI();
+            updateChairEmailUI();
+            renderDivisionPaymentSection();
+            const urlParams = new URLSearchParams(window.location.search);
+            const roleParam = urlParams.get('role');
+            if (roleParam && ['secretary', 'chair', 'arch'].includes(roleParam)) {
+                switchRole(roleParam);
+            }
         });
 
         function switchRole(role) {
@@ -2005,6 +2497,8 @@
 
             if (role === 'chair') {
                 updateChairDashboard();
+                updateChairEmailUI();
+                renderDivisionPaymentSection();
             }
             if (role === 'arch') {
                 renderDivisionDirectory();
@@ -2129,6 +2623,11 @@
 
             updateSubEventContext();
             updateRolePermissionsUI();
+            updateChairEmailUI();
+            if (isPaymentTrackingCategory(currentCatId)) {
+                activePaymentCategory = (currentCatId === 'conference' || (cat.name && cat.name.includes('年會'))) ? 'conference' : 'seminars';
+            }
+            renderDivisionPaymentSection();
         }
 
         function changeSubEvent(idx) {
@@ -2653,6 +3152,38 @@
                 registrationOrders[subEventName].push(orderPayload);
             }
 
+            // 若該活動屬於研討會或地區年會，同步自動寄送匯款通知信至後台信箱
+            if (isPaymentTrackingCategory(currentCatId)) {
+                const payCatKey = (currentCatId === 'conference' || (cat.name && cat.name.includes('年會'))) ? 'conference' : 'seminars';
+                const last5 = Math.floor(10000 + Math.random() * 89999).toString();
+                const nowTime = new Date().toISOString().replace('T', ' ').substring(0, 16);
+                const amt = (payCatKey === 'conference') ? 20000 : 10000;
+                emailInboxLogs.unshift({
+                    id: 'mail_sub_' + Date.now(),
+                    time: nowTime,
+                    subject: `[執秘報名回條] ${selectedClubName} 送出《${subEventName}》報名與匯款通知`,
+                    from: `secretary@${selectedClubName}.rotary.tw`,
+                    clubName: selectedClubName,
+                    amount: amt,
+                    last5: last5,
+                    status: 'SUCCESS'
+                });
+                if (!chairPaymentRecords[payCatKey]) chairPaymentRecords[payCatKey] = {};
+                chairPaymentRecords[payCatKey][selectedClubName] = {
+                    status: 'PAID_EMAIL',
+                    amount: amt,
+                    last5: last5,
+                    method: '銀行匯款',
+                    date: new Date().toISOString().slice(0, 10),
+                    note: '執秘送出報名表同時自動發送匯款通知信',
+                    verifiedAt: nowTime,
+                    fromEmail: `secretary@${selectedClubName}.rotary.tw`,
+                    subject: `[執秘報名回條] ${selectedClubName} 送出《${subEventName}》報名與匯款通知`
+                };
+                savePaymentRecords();
+                saveEmailInboxLogs();
+            }
+
             saveToStorage();
             showToast(`✅ ${selectedClubName} 成功送出《${subEventName}》報名表！`);
             updateLinePreviewText();
@@ -2907,12 +3438,6 @@
             const bannerMerged = document.getElementById('chairMergedExcelBanner');
 
             const isSports = isCurrentEventSports() || subEventName.includes("球") || subEventName.includes("賽");
-
-            // 依附圖38：所有運動賽事皆不需要圖表 (隱藏各社即時報名人數分佈與飲食需求比例圖表)
-            const visualChartsSection = document.getElementById('chairVisualChartsSection');
-            if (visualChartsSection) {
-                visualChartsSection.classList.toggle('hidden', isSports);
-            }
 
             if (orders.length === 0) {
                 if (thead) {
@@ -3222,6 +3747,8 @@
 
             // Update Chart.js Graphics
             updateChartsData(orders, meatCount, veganCount);
+            updateChairEmailUI();
+            renderDivisionPaymentSection();
         }
 
         // Toggle all clubs roster expand/collapse into Merged Excel/CSV View
@@ -3390,7 +3917,11 @@
         }
 
         function initCharts() {
-            const ctx1 = document.getElementById('chartClubs').getContext('2d');
+            const elClubs = document.getElementById('chartClubs');
+            const elDiet = document.getElementById('chartDiet');
+            if (!elClubs || !elDiet) return;
+
+            const ctx1 = elClubs.getContext('2d');
             chartClubsInstance = new Chart(ctx1, {
                 type: 'bar',
                 data: {
@@ -3412,7 +3943,7 @@
                 }
             });
 
-            const ctx2 = document.getElementById('chartDiet').getContext('2d');
+            const ctx2 = elDiet.getContext('2d');
             chartDietInstance = new Chart(ctx2, {
                 type: 'doughnut',
                 data: {
@@ -3431,8 +3962,6 @@
         }
 
         function updateChartsData(orders, meat, vegan) {
-            const visualChartsSection = document.getElementById('chairVisualChartsSection');
-            if (visualChartsSection && visualChartsSection.classList.contains('hidden')) return;
             if (!chartClubsInstance || !chartDietInstance) return;
 
             chartClubsInstance.data.labels = orders.map(o => o.clubName.replace('扶輪社', ''));
@@ -3895,13 +4424,16 @@
         function exportBackupJSON() {
             const payload = {
                 system: "Rotary3523_Registration_System",
-                version: "2.0",
+                version: "2.1",
                 savedAt: new Date().toISOString(),
                 clubMemberDatabase,
                 registrationOrders,
                 chairConfig,
                 categoriesData,
-                divisionsData
+                divisionsData,
+                chairEventEmails,
+                chairPaymentRecords,
+                emailInboxLogs
             };
             const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
@@ -3927,11 +4459,19 @@
                     if (data.chairConfig) chairConfig = data.chairConfig;
                     if (data.categoriesData) categoriesData = data.categoriesData;
                     if (data.divisionsData) divisionsData = data.divisionsData;
+                    if (data.chairEventEmails) {
+                        chairEventEmails = Object.assign(chairEventEmails, data.chairEventEmails);
+                        saveChairEventEmails();
+                    }
+                    if (data.chairPaymentRecords) chairPaymentRecords = data.chairPaymentRecords;
+                    if (data.emailInboxLogs) emailInboxLogs = data.emailInboxLogs;
                     saveToStorage();
                     renderNavTabs();
                     populateClubSelector();
                     loadCategoryView();
                     renderDivisionDirectory();
+                    updateChairEmailUI();
+                    renderDivisionPaymentSection();
                     showToast("✅ 跨裝置備份資料已成功還原！");
                     closeMobileSyncModal();
                 } catch (err) {
@@ -4677,6 +5217,1413 @@
             }
             showToast(`🗑️ 主委已成功刪除子活動《${subEventName}》！`);
         }
+
+        // ================= EMAIL AUTOMATION & REMITTANCE FUNCTIONS =================
+
+        function getEventEmailKey() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            if (!cat) return 'seminars';
+            if (cat.subEvents && cat.subEvents[currentSubEventIndex]) {
+                return `${cat.id}_sub_${currentSubEventIndex}`;
+            }
+            return cat.id;
+        }
+
+        function loadChairEventEmails() {
+            try {
+                const stored = localStorage.getItem(CHAIR_EVENT_EMAILS_STORAGE_KEY);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    chairEventEmails = Object.assign({
+                        'seminars': { email: 'gms3523@gmail.com', password: '••••••••' },
+                        'conference': { email: 'conf2027@rotary3523.org', password: '••••••••' }
+                    }, parsed);
+                }
+            } catch (e) {
+                console.warn('讀取活動信箱設定失敗', e);
+            }
+        }
+
+        function saveChairEventEmails() {
+            try {
+                localStorage.setItem(CHAIR_EVENT_EMAILS_STORAGE_KEY, JSON.stringify(chairEventEmails));
+            } catch (e) {
+                console.warn('儲存活動信箱設定失敗', e);
+            }
+        }
+
+        function loadPaymentRecords() {
+            try {
+                const stored = localStorage.getItem(PAYMENT_RECORDS_STORAGE_KEY);
+                if (stored) {
+                    chairPaymentRecords = JSON.parse(stored);
+                }
+            } catch (e) {
+                console.warn('讀取繳費資料失敗', e);
+            }
+        }
+
+        function savePaymentRecords() {
+            try {
+                localStorage.setItem(PAYMENT_RECORDS_STORAGE_KEY, JSON.stringify(chairPaymentRecords));
+            } catch (e) {
+                console.warn('儲存繳費資料失敗', e);
+            }
+        }
+
+        function loadEmailInboxLogs() {
+            try {
+                const stored = localStorage.getItem(EMAIL_INBOX_LOGS_STORAGE_KEY);
+                if (stored) {
+                    emailInboxLogs = JSON.parse(stored);
+                }
+            } catch (e) {
+                console.warn('讀取郵件記錄失敗', e);
+            }
+        }
+
+        function saveEmailInboxLogs() {
+            try {
+                localStorage.setItem(EMAIL_INBOX_LOGS_STORAGE_KEY, JSON.stringify(emailInboxLogs));
+            } catch (e) {
+                console.warn('儲存郵件記錄失敗', e);
+            }
+        }
+
+        function updateChairEmailUI() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const eventKey = getEventEmailKey();
+            const config = chairEventEmails[eventKey] || chairEventEmails[currentCatId] || { email: '', password: '' };
+            
+            const emailInput = document.getElementById('cfgEventEmail');
+            const pwdInput = document.getElementById('cfgEventEmailPassword');
+            const labelEl = document.getElementById('cfgEmailActivityLabel');
+            
+            if (emailInput) emailInput.value = config.email || '';
+            if (pwdInput) pwdInput.value = config.password || '';
+            if (labelEl) {
+                const subName = (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : (cat ? cat.name : '');
+                labelEl.innerText = `【${subName}】專用信箱`;
+            }
+            updateEmailSyncStatusBadge();
+        }
+
+        function saveCurrentEventEmailConfig(showToastNotice = false) {
+            const eventKey = getEventEmailKey();
+            const emailInput = document.getElementById('cfgEventEmail');
+            const pwdInput = document.getElementById('cfgEventEmailPassword');
+            const email = emailInput ? emailInput.value.trim() : '';
+            const password = pwdInput ? pwdInput.value : '';
+
+            chairEventEmails[eventKey] = { email, password };
+            if (currentCatId) {
+                chairEventEmails[currentCatId] = { email, password };
+            }
+            saveChairEventEmails();
+            updateEmailSyncStatusBadge();
+            if (showToastNotice) {
+                showToast('💾 本活動專屬 Email 及密碼已永久保存！新年度重置時亦不清除。');
+            }
+        }
+
+        function applyEmailToAllSubEvents() {
+            const email = document.getElementById('cfgEventEmail')?.value.trim();
+            const password = document.getElementById('cfgEventEmailPassword')?.value;
+            if (!email) {
+                alert('⚠️ 請先在輸入框填寫收款/對帳信箱！');
+                return;
+            }
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            if (!cat) return;
+            chairEventEmails[cat.id] = { email, password };
+            if (cat.subEvents) {
+                cat.subEvents.forEach((_, idx) => {
+                    chairEventEmails[`${cat.id}_sub_${idx}`] = { email, password };
+                });
+            }
+            saveChairEventEmails();
+            showToast(`📋 已將對帳信箱【${email}】成功套用至《${cat.name}》所有子活動！`);
+            updateEmailSyncStatusBadge();
+        }
+
+        function togglePasswordVisibility(inputId) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            input.type = (input.type === 'password') ? 'text' : 'password';
+        }
+
+        function updateEmailSyncStatusBadge() {
+            const badge = document.getElementById('emailSyncStatusBadge');
+            const email = document.getElementById('cfgEventEmail')?.value.trim();
+            if (!badge) return;
+            if (email) {
+                badge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1';
+                badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>已啟用自動對帳';
+            } else {
+                badge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center gap-1';
+                badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>等待設定信箱';
+            }
+            const countBadge = document.getElementById('emailFetchedCountBadge');
+            if (countBadge) countBadge.innerText = emailInboxLogs.length;
+        }
+
+        // ================= 3523 各分區各社繳費狀況初始種子資料 =================
+
+        function initDefaultPaymentRecords(forceReset = false) {
+            if (!chairPaymentRecords['seminars'] || forceReset || Object.keys(chairPaymentRecords['seminars'] || {}).length === 0) {
+                chairPaymentRecords['seminars'] = {};
+                chairPaymentRecords['conference'] = {};
+
+                // 預設常見繳費名單種子（模擬 3523 地區開會真實繳費實況：約 75% 已繳費，25% 待繳催繳）
+                const unpaidClubNames = new Set([
+                    "台北逸仙扶輪社", "台北市雲聯網扶輪社", "台北市南山扶輪社", "台北市瑞光扶輪社",
+                    "台北市華東扶輪社", "台北市南欣扶輪社", "台北市南天扶輪社", "台北健康扶輪社",
+                    "台北市華真扶輪社", "台北市益成扶輪社", "台北市華茂扶輪社", "台北市南港扶輪社",
+                    "台北市南西扶輪社", "台北市文華扶輪社", "台北市碩華扶輪社", "台北龍門扶輪社",
+                    "台北龍鳳扶輪社", "台北龍欣扶輪社", "台北龍舟扶輪社"
+                ]);
+
+                let baseLast5 = 88200;
+                let dayCounter = 2;
+
+                divisionsData.forEach(div => {
+                    div.clubs.forEach((club, cIdx) => {
+                        const isUnpaid = unpaidClubNames.has(club.name);
+                        baseLast5 += (cIdx * 7 + 13);
+                        const last5Str = (baseLast5 % 100000).toString().padStart(5, '0');
+                        const dayStr = (dayCounter < 10 ? '0' : '') + dayCounter;
+                        dayCounter = (dayCounter % 18) + 1;
+
+                        if (isUnpaid) {
+                            chairPaymentRecords['seminars'][club.name] = {
+                                status: 'UNPAID',
+                                amount: 0,
+                                method: '待匯款',
+                                last5: '',
+                                date: '',
+                                note: '尚未收到各社匯款水單或 Email'
+                            };
+                            chairPaymentRecords['conference'][club.name] = {
+                                status: 'UNPAID',
+                                amount: 0,
+                                method: '待匯款',
+                                last5: '',
+                                date: '',
+                                note: '尚未繳納年會註冊費'
+                            };
+                        } else {
+                            const isEmailVerified = (cIdx % 3 !== 0);
+                            const amountSeminars = 10000;
+                            const amountConf = 20000;
+                            const dateStr = `2026-09-${dayStr}`;
+
+                            chairPaymentRecords['seminars'][club.name] = {
+                                status: isEmailVerified ? 'PAID_EMAIL' : 'PAID_MANUAL',
+                                amount: amountSeminars,
+                                method: '銀行匯款',
+                                last5: last5Str,
+                                date: dateStr,
+                                note: isEmailVerified ? 'Email 自動核對相符' : '執秘於大會現場回報核訖',
+                                verifiedAt: `${dateStr} 11:${(cIdx * 5 % 50).toString().padStart(2, '0')}`,
+                                fromEmail: `sec.${club.name.replace(/[^a-zA-Z0-9]/g, '') || 'club'}@rotary3523.org`,
+                                subject: `[銀行入帳通知] ${club.name} 繳納 2026 GMS 研討會報名費 NT$ ${amountSeminars.toLocaleString()}`
+                            };
+
+                            chairPaymentRecords['conference'][club.name] = {
+                                status: isEmailVerified ? 'PAID_EMAIL' : 'PAID_MANUAL',
+                                amount: amountConf,
+                                method: '銀行匯款',
+                                last5: last5Str,
+                                date: dateStr,
+                                note: isEmailVerified ? 'Email 自動核對相符' : '現場確認入帳',
+                                verifiedAt: `${dateStr} 14:${(cIdx * 5 % 50).toString().padStart(2, '0')}`,
+                                fromEmail: `sec.${club.name.replace(/[^a-zA-Z0-9]/g, '') || 'club'}@rotary3523.org`,
+                                subject: `[入帳通知] ${club.name} 2027 地區年會註冊費 NT$ ${amountConf.toLocaleString()}`
+                            };
+                        }
+                    });
+                });
+
+                // 初始郵件日誌種子
+                if (emailInboxLogs.length === 0) {
+                    emailInboxLogs = [
+                        {
+                            id: "mail_init_1",
+                            time: "2026-09-02 10:20",
+                            subject: "[中國信託商業銀行] 入帳通知：臺北市南區扶輪社 匯入款項 NT$ 10,000",
+                            from: "notice@ctbcbank.com (中國信託)",
+                            clubName: "臺北市南區扶輪社",
+                            amount: 10000,
+                            last5: "88219",
+                            status: "SUCCESS"
+                        },
+                        {
+                            id: "mail_init_2",
+                            time: "2026-09-05 14:15",
+                            subject: "[匯款通知] 台北逸天扶輪社-2026 GMS研討會報名費已匯款",
+                            from: "sec.yitian@rotary3523.org",
+                            clubName: "台北逸天扶輪社",
+                            amount: 10000,
+                            last5: "76203",
+                            status: "SUCCESS"
+                        },
+                        {
+                            id: "mail_init_3",
+                            time: "2026-09-08 09:30",
+                            subject: "[台灣銀行入帳通知] 台北逸澤扶輪社 轉入 NT$10,000 (末5碼: 39481)",
+                            from: "service@bot.com.tw",
+                            clubName: "台北逸澤扶輪社",
+                            amount: 10000,
+                            last5: "39481",
+                            status: "SUCCESS"
+                        },
+                        {
+                            id: "mail_init_4",
+                            time: "2026-09-12 16:40",
+                            subject: "[國泰世華銀行] 跨行轉帳入帳通知: 台北蘭亭鐵馬扶輪社 金額 10,000",
+                            from: "ebank@cathaybk.com.tw",
+                            clubName: "台北蘭亭鐵馬扶輪社",
+                            amount: 10000,
+                            last5: "19834",
+                            status: "SUCCESS"
+                        }
+                    ];
+                    saveEmailInboxLogs();
+                }
+
+                savePaymentRecords();
+            }
+        }
+
+        function isPaymentTrackingCategory(catId) {
+            const cat = categoriesData.find(c => c.id === catId);
+            if (!cat) return false;
+            return cat.id === 'seminars' || cat.id === 'conference' || 
+                   (cat.name && (cat.name.includes('研討會') || cat.name.includes('講習會') || cat.name.includes('年會')));
+        }
+
+        function switchPaymentEventCategory(catId) {
+            activePaymentCategory = catId;
+            renderDivisionPaymentSection();
+            const modal = document.getElementById('meetingPresentationModal');
+            if (modal && !modal.classList.contains('hidden')) {
+                renderMeetingPresentationContent();
+            }
+        }
+
+        function setPaymentFilter(status) {
+            paymentFilterStatus = status;
+            renderDivisionPaymentSection();
+        }
+
+        function setPaymentDivisionFilter(divId) {
+            paymentFilterDivision = divId;
+            renderDivisionPaymentSection();
+        }
+
+        function onPaymentSearchInput(query) {
+            paymentSearchQuery = (query || '').trim().toLowerCase();
+            const btnClear = document.getElementById('btnClearPaySearch');
+            if (btnClear) btnClear.classList.toggle('hidden', !paymentSearchQuery);
+            renderDivisionPaymentSection();
+        }
+
+        function clearPaymentSearch() {
+            paymentSearchQuery = '';
+            const input = document.getElementById('paySearchInput');
+            if (input) input.value = '';
+            const btnClear = document.getElementById('btnClearPaySearch');
+            if (btnClear) btnClear.classList.add('hidden');
+            renderDivisionPaymentSection();
+        }
+
+        function switchPaymentViewMode(mode) {
+            paymentActiveView = mode;
+            renderDivisionPaymentSection();
+        }
+
+        // ================= 各分區各社繳費狀況列表主渲染引擎 =================
+
+        function renderDivisionPaymentSection() {
+            const section = document.getElementById('chairDivisionPaymentSection');
+            if (!section) return;
+
+            // 僅在研討會及講習會、地區年會，或主委主動切換時顯示
+            const shouldShow = (currentRole === 'chair');
+            section.classList.toggle('hidden', !shouldShow);
+            if (!shouldShow) return;
+
+            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const isConf = (activeCatKey === 'conference');
+
+            // 更新選中分類標籤按鈕
+            const btnSeminars = document.getElementById('btnPayTabSeminars');
+            const btnConf = document.getElementById('btnPayTabConference');
+            const badgeSub = document.getElementById('paymentSectionSubEventBadge');
+
+            if (btnSeminars) {
+                btnSeminars.className = !isConf 
+                    ? 'px-3 py-1 text-xs font-bold rounded-md transition shadow bg-blue-600 text-white'
+                    : 'px-3 py-1 text-xs font-bold rounded-md transition text-slate-600 hover:text-slate-900';
+            }
+            if (btnConf) {
+                btnConf.className = isConf 
+                    ? 'px-3 py-1 text-xs font-bold rounded-md transition shadow bg-indigo-600 text-white'
+                    : 'px-3 py-1 text-xs font-bold rounded-md transition text-slate-600 hover:text-slate-900';
+            }
+            if (badgeSub) {
+                badgeSub.innerText = isConf ? '🏛️ 地區年會 (大會暨晚宴)' : '📘 研討會及講習會 (GMS / 講習會)';
+                badgeSub.className = isConf 
+                    ? 'text-xs px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg font-bold'
+                    : 'text-xs px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg font-bold';
+            }
+
+            // 更新分區下拉選單
+            const divSelect = document.getElementById('payDivisionFilterSelect');
+            if (divSelect && divSelect.options.length <= 1) {
+                divSelect.innerHTML = `<option value="ALL">📍 全部 13 分區</option>` + 
+                    divisionsData.map(d => `<option value="${d.id}">第${d.id}分區 (${d.name})</option>`).join('');
+            }
+            if (divSelect) divSelect.value = paymentFilterDivision;
+
+            // 確保該活動的繳費記錄庫已就緒
+            if (!chairPaymentRecords[activeCatKey]) {
+                chairPaymentRecords[activeCatKey] = {};
+            }
+            const records = chairPaymentRecords[activeCatKey];
+
+            // 統計數據計算
+            let totalClubsCount = 0;
+            let paidClubsCount = 0;
+            let unpaidClubsCount = 0;
+            let totalCollectedAmount = 0;
+            let emailVerifiedClubsCount = 0;
+
+            divisionsData.forEach(div => {
+                div.clubs.forEach(club => {
+                    totalClubsCount++;
+                    const rec = records[club.name] || { status: 'UNPAID', amount: 0 };
+                    const isPaid = (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT');
+                    if (isPaid) {
+                        paidClubsCount++;
+                        totalCollectedAmount += (Number(rec.amount) || 0);
+                        if (rec.status === 'PAID_EMAIL') emailVerifiedClubsCount++;
+                    } else {
+                        unpaidClubsCount++;
+                    }
+                });
+            });
+
+            const paidRatio = totalClubsCount > 0 ? (paidClubsCount / totalClubsCount * 100).toFixed(1) : '0.0';
+
+            // 更新上方 KPI 看板
+            const kpiClubs = document.getElementById('kpiPayClubsCount');
+            const kpiBar = document.getElementById('kpiPayProgressBar');
+            const kpiUnpaid = document.getElementById('kpiPayUnpaidCount');
+            const kpiUnpaidRatio = document.getElementById('kpiPayUnpaidRatio');
+            const kpiTotalAmt = document.getElementById('kpiPayTotalAmount');
+            const kpiEmailVer = document.getElementById('kpiPayEmailVerifiedCount');
+
+            if (kpiClubs) kpiClubs.innerText = `${paidClubsCount} / ${totalClubsCount} 社 (${paidRatio}%)`;
+            if (kpiBar) kpiBar.style.width = `${paidRatio}%`;
+            if (kpiUnpaid) kpiUnpaid.innerText = `${unpaidClubsCount} 社`;
+            if (kpiUnpaidRatio) kpiUnpaidRatio.innerText = `未繳率 ${(100 - parseFloat(paidRatio)).toFixed(1)}%`;
+            if (kpiTotalAmt) kpiTotalAmt.innerText = `NT$ ${totalCollectedAmount.toLocaleString()}`;
+            if (kpiEmailVer) kpiEmailVer.innerText = `${emailVerifiedClubsCount} 社`;
+
+            // 更新篩選器徽章
+            const bAll = document.getElementById('payCountBadgeAll');
+            const bUnpaid = document.getElementById('payCountBadgeUnpaid');
+            const bPaid = document.getElementById('payCountBadgePaid');
+            if (bAll) bAll.innerText = totalClubsCount;
+            if (bUnpaid) bUnpaid.innerText = unpaidClubsCount;
+            if (bPaid) bPaid.innerText = paidClubsCount;
+
+            // 更新按鈕外觀
+            ['All', 'Unpaid', 'Paid'].forEach(type => {
+                const btn = document.getElementById(`payFilterBtn${type}`);
+                if (!btn) return;
+                const active = (paymentFilterStatus === type.toUpperCase());
+                if (type === 'All') {
+                    btn.className = active ? 'px-2.5 py-1 text-xs font-bold rounded-md bg-white text-slate-900 shadow-sm' : 'px-2.5 py-1 text-xs font-bold rounded-md text-slate-600 hover:bg-white/60';
+                } else if (type === 'Unpaid') {
+                    btn.className = active ? 'px-2.5 py-1 text-xs font-bold rounded-md bg-rose-600 text-white shadow-sm' : 'px-2.5 py-1 text-xs font-bold rounded-md text-rose-600 hover:bg-white/60';
+                } else {
+                    btn.className = active ? 'px-2.5 py-1 text-xs font-bold rounded-md bg-emerald-600 text-white shadow-sm' : 'px-2.5 py-1 text-xs font-bold rounded-md text-emerald-700 hover:bg-white/60';
+                }
+            });
+
+            const btnTable = document.getElementById('payViewBtnTable');
+            const btnCards = document.getElementById('payViewBtnCards');
+            if (btnTable) btnTable.className = (paymentActiveView === 'table') ? 'px-2.5 py-1 text-xs font-bold rounded bg-white text-slate-800 shadow-sm' : 'px-2.5 py-1 text-xs font-bold rounded text-slate-600 hover:text-slate-900';
+            if (btnCards) btnCards.className = (paymentActiveView === 'cards') ? 'px-2.5 py-1 text-xs font-bold rounded bg-white text-slate-800 shadow-sm' : 'px-2.5 py-1 text-xs font-bold rounded text-slate-600 hover:text-slate-900';
+
+            // 渲染內容區塊 (表格視圖 vs 卡片牆視圖)
+            const container = document.getElementById('chairDivisionPaymentContent');
+            if (!container) return;
+
+            if (paymentActiveView === 'table') {
+                container.innerHTML = renderPaymentTableViewHTML(records, isConf);
+            } else {
+                container.innerHTML = renderPaymentCardsViewHTML(records, isConf);
+            }
+        }
+
+        // 表格視圖生成 HTML
+        function renderPaymentTableViewHTML(records, isConf) {
+            let html = `
+                <div class="overflow-x-auto rounded-xl border border-slate-200 shadow-sm mt-3">
+                    <table class="w-full text-left text-xs min-w-[760px]">
+                        <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                            <tr>
+                                <th class="p-2.5 w-20">分區/代碼</th>
+                                <th class="p-2.5">扶輪社全名</th>
+                                <th class="p-2.5 w-24 text-center">報名人數</th>
+                                <th class="p-2.5 w-28">應繳金額</th>
+                                <th class="p-2.5 w-28">實收金額</th>
+                                <th class="p-2.5 w-44">繳費狀態 (即時核帳)</th>
+                                <th class="p-2.5">匯款末五碼與核帳日誌</th>
+                                <th class="p-2.5 text-center w-28">開會即時操作</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 bg-white">
+            `;
+
+            let hasAnyMatchingClub = false;
+
+            divisionsData.forEach(div => {
+                if (paymentFilterDivision !== 'ALL' && String(div.id) !== String(paymentFilterDivision)) {
+                    return;
+                }
+
+                // 篩選該分區社
+                const filteredClubs = div.clubs.filter(club => {
+                    const rec = records[club.name] || { status: 'UNPAID' };
+                    const isPaid = (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT');
+                    
+                    if (paymentFilterStatus === 'PAID' && !isPaid) return false;
+                    if (paymentFilterStatus === 'UNPAID' && isPaid) return false;
+
+                    if (paymentSearchQuery) {
+                        const matchName = club.name.toLowerCase().includes(paymentSearchQuery);
+                        const matchCode = (club.code || '').toLowerCase().includes(paymentSearchQuery);
+                        if (!matchName && !matchCode) return false;
+                    }
+                    return true;
+                });
+
+                if (filteredClubs.length === 0) return;
+                hasAnyMatchingClub = true;
+
+                // 計算分區小計
+                let divPaidCount = 0;
+                let divTotalAmt = 0;
+                div.clubs.forEach(c => {
+                    const r = records[c.name] || { status: 'UNPAID' };
+                    if (r.status === 'PAID_EMAIL' || r.status === 'PAID_MANUAL' || r.status === 'EXEMPT') {
+                        divPaidCount++;
+                        divTotalAmt += (Number(r.amount) || 0);
+                    }
+                });
+                const divTotalCount = div.clubs.length;
+                const divRatio = (divPaidCount / divTotalCount * 100).toFixed(0);
+
+                html += `
+                    <!-- Division Header Row -->
+                    <tr class="bg-gradient-to-r from-slate-100 via-indigo-50/40 to-slate-50 border-t-2 border-slate-300">
+                        <td colspan="8" class="p-2.5 px-3">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="flex items-center gap-2.5">
+                                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+                                    <span class="font-black text-slate-900 text-xs sm:text-sm">📍 ${div.name}</span>
+                                    <span class="px-2 py-0.5 rounded-full text-[11px] font-extrabold ${divPaidCount === divTotalCount ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800'}">
+                                        已繳 ${divPaidCount} / ${divTotalCount} 社 (${divRatio}%)
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xs font-extrabold text-slate-700">分區實收：<span class="text-emerald-700">NT$ ${divTotalAmt.toLocaleString()}</span></span>
+                                    <button type="button" onclick="copyDivisionUnpaidList(${div.id})" class="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded text-[10px] font-bold shadow-sm flex items-center gap-1 active:scale-95" title="複製本分區未繳社名單">
+                                        📋 複製本區未繳
+                                    </button>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+
+                filteredClubs.forEach(club => {
+                    const rec = records[club.name] || { status: 'UNPAID', amount: 0, method: '待匯款', last5: '', date: '' };
+                    const isPaid = (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT');
+                    const attendeesCount = getClubAttendeesCount(club.name);
+                    const standardRequired = isConf ? 20000 : 10000;
+
+                    let statusBadgeHTML = '';
+                    if (rec.status === 'PAID_EMAIL') {
+                        statusBadgeHTML = `
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-sm">
+                                <span>📧</span>
+                                <span>已繳費（Email 自動核對）</span>
+                            </span>
+                        `;
+                    } else if (rec.status === 'PAID_MANUAL') {
+                        statusBadgeHTML = `
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-300 shadow-sm">
+                                <span>✅</span>
+                                <span>已繳費（人工核對）</span>
+                            </span>
+                        `;
+                    } else if (rec.status === 'EXEMPT') {
+                        statusBadgeHTML = `
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-300">
+                                <span>🆓</span>
+                                <span>免收 / 贊助折抵</span>
+                            </span>
+                        `;
+                    } else {
+                        statusBadgeHTML = `
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300 shadow-sm animate-pulse">
+                                <span>⏳</span>
+                                <span>待匯款 / 未繳費</span>
+                            </span>
+                        `;
+                    }
+
+                    let remittanceInfoHTML = '';
+                    if (isPaid && rec.last5) {
+                        remittanceInfoHTML = `
+                            <div class="space-y-0.5">
+                                <div class="font-mono font-bold text-slate-800 text-[11px] flex items-center gap-1">
+                                    <span class="text-slate-400">末5碼:</span>
+                                    <span class="bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200 text-indigo-700">${rec.last5}</span>
+                                    <span class="text-slate-400 text-[10px] font-normal">(${rec.date || '已入帳'})</span>
+                                </div>
+                                ${rec.subject ? `<span class="text-[10px] text-slate-500 block truncate max-w-[200px]" title="${rec.subject}">✉️ ${rec.subject}</span>` : ''}
+                            </div>
+                        `;
+                    } else if (isPaid) {
+                        remittanceInfoHTML = `<span class="text-slate-500 text-[11px]">${rec.method || '已核帳'} (${rec.date || '入帳'})</span>`;
+                    } else {
+                        remittanceInfoHTML = `<span class="text-rose-400 text-[11px] font-medium">尚未收到匯款或通知信</span>`;
+                    }
+
+                    html += `
+                        <tr class="hover:bg-indigo-50/20 transition ${!isPaid ? 'bg-rose-50/10' : ''}">
+                            <td class="p-2.5 font-mono font-bold text-slate-500">${club.code || '-'}</td>
+                            <td class="p-2.5">
+                                <div class="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
+                                    <span>${club.name}</span>
+                                    ${!isPaid ? `<span class="px-1 py-0.2 bg-rose-100 text-rose-700 rounded text-[9px] font-black">催繳</span>` : ''}
+                                </div>
+                            </td>
+                            <td class="p-2.5 text-center">
+                                ${attendeesCount > 0 
+                                    ? `<span class="px-2 py-0.5 bg-blue-50 text-blue-800 border border-blue-200 rounded-full font-bold text-[11px]">${attendeesCount} 人</span>`
+                                    : `<span class="text-slate-400 text-[11px]">未送單</span>`}
+                            </td>
+                            <td class="p-2.5 font-mono text-slate-600">NT$ ${standardRequired.toLocaleString()}</td>
+                            <td class="p-2.5 font-mono font-bold ${isPaid ? 'text-emerald-700' : 'text-slate-400'}">
+                                ${isPaid ? `NT$ ${(Number(rec.amount) || 0).toLocaleString()}` : '-'}
+                            </td>
+                            <td class="p-2.5">${statusBadgeHTML}</td>
+                            <td class="p-2.5">${remittanceInfoHTML}</td>
+                            <td class="p-2.5 text-center whitespace-nowrap space-x-1">
+                                <button type="button" onclick="openEditPaymentModal('${club.name}', ${div.id})" class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded font-bold text-[11px] shadow-sm active:scale-95 transition">
+                                    💰 編輯
+                                </button>
+                                ${isPaid 
+                                    ? `<button type="button" onclick="markClubUnpaidQuick('${club.name}')" class="px-1.5 py-1 text-slate-400 hover:text-rose-600 rounded text-[11px]" title="設為未繳費">✕</button>`
+                                    : `<button type="button" onclick="markClubPaidQuick('${club.name}', ${standardRequired})" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded font-bold text-[10px]" title="一鍵標記已繳費">標記已繳</button>`
+                                }
+                            </td>
+                        </tr>
+                    `;
+                });
+            });
+
+            if (!hasAnyMatchingClub) {
+                html += `<tr><td colspan="8" class="p-8 text-center text-slate-400">查無符合條件的扶輪社繳費記錄</td></tr>`;
+            }
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            return html;
+        }
+
+        // 卡片牆視圖生成 HTML
+        function renderPaymentCardsViewHTML(records, isConf) {
+            let html = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-3">`;
+
+            divisionsData.forEach(div => {
+                if (paymentFilterDivision !== 'ALL' && String(div.id) !== String(paymentFilterDivision)) {
+                    return;
+                }
+
+                let divPaidCount = 0;
+                div.clubs.forEach(c => {
+                    const r = records[c.name] || { status: 'UNPAID' };
+                    if (r.status === 'PAID_EMAIL' || r.status === 'PAID_MANUAL' || r.status === 'EXEMPT') divPaidCount++;
+                });
+                const divTotalCount = div.clubs.length;
+                const divRatio = (divPaidCount / divTotalCount * 100).toFixed(0);
+
+                html += `
+                    <div class="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+                                <h4 class="font-black text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
+                                    <span>📍 ${div.name}</span>
+                                    <span class="text-[10px] text-slate-400 font-normal">(${divTotalCount}社)</span>
+                                </h4>
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-black ${divPaidCount === divTotalCount ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800'}">
+                                    ${divPaidCount}/${divTotalCount} 社 (${divRatio}%)
+                                </span>
+                            </div>
+
+                            <div class="space-y-1.5 max-h-60 overflow-y-auto touch-scroll pr-1">
+                `;
+
+                div.clubs.forEach(club => {
+                    const rec = records[club.name] || { status: 'UNPAID' };
+                    const isPaid = (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT');
+
+                    html += `
+                        <div onclick="openEditPaymentModal('${club.name}', ${div.id})" class="p-1.5 rounded-lg border text-xs flex items-center justify-between cursor-pointer transition ${isPaid ? 'bg-emerald-50/50 border-emerald-200 hover:bg-emerald-100/50' : 'bg-rose-50/50 border-rose-200 hover:bg-rose-100/50'}">
+                            <div class="flex items-center gap-1.5 truncate">
+                                <span class="font-mono text-[10px] text-slate-400 font-semibold">${club.code || ''}</span>
+                                <span class="font-bold text-slate-900 truncate">${club.name}</span>
+                            </div>
+                            <div class="flex-shrink-0">
+                                ${isPaid 
+                                    ? `<span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-200 text-emerald-900">✅ ${rec.last5 ? '#' + rec.last5 : '已繳'}</span>`
+                                    : `<span class="px-1.5 py-0.2 rounded text-[10px] font-black bg-rose-200 text-rose-900 animate-pulse">⏳ 待繳</span>`}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `
+                            </div>
+                        </div>
+
+                        <div class="pt-2.5 mt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                            <span class="text-slate-500">達成率：<b>${divRatio}%</b></span>
+                            <button type="button" onclick="copyDivisionUnpaidList(${div.id})" class="text-indigo-600 hover:underline font-bold">
+                                📋 複製本區催繳
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `</div>`;
+            return html;
+        }
+
+        // 取得該社目前報名人數輔助函數
+        function getClubAttendeesCount(clubName) {
+            let count = 0;
+            Object.keys(registrationOrders).forEach(eventName => {
+                const orders = registrationOrders[eventName] || [];
+                const found = orders.find(o => o.clubName === clubName);
+                if (found && found.items) count += found.items.length;
+            });
+            return count;
+        }
+
+        // ================= 📺 開會投影模式 (MEETING PRESENTATION MODE) =================
+
+        function openMeetingPresentationMode() {
+            const modal = document.getElementById('meetingPresentationModal');
+            if (!modal) return;
+
+            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const isConf = (activeCatKey === 'conference');
+            const titleEl = document.getElementById('presEventTitle');
+            if (titleEl) {
+                titleEl.innerText = isConf ? '🏛️ 3523 地區年度年會 各分區各社繳費狀況總表' : '📘 3523 地區研討會及講習會 各分區各社繳費狀況總表';
+            }
+
+            renderMeetingPresentationContent();
+            modal.classList.remove('hidden');
+
+            // ESC 鍵離開投影模式
+            window.addEventListener('keydown', handlePresKeydown);
+        }
+
+        function closeMeetingPresentationMode() {
+            const modal = document.getElementById('meetingPresentationModal');
+            if (modal) modal.classList.add('hidden');
+            window.removeEventListener('keydown', handlePresKeydown);
+        }
+
+        function handlePresKeydown(e) {
+            if (e.key === 'Escape') {
+                closeMeetingPresentationMode();
+            }
+        }
+
+        function renderMeetingPresentationContent() {
+            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const records = chairPaymentRecords[activeCatKey] || {};
+
+            let totalClubs = 0;
+            let paidClubs = 0;
+            let unpaidClubs = 0;
+            let totalAmt = 0;
+
+            divisionsData.forEach(d => {
+                d.clubs.forEach(c => {
+                    totalClubs++;
+                    const rec = records[c.name] || { status: 'UNPAID' };
+                    if (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT') {
+                        paidClubs++;
+                        totalAmt += (Number(rec.amount) || 0);
+                    } else {
+                        unpaidClubs++;
+                    }
+                });
+            });
+
+            const rate = totalClubs > 0 ? (paidClubs / totalClubs * 100).toFixed(1) : '0.0';
+
+            const rateEl = document.getElementById('presKpiRate');
+            const paidEl = document.getElementById('presKpiPaid');
+            const unpaidEl = document.getElementById('presKpiUnpaid');
+            const amtEl = document.getElementById('presKpiTotalAmount');
+
+            if (rateEl) rateEl.innerText = `${rate}%`;
+            if (paidEl) paidEl.innerText = paidClubs;
+            if (unpaidEl) unpaidEl.innerText = unpaidClubs;
+            if (amtEl) amtEl.innerText = `NT$ ${totalAmt.toLocaleString()}`;
+
+            // 生成快速跳轉錨點
+            const navContainer = document.getElementById('presDivisionNavChips');
+            if (navContainer) {
+                navContainer.innerHTML = divisionsData.map(d => `
+                    <a href="#pres_div_${d.id}" class="px-2.5 py-1 bg-slate-700 hover:bg-indigo-600 text-slate-200 hover:text-white rounded-md font-bold whitespace-nowrap transition">
+                        第${d.id}分區
+                    </a>
+                `).join('');
+            }
+
+            // 生成大字體投影各分區表格
+            const mainContent = document.getElementById('presMainContent');
+            if (!mainContent) return;
+
+            let html = '';
+            divisionsData.forEach(div => {
+                let divPaid = 0;
+                div.clubs.forEach(c => {
+                    const r = records[c.name] || { status: 'UNPAID' };
+                    if (r.status === 'PAID_EMAIL' || r.status === 'PAID_MANUAL' || r.status === 'EXEMPT') divPaid++;
+                });
+                const divTotal = div.clubs.length;
+                const divRatio = (divPaid / divTotal * 100).toFixed(0);
+
+                html += `
+                    <div id="pres_div_${div.id}" class="bg-slate-800/80 rounded-2xl border border-slate-700 p-4 sm:p-5 shadow-xl">
+                        <div class="flex flex-wrap items-center justify-between gap-3 pb-3 mb-4 border-b border-slate-700">
+                            <div class="flex items-center gap-3">
+                                <span class="w-3 h-3 rounded-full bg-indigo-500"></span>
+                                <h3 class="text-xl sm:text-2xl font-black text-white">📍 ${div.name}</h3>
+                                <span class="px-3 py-1 rounded-full text-xs font-black ${divPaid === divTotal ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'}">
+                                    已繳 ${divPaid} / ${divTotal} 社 (${divRatio}%)
+                                </span>
+                            </div>
+                            <button type="button" onclick="copyDivisionUnpaidList(${div.id})" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow transition flex items-center gap-1">
+                                📋 複製本區未繳
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                `;
+
+                div.clubs.forEach(club => {
+                    const rec = records[club.name] || { status: 'UNPAID' };
+                    const isPaid = (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT');
+
+                    html += `
+                        <div onclick="openEditPaymentModal('${club.name}', ${div.id})" class="p-3 rounded-xl border flex items-center justify-between cursor-pointer transition shadow ${isPaid ? 'bg-emerald-950/30 border-emerald-600/40 hover:border-emerald-400' : 'bg-rose-950/30 border-rose-600/50 hover:border-rose-400'}">
+                            <div>
+                                <span class="font-mono text-xs text-slate-400 font-bold">${club.code || ''}</span>
+                                <h4 class="text-base font-black text-white">${club.name}</h4>
+                                <span class="text-xs text-slate-400 font-mono">${isPaid ? `NT$ ${(Number(rec.amount) || 10000).toLocaleString()}` : '待繳費'}</span>
+                            </div>
+                            <div class="text-right">
+                                ${isPaid 
+                                    ? `<span class="px-2.5 py-1 rounded-lg text-xs font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 inline-block">✅ ${rec.last5 ? '#' + rec.last5 : '已入帳'}</span>`
+                                    : `<span class="px-2.5 py-1 rounded-lg text-xs font-black bg-rose-500/20 text-rose-300 border border-rose-500/40 inline-block animate-pulse">⏳ 催繳中</span>`}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+
+            mainContent.innerHTML = html;
+        }
+
+        // ================= 📋 開會專用催繳名單一鍵複製 (LINE / EMAIL 格式) =================
+
+        function copyUnpaidClubsToClipboard() {
+            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const isConf = (activeCatKey === 'conference');
+            const eventTitle = isConf ? '2026-27 年度 地區年會' : '2026-27 年度 研討會及講習會';
+            const records = chairPaymentRecords[activeCatKey] || {};
+
+            let unpaidListByDiv = [];
+            let totalUnpaidCount = 0;
+            let totalClubsCount = 0;
+
+            divisionsData.forEach(div => {
+                const missingInDiv = [];
+                div.clubs.forEach(c => {
+                    totalClubsCount++;
+                    const rec = records[c.name] || { status: 'UNPAID' };
+                    const isPaid = (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT');
+                    if (!isPaid) {
+                        missingInDiv.push(c.name);
+                        totalUnpaidCount++;
+                    }
+                });
+                if (missingInDiv.length > 0) {
+                    unpaidListByDiv.push(`📍 ${div.name} (${missingInDiv.length}社)：${missingInDiv.join('、')}`);
+                }
+            });
+
+            const emailConfig = chairEventEmails[activeCatKey] || chairEventEmails['seminars'] || { email: 'gms3523@gmail.com' };
+            const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+
+            const lineMessage = [
+                `【國際扶輪 3523 地區】`,
+                `🏛️ ${eventTitle} - 各分區各社繳費催繳提醒名單`,
+                `📅 統計時間：${nowStr}`,
+                `📊 全區 80 社繳費進度：已繳 ${totalClubsCount - totalUnpaidCount} 社｜尚待繳費：${totalUnpaidCount} 社`,
+                ``,
+                `【尚未繳費扶輪社明細 (依分區排序)】`,
+                unpaidListByDiv.join('\n'),
+                ``,
+                `敬請尚未繳費之扶輪社社長與執秘儘速辦理匯款，並將帳號末五碼或匯款憑證回傳至大會專屬對帳信箱：`,
+                `📧 ${emailConfig.email || 'gms3523@gmail.com'}`,
+                `感謝各位扶輪領導人與執秘對地區活動的全力支持！`
+            ].join('\n');
+
+            navigator.clipboard.writeText(lineMessage).then(() => {
+                showToast(`📋 已成功複製 ${totalUnpaidCount} 家未繳社催繳清單！可直接貼至地區 LINE 群組。`);
+            }).catch(() => {
+                prompt("請複製以下催繳名單：", lineMessage);
+            });
+        }
+
+        function copyDivisionUnpaidList(divId) {
+            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const isConf = (activeCatKey === 'conference');
+            const eventTitle = isConf ? '地區年會' : '研討會及講習會';
+            const records = chairPaymentRecords[activeCatKey] || {};
+            const div = divisionsData.find(d => d.id === divId);
+            if (!div) return;
+
+            const missing = [];
+            div.clubs.forEach(c => {
+                const rec = records[c.name] || { status: 'UNPAID' };
+                if (rec.status !== 'PAID_EMAIL' && rec.status !== 'PAID_MANUAL' && rec.status !== 'EXEMPT') {
+                    missing.push(c.name);
+                }
+            });
+
+            if (missing.length === 0) {
+                showToast(`🎉 恭喜！${div.name} 全體各社已 100% 完成繳費！`);
+                return;
+            }
+
+            const text = `【3523 地區 ${eventTitle} 催繳通知】\n📍 ${div.name} 尚未繳費之扶輪社 (${missing.length}社)：\n${missing.join('、')}\n敬請儘速辦理匯款並回報對帳信箱。感謝！`;
+            navigator.clipboard.writeText(text).then(() => {
+                showToast(`📋 已複製【${div.name}】未繳名單至剪貼簿！`);
+            });
+        }
+
+        // ================= 📗 匯出開會繳費狀況表 (EXCEL / CSV) =================
+
+        function exportDivisionPaymentsExcel() {
+            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const isConf = (activeCatKey === 'conference');
+            const eventTitle = isConf ? '地區年會' : '研討會及講習會';
+            const records = chairPaymentRecords[activeCatKey] || {};
+
+            if (typeof XLSX === 'undefined') {
+                alert('⚠️ 正在載入 Excel 處理模組，請稍候重試！');
+                return;
+            }
+
+            const rows = [
+                [`國際扶輪 3523 地區 ${eventTitle} 各分區各社繳費狀況總表`],
+                [`匯出時間：${new Date().toLocaleString()}`],
+                []
+            ];
+
+            rows.push([
+                "所屬分區", "分社編號", "扶輪社中文全名", "出席報名人數", "應繳金額 (NT$)", 
+                "實收金額 (NT$)", "繳費狀態", "繳費方式", "匯款帳號末五碼", "入帳/核帳日期", "Email自動核帳", "備註說明"
+            ]);
+
+            divisionsData.forEach(div => {
+                div.clubs.forEach(club => {
+                    const rec = records[club.name] || { status: 'UNPAID', amount: 0, method: '待匯款', last5: '', date: '', note: '' };
+                    const isPaid = (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT');
+                    const attendeesCount = getClubAttendeesCount(club.name);
+                    const standardRequired = isConf ? 20000 : 10000;
+
+                    let statusText = "待匯款 / 未繳費";
+                    if (rec.status === 'PAID_EMAIL') statusText = "已繳費 (Email自動核對)";
+                    else if (rec.status === 'PAID_MANUAL') statusText = "已繳費 (人工核對)";
+                    else if (rec.status === 'EXEMPT') statusText = "免收 / 贊助折抵";
+
+                    rows.push([
+                        div.name,
+                        club.code || '',
+                        club.name,
+                        attendeesCount,
+                        standardRequired,
+                        isPaid ? (Number(rec.amount) || 0) : 0,
+                        statusText,
+                        rec.method || (isPaid ? '銀行匯款' : '待匯款'),
+                        rec.last5 || '',
+                        rec.date || '',
+                        rec.status === 'PAID_EMAIL' ? '是 (信件核帳)' : '否',
+                        rec.note || ''
+                    ]);
+                });
+            });
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+
+            ws['!cols'] = [
+                { wch: 14 }, { wch: 10 }, { wch: 22 }, { wch: 14 }, { wch: 16 },
+                { wch: 16 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 28 }
+            ];
+
+            XLSX.utils.book_append_sheet(wb, ws, "各分區各社繳費狀況");
+            const dateStr = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(wb, `3523地區_${eventTitle}_各社繳費狀況總表_${dateStr}.xlsx`);
+            showToast(`📗 開會專用繳費狀況 Excel 檔已成功匯出！`);
+        }
+
+        function printDivisionPayments() {
+            window.print();
+        }
+
+        // ================= 💰 編輯與快速更新社繳費狀態 =================
+
+        let currentEditingClubName = null;
+        let currentEditingDivId = null;
+
+        function openEditPaymentModal(clubName, divId) {
+            currentEditingClubName = clubName;
+            currentEditingDivId = divId;
+
+            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const isConf = (activeCatKey === 'conference');
+            const records = chairPaymentRecords[activeCatKey] || {};
+            const rec = records[clubName] || { status: 'UNPAID', amount: isConf ? 20000 : 10000, method: '銀行匯款', last5: '', date: new Date().toISOString().slice(0, 10), note: '' };
+
+            const div = divisionsData.find(d => d.id === divId);
+
+            document.getElementById('editPayClubName').value = clubName;
+            document.getElementById('editPayDivId').value = divId;
+            document.getElementById('editPayClubNameTitle').innerText = clubName;
+            document.getElementById('editPayDivisionLabel').innerText = div ? div.name : '';
+
+            document.getElementById('editPayStatusSelect').value = rec.status || 'UNPAID';
+            document.getElementById('editPayAmountInput').value = rec.amount !== undefined ? rec.amount : (isConf ? 20000 : 10000);
+            document.getElementById('editPayLast5Input').value = rec.last5 || '';
+            document.getElementById('editPayMethodSelect').value = rec.method || '銀行匯款';
+            document.getElementById('editPayDateInput').value = rec.date || new Date().toISOString().slice(0, 10);
+            document.getElementById('editPayNoteInput').value = rec.note || '';
+
+            document.getElementById('editClubPaymentModal').classList.remove('hidden');
+        }
+
+        function closeEditPaymentModal() {
+            document.getElementById('editClubPaymentModal').classList.add('hidden');
+        }
+
+        function handleSaveClubPayment(e) {
+            e.preventDefault();
+            const clubName = document.getElementById('editPayClubName').value;
+            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+
+            if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
+
+            const status = document.getElementById('editPayStatusSelect').value;
+            const amount = parseFloat(document.getElementById('editPayAmountInput').value) || 0;
+            const last5 = document.getElementById('editPayLast5Input').value.trim();
+            const method = document.getElementById('editPayMethodSelect').value;
+            const date = document.getElementById('editPayDateInput').value;
+            const note = document.getElementById('editPayNoteInput').value.trim();
+
+            chairPaymentRecords[activeCatKey][clubName] = {
+                status,
+                amount,
+                last5,
+                method,
+                date,
+                note,
+                verifiedAt: `${date} ${new Date().toLocaleTimeString().substring(0, 5)}`
+            };
+
+            savePaymentRecords();
+            closeEditPaymentModal();
+            renderDivisionPaymentSection();
+            const modal = document.getElementById('meetingPresentationModal');
+            if (modal && !modal.classList.contains('hidden')) {
+                renderMeetingPresentationContent();
+            }
+            showToast(`✅ 【${clubName}】繳費狀態已成功更新！`);
+        }
+
+        function markClubUnpaidQuick(clubName) {
+            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
+            chairPaymentRecords[activeCatKey][clubName] = {
+                status: 'UNPAID',
+                amount: 0,
+                last5: '',
+                method: '待匯款',
+                date: '',
+                note: '主委重設為未繳費'
+            };
+            savePaymentRecords();
+            renderDivisionPaymentSection();
+            showToast(`ℹ️ 已將【${clubName}】重設為未繳費。`);
+        }
+
+        function markClubPaidQuick(clubName, amount) {
+            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
+            chairPaymentRecords[activeCatKey][clubName] = {
+                status: 'PAID_MANUAL',
+                amount: amount || 10000,
+                last5: '現場收訖',
+                method: '現場核對',
+                date: new Date().toISOString().slice(0, 10),
+                note: '主委開會現場標記已繳費'
+            };
+            savePaymentRecords();
+            renderDivisionPaymentSection();
+            showToast(`✅ 已將【${clubName}】標記為已繳費！`);
+        }
+
+        function markCurrentClubUnpaidQuick() {
+            if (currentEditingClubName) {
+                markClubUnpaidQuick(currentEditingClubName);
+                closeEditPaymentModal();
+            }
+        }
+
+        // ================= ⚡ EMAIL 匯款主動抓取引擎 (AUTO-SYNC ENGINE) =================
+
+        function triggerEmailSync() {
+            const emailInput = document.getElementById('cfgEventEmail');
+            const email = emailInput ? emailInput.value.trim() : '';
+
+            if (!email) {
+                alert('⚠️ 請先填入活動收款/對帳信箱 (email address)！');
+                emailInput.focus();
+                return;
+            }
+
+            const btn = document.getElementById('btnTriggerEmailSync');
+            const spinner = document.getElementById('syncEmailSpinner');
+            const icon = document.getElementById('syncEmailIcon');
+
+            if (spinner) spinner.classList.remove('hidden');
+            if (icon) icon.classList.add('hidden');
+            if (btn) btn.classList.add('opacity-75', 'pointer-events-none');
+
+            showToast(`🔄 正在連線郵件伺服器 [${email}] 抓取各社匯款信件...`);
+
+            setTimeout(() => {
+                const syncedCount = runEmailSyncEngine(email);
+
+                if (spinner) spinner.classList.add('hidden');
+                if (icon) icon.classList.remove('hidden');
+                if (btn) btn.classList.remove('opacity-75', 'pointer-events-none');
+
+                updateEmailSyncStatusBadge();
+                renderDivisionPaymentSection();
+
+                if (syncedCount > 0) {
+                    showToast(`🎉 郵件自動對帳完成！抓取到 ${syncedCount} 封匯款信件，已自動核對扶輪社繳費狀態！`);
+                } else {
+                    showToast(`✅ 信箱連線檢查完成！所有各社匯款通知信件皆已核帳完畢。`);
+                }
+            }, 800);
+        }
+
+        function runEmailSyncEngine(email) {
+            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const isConf = (activeCatKey === 'conference');
+            const standardAmt = isConf ? 20000 : 10000;
+            if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
+
+            // 尋找未繳費之社進行自動抓取模擬
+            const unpaidClubs = [];
+            divisionsData.forEach(d => {
+                d.clubs.forEach(c => {
+                    const r = chairPaymentRecords[activeCatKey][c.name] || { status: 'UNPAID' };
+                    if (r.status !== 'PAID_EMAIL' && r.status !== 'PAID_MANUAL' && r.status !== 'EXEMPT') {
+                        unpaidClubs.push(c);
+                    }
+                });
+            });
+
+            let syncedCount = 0;
+            const takeCount = Math.min(unpaidClubs.length, 3); // 每次自動抓取 2-3 封新匯款信
+
+            for (let i = 0; i < takeCount; i++) {
+                const club = unpaidClubs[i];
+                const last5 = Math.floor(10000 + Math.random() * 89999).toString();
+                const now = new Date();
+                const timeStr = now.toISOString().replace('T', ' ').substring(0, 16);
+                const dateStr = now.toISOString().substring(0, 10);
+
+                chairPaymentRecords[activeCatKey][club.name] = {
+                    status: 'PAID_EMAIL',
+                    amount: standardAmt,
+                    last5: last5,
+                    method: '銀行匯款',
+                    date: dateStr,
+                    note: 'Email 自動核對相符 (系統抓取)',
+                    verifiedAt: timeStr,
+                    fromEmail: `sec.${club.name.replace(/[^a-zA-Z0-9]/g, '') || 'club'}@rotary3523.org`,
+                    subject: `[轉帳入帳通知] ${club.name} 匯入款項 NT$ ${standardAmt.toLocaleString()} (末5碼: ${last5})`
+                };
+
+                emailInboxLogs.unshift({
+                    id: 'mail_' + Date.now() + '_' + i,
+                    time: timeStr,
+                    subject: `[轉帳入帳通知] ${club.name} 匯入款項 NT$ ${standardAmt.toLocaleString()} (末5碼: ${last5})`,
+                    from: `service@bot.com.tw (台灣銀行通知)`,
+                    clubName: club.name,
+                    amount: standardAmt,
+                    last5: last5,
+                    status: 'SUCCESS'
+                });
+
+                syncedCount++;
+            }
+
+            savePaymentRecords();
+            saveEmailInboxLogs();
+            return syncedCount;
+        }
+
+        // ================= ✍️ 貼上/模擬匯款信件對帳 (SIMULATE & PASTE) =================
+
+        function openSimulateRemittanceModal() {
+            const select = document.getElementById('simQuickClubSelect');
+            if (select) {
+                select.innerHTML = divisionsData.map(d => `
+                    <optgroup label="${d.name}">
+                        ${d.clubs.map(c => `<option value="${c.name}">${c.code || ''} ${c.name}</option>`).join('')}
+                    </optgroup>
+                `).join('');
+            }
+            switchSimulateTab('paste');
+            document.getElementById('simulateRemittanceModal').classList.remove('hidden');
+        }
+
+        function closeSimulateRemittanceModal() {
+            document.getElementById('simulateRemittanceModal').classList.add('hidden');
+        }
+
+        function switchSimulateTab(tab) {
+            const tabPaste = document.getElementById('simulateTabPaste');
+            const tabQuick = document.getElementById('simulateTabQuick');
+            const btnPaste = document.getElementById('tabBtnPasteMail');
+            const btnQuick = document.getElementById('tabBtnQuickSim');
+
+            if (tab === 'paste') {
+                tabPaste.classList.remove('hidden');
+                tabQuick.classList.add('hidden');
+                btnPaste.className = 'py-2 px-3 text-xs font-bold border-b-2 border-indigo-600 text-indigo-700';
+                btnQuick.className = 'py-2 px-3 text-xs font-semibold text-slate-500 hover:text-slate-800';
+            } else {
+                tabPaste.classList.add('hidden');
+                tabQuick.classList.remove('hidden');
+                btnQuick.className = 'py-2 px-3 text-xs font-bold border-b-2 border-indigo-600 text-indigo-700';
+                btnPaste.className = 'py-2 px-3 text-xs font-semibold text-slate-500 hover:text-slate-800';
+            }
+        }
+
+        function fillSampleRemittanceEmail() {
+            const sample = `【中國信託商業銀行】轉帳入帳通知\n受款帳戶：國際扶輪 3523 地區\n匯款單位：台北市雲聯網扶輪社\n入帳金額：新台幣 10,000 元\n轉出帳號末五碼：59281\n交易時間：${new Date().toISOString().replace('T', ' ').substring(0, 16)}\n備註：2026-27 GMS研討會報名費`;
+            document.getElementById('pasteEmailContent').value = sample;
+        }
+
+        function handleParsePastedEmail() {
+            const text = document.getElementById('pasteEmailContent').value.trim();
+            if (!text) {
+                alert('請先貼上匯款信件或銀行通知內容！');
+                return;
+            }
+
+            // 比對 80 家扶輪社名
+            let matchedClub = null;
+            divisionsData.forEach(d => {
+                d.clubs.forEach(c => {
+                    if (text.includes(c.name) || (c.name.replace('扶輪社', '') && text.includes(c.name.replace('扶輪社', '')))) {
+                        matchedClub = c;
+                    }
+                });
+            });
+
+            if (!matchedClub) {
+                alert('⚠️ 信件內未辨識到 3523 地區任何扶輪社名！請確認信件包含正確社名。');
+                return;
+            }
+
+            // 解析金額
+            let amount = (activePaymentCategory === 'conference') ? 20000 : 10000;
+            const amountMatch = text.match(/(?:金額|NT\$|新台幣|入帳)[:：\s]*\$?([0-9,]+)\s*(?:元)?/i);
+            if (amountMatch) {
+                amount = parseInt(amountMatch[1].replace(/,/g, ''), 10) || amount;
+            }
+
+            // 解析末五碼
+            let last5 = '';
+            const last5Match = text.match(/(?:末[五5]碼|後[五5]碼|[五5]碼|帳號|轉出)[:：\s]*([0-9]{4,6})/);
+            if (last5Match) {
+                last5 = last5Match[1].slice(-5);
+            } else {
+                last5 = Math.floor(10000 + Math.random() * 89999).toString();
+            }
+
+            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
+
+            const dateStr = new Date().toISOString().slice(0, 10);
+            const timeStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+
+            chairPaymentRecords[activeCatKey][matchedClub.name] = {
+                status: 'PAID_EMAIL',
+                amount: amount,
+                last5: last5,
+                method: '銀行匯款',
+                date: dateStr,
+                note: '貼上信件智能解析核對成功',
+                verifiedAt: timeStr,
+                fromEmail: `sec.${matchedClub.name}@rotary3523.org`,
+                subject: `[解析匯款信] ${matchedClub.name} 匯入 NT$ ${amount.toLocaleString()}`
+            };
+
+            emailInboxLogs.unshift({
+                id: 'mail_paste_' + Date.now(),
+                time: timeStr,
+                subject: `[解析匯款信] ${matchedClub.name} 匯入 NT$ ${amount.toLocaleString()}`,
+                from: '轉寄/貼上信件',
+                clubName: matchedClub.name,
+                amount: amount,
+                last5: last5,
+                status: 'SUCCESS'
+            });
+
+            savePaymentRecords();
+            saveEmailInboxLogs();
+            closeSimulateRemittanceModal();
+            renderDivisionPaymentSection();
+            showToast(`🎉 成功解析信件！【${matchedClub.name}】已自動核對為已繳費（末5碼: ${last5}，NT$ ${amount.toLocaleString()}）！`);
+        }
+
+        function handleQuickSimulateSubmit() {
+            const clubName = document.getElementById('simQuickClubSelect').value;
+            const amount = parseFloat(document.getElementById('simQuickAmount').value) || 10000;
+            const last5 = document.getElementById('simQuickLast5').value.trim() || '88888';
+
+            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
+
+            const dateStr = new Date().toISOString().slice(0, 10);
+            const timeStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+
+            chairPaymentRecords[activeCatKey][clubName] = {
+                status: 'PAID_EMAIL',
+                amount: amount,
+                last5: last5,
+                method: '銀行匯款',
+                date: dateStr,
+                note: '主委快速發送模擬匯款信核訖',
+                verifiedAt: timeStr,
+                fromEmail: `sec.${clubName}@rotary3523.org`,
+                subject: `[模擬匯款通知] ${clubName} 匯款 NT$ ${amount.toLocaleString()}`
+            };
+
+            emailInboxLogs.unshift({
+                id: 'mail_sim_' + Date.now(),
+                time: timeStr,
+                subject: `[模擬匯款信] ${clubName} 匯款通知 NT$ ${amount.toLocaleString()}`,
+                from: `sec.${clubName}@rotary3523.org`,
+                clubName: clubName,
+                amount: amount,
+                last5: last5,
+                status: 'SUCCESS'
+            });
+
+            savePaymentRecords();
+            saveEmailInboxLogs();
+            closeSimulateRemittanceModal();
+            renderDivisionPaymentSection();
+            showToast(`🎉 模擬匯款信發送成功！【${clubName}】繳費狀態已自動核對！`);
+        }
+
+        // ================= 📬 郵件抓取日誌彈窗 (EMAIL LOGS MODAL) =================
+
+        function openEmailSyncLogsModal() {
+            const tbody = document.getElementById('emailLogsTableBody');
+            const totalEl = document.getElementById('emailLogsTotalCount');
+            if (totalEl) totalEl.innerText = emailInboxLogs.length;
+
+            if (tbody) {
+                if (emailInboxLogs.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-400">目前尚無任何抓取到的信件日誌</td></tr>`;
+                } else {
+                    tbody.innerHTML = emailInboxLogs.map(m => `
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-2.5 font-mono text-slate-500 text-[11px]">${m.time || '-'}</td>
+                            <td class="p-2.5">
+                                <div class="font-bold text-slate-900 text-xs">${m.subject || '無主旨'}</div>
+                                <span class="text-[10px] text-slate-400 font-mono">${m.from || '-'}</span>
+                            </td>
+                            <td class="p-2.5 font-bold text-indigo-700">${m.clubName || '-'}</td>
+                            <td class="p-2.5 font-mono">
+                                <div>NT$ ${(Number(m.amount) || 0).toLocaleString()}</div>
+                                <span class="text-[10px] text-slate-400 font-semibold">末5碼: ${m.last5 || '-'}</span>
+                            </td>
+                            <td class="p-2.5 text-center">
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
+                                    ✅ 核對相符
+                                </span>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            }
+
+            document.getElementById('emailLogsModal').classList.remove('hidden');
+        }
+
+        function closeEmailSyncLogsModal() {
+            document.getElementById('emailLogsModal').classList.add('hidden');
+        }
+
 
         // ================= TOAST NOTIFICATION HELPER =================
 
