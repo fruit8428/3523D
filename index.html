@@ -621,7 +621,7 @@
                             <option value="enabled">開啟 (運動賽事/RYLA/義診)</option>
                         </select>
                     </div>
-                    <div>
+                    <div id="chairApportionmentContainer">
                         <label class="block text-xs font-semibold text-slate-600 mb-1">地區分攤金：</label>
                         <input type="number" id="cfgFeeApportionment" value="3000" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-bold focus:bg-white focus:ring-1 focus:ring-blue-500">
                     </div>
@@ -2738,6 +2738,8 @@
             if (document.getElementById('cfgFeeApportionment')) document.getElementById('cfgFeeApportionment').value = chairConfig.feeApportionment !== undefined ? chairConfig.feeApportionment : 3000;
             document.getElementById('sponsorshipSelectionBox').classList.toggle('hidden', !cat.allowSponsors);
             document.getElementById('chairSponsorFeeInputs').classList.toggle('hidden', !cat.allowSponsors);
+            const appContainer = document.getElementById('chairApportionmentContainer');
+            if(appContainer) appContainer.classList.toggle('hidden', cat.allowSponsors);
 
             // Sports participant fee inputs for Chair
             const isSports = cat.id === 'sports' || (cat.name && (cat.name.includes('運動') || cat.name.includes('賽事') || cat.name.includes('體育')));
@@ -3270,7 +3272,7 @@
 
             const participantFee = isCurrentEventSports() ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             const existingIdx = registrationOrders[subEventName].findIndex(o => o.clubName === selectedClubName);
-            const apportionmentFee = (chairConfig.feeApportionment || 0);
+            const apportionmentFee = chairConfig.sponsorshipEnabled ? 0 : (chairConfig.feeApportionment || 0);
             const grandTotal = amount + participantFee + apportionmentFee;
             const orderPayload = {
                 clubName: selectedClubName,
@@ -3462,6 +3464,8 @@
             chairConfig.sponsorshipEnabled = enabled;
             document.getElementById('sponsorshipSelectionBox').classList.toggle('hidden', !enabled);
             document.getElementById('chairSponsorFeeInputs').classList.toggle('hidden', !enabled);
+            const appContainer = document.getElementById('chairApportionmentContainer');
+            if(appContainer) appContainer.classList.toggle('hidden', enabled);
             saveToStorage();
             updateTotalFeeSummaryDisplay();
             updateLinePreviewText();
