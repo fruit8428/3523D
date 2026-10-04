@@ -605,7 +605,7 @@
                 </div>
 
                 <!-- Chair Configuration Form -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mt-4">
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 mb-1">自訂活動全名：</label>
                         <input type="text" id="cfgEventName" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium focus:bg-white focus:ring-1 focus:ring-blue-500">
@@ -621,7 +621,11 @@
                             <option value="enabled">開啟 (運動賽事/RYLA/義診)</option>
                         </select>
                     </div>
-                    <div class="flex items-end">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">地區分攤金：</label>
+                        <input type="number" id="cfgFeeApportionment" value="3000" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-bold focus:bg-white focus:ring-1 focus:ring-blue-500">
+                    </div>
+                    <div class="flex items-end lg:col-span-1 sm:col-span-2">
                         <button onclick="saveChairSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-1.5 text-xs font-bold rounded-md transition shadow">
                             💾 儲存主委設定
                         </button>
@@ -2417,6 +2421,7 @@
 
         let chairConfig = {
             sponsorshipEnabled: false,
+            feeApportionment: 3000,
             feeCoHost: 50000,
             feeOrganizer: 20000,
             feeSponsor: 10000,
@@ -2556,7 +2561,8 @@
                 emailInboxLogs = [];
                 chairConfig = {
                     sponsorshipEnabled: false,
-                    feeCoHost: 50000,
+                    feeApportionment: 3000,
+            feeCoHost: 50000,
                     feeOrganizer: 20000,
                     feeSponsor: 10000,
                     feeCompete: 1200,
@@ -2729,6 +2735,7 @@
             // Sponsor capability flag
             chairConfig.sponsorshipEnabled = cat.allowSponsors;
             document.getElementById('cfgSponsorToggle').value = cat.allowSponsors ? 'enabled' : 'disabled';
+            if (document.getElementById('cfgFeeApportionment')) document.getElementById('cfgFeeApportionment').value = chairConfig.feeApportionment !== undefined ? chairConfig.feeApportionment : 3000;
             document.getElementById('sponsorshipSelectionBox').classList.toggle('hidden', !cat.allowSponsors);
             document.getElementById('chairSponsorFeeInputs').classList.toggle('hidden', !cat.allowSponsors);
 
@@ -3263,12 +3270,15 @@
 
             const participantFee = isCurrentEventSports() ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             const existingIdx = registrationOrders[subEventName].findIndex(o => o.clubName === selectedClubName);
+            const apportionmentFee = (chairConfig.feeApportionment || 0);
+            const grandTotal = amount + participantFee + apportionmentFee;
             const orderPayload = {
                 clubName: selectedClubName,
                 sponsorTier: currentSelectedSponsorTier,
                 sponsorAmount: amount,
                 participantFee: participantFee,
-                grandTotal: amount + participantFee,
+                apportionmentFee: apportionmentFee,
+                grandTotal: grandTotal,
                 submittedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
                 items: currentFormSelectedMembers.map(m => ({
                     ...JSON.parse(JSON.stringify(m)),
@@ -3467,6 +3477,7 @@
                 }
             }
 
+            chairConfig.feeApportionment = parseFloat(document.getElementById('cfgFeeApportionment').value) || 0;
             chairConfig.feeCoHost = parseFloat(document.getElementById('cfgFeeCoHost').value) || 0;
             chairConfig.feeOrganizer = parseFloat(document.getElementById('cfgFeeOrganizer').value) || 0;
             chairConfig.feeSponsor = parseFloat(document.getElementById('cfgFeeSponsor').value) || 0;
