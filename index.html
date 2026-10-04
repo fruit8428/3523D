@@ -2435,8 +2435,7 @@
         }
 
                 async function resetSystemData() {
-            if (confirm("⚠️ 確定將所有社友名冊與報名資料重置為初始預設值？本機修改將被清除。
-（📌 活動 Email 與密碼設定將保留不變）")) {
+            if (confirm("⚠️ 確定將所有社友名冊與報名資料重置為初始預設值？本機修改將被清除。\n（📌 活動 Email 與密碼設定將保留不變）")) {
                 if (supabaseClient) {
                     await supabaseClient.from('app_storage').delete().eq('key', LOCAL_STORAGE_KEY);
                 }
