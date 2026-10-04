@@ -2635,7 +2635,7 @@
         }
 
         function updateRolePermissionsUI() {
-            const isChair = (currentRole === 'chair');
+            const isChair = (currentRole === 'chair' || currentRole === 'super_admin');
             const cat = categoriesData.find(c => c.id === currentCatId);
             const allowsSubEvents = cat ? (cat.allowAddSubEvents !== false) : true;
 
@@ -2658,7 +2658,7 @@
 
         function renderNavTabs() {
             const container = document.getElementById('mainNavContainer');
-            const isChair = (currentRole === 'chair');
+            const isChair = (currentRole === 'chair' || currentRole === 'super_admin');
             const catButtons = categoriesData.map(cat => {
                 const isActive = cat.id === currentCatId;
                 const activeStyle = isActive 
@@ -4954,7 +4954,7 @@
 
         // Custom Category Modal (主委專屬新增主選單)
         function openAddCategoryModal() {
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以新增主選單！執秘報名端無法新增。\n如需新增，請先點擊右上角【📊 主委戰情】。');
                 return;
             }
@@ -4969,7 +4969,7 @@
 
         function handleSaveNewCategory(e) {
             e.preventDefault();
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以新增主選單！執秘無此權限。');
                 return;
             }
@@ -5004,7 +5004,7 @@
 
         // Delete Category Modal (主委專屬刪除主選單)
         function openDeleteCategoryModal() {
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以刪除主選單！執秘報名端無法操作。\n如需操作，請先點擊右上角【📊 主委戰情】。');
                 return;
             }
@@ -5080,7 +5080,7 @@
 
         function handleConfirmDeleteCategory(e) {
             e.preventDefault();
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以刪除主選單！');
                 return;
             }
@@ -5128,7 +5128,7 @@
 
         // Sub-Event Modal (主委專屬新增子活動)
         function openAddSubEventModal() {
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以新增子活動！執秘報名端無法新增。\n如需新增，請先點擊右上角【📊 主委戰情】。');
                 return;
             }
@@ -5155,7 +5155,7 @@
 
         function handleSaveNewSubEvent(e) {
             e.preventDefault();
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以新增子活動！執秘無此權限。');
                 return;
             }
@@ -5196,7 +5196,7 @@
 
         // Delete Sub-Event Modal (主委專屬刪除子活動)
         function openDeleteSubEventModal() {
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以刪除子活動！執秘報名端無法操作。\n如需操作，請先點擊右上角【📊 主委戰情】。');
                 return;
             }
@@ -5313,7 +5313,7 @@
 
         function handleConfirmDeleteSubEvent(e) {
             e.preventDefault();
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以刪除子活動！');
                 return;
             }
