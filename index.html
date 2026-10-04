@@ -180,9 +180,79 @@
                 box-shadow: none !important;
             }
         }
-    </style>
+    
+        /* Hide role switchers for normal users */
+        #roleSecBtn, #roleChairBtn, #roleArchBtn { display: none !important; }
+</style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col pb-16 md:pb-0">
+
+    <!-- Login Overlay -->
+    <div id="loginOverlay" class="fixed inset-0 z-[100] bg-slate-100 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden max-w-4xl w-full">
+            <!-- Left Side -->
+            <div class="bg-[#0b2463] text-white p-8 md:p-12 md:w-5/12 flex flex-col justify-center items-center relative text-center">
+                <div class="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-6">
+                    <div class="w-16 h-16 rounded-full border-4 border-dashed border-[#0b2463] flex items-center justify-center relative">
+                        <span class="text-3xl text-[#0b2463]">⚙️</span>
+                    </div>
+                </div>
+                <p class="text-amber-500 font-bold tracking-widest text-xs mb-3">ROTARY INTERNATIONAL</p>
+                <h1 class="text-2xl md:text-3xl font-black mb-6 leading-tight">國際扶輪3523地區<br>報名系統</h1>
+                <p class="text-sm text-blue-100 leading-relaxed mb-12">專為各地區社打造的專屬報名平台，提供高效率、安全的活動報名管理服務。</p>
+                <div class="text-[10px] text-blue-300/60 mt-auto">© 2026 Rotary District 3523. All rights reserved.</div>
+            </div>
+            
+            <!-- Right Side -->
+            <div class="p-8 md:p-12 md:w-7/12 relative">
+                <button type="button" onclick="document.getElementById('loginPassword').focus();" class="absolute top-6 right-6 text-xs text-slate-400 hover:text-slate-600 font-bold flex items-center gap-1">
+                    🛡️ 管理員登入
+                </button>
+                
+                <div class="flex border-b border-slate-200 mb-8 mt-2">
+                    <button type="button" id="tabLogin" onclick="switchLoginTab('login')" class="pb-3 text-base font-bold text-[#0b2463] border-b-2 border-amber-500 mr-6 transition-all">社名登入</button>
+                    <button type="button" id="tabRegister" onclick="switchLoginTab('register')" class="pb-3 text-base font-bold text-slate-400 hover:text-slate-600 transition-all">首次進入 (註冊)</button>
+                </div>
+                
+                <form id="loginForm" onsubmit="handleLogin(event)">
+                    <div class="mb-5">
+                        <label class="block text-sm font-bold text-[#0b2463] mb-2">所屬社名 <span class="text-red-500">*</span></label>
+                        <select id="loginClubSelect" required class="w-full border border-slate-300 rounded-lg p-3 text-slate-700 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#0b2463] focus:outline-none font-bold">
+                            <option value="">👥 點擊選擇或輸入社名搜尋</option>
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+                    
+                    <div class="mb-5 relative">
+                        <label class="block text-sm font-bold text-[#0b2463] mb-2">登入密碼 <span class="text-red-500">*</span></label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">🔒</span>
+                            <input type="password" id="loginPassword" required class="w-full border border-slate-300 rounded-lg p-3 pl-10 text-slate-700 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#0b2463] focus:outline-none font-medium" placeholder="請輸入您設定的密碼 (管理員請輸入管理員密碼)">
+                            <button type="button" onclick="const p=document.getElementById('loginPassword'); p.type=p.type==='password'?'text':'password';" class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600">👁️</button>
+                        </div>
+                        <p id="registerHint" class="text-xs text-amber-600 mt-2 hidden font-bold">💡 這是您第一次登入，請自行設定一組密碼。未來皆須使用此密碼登入。</p>
+                        <p id="loginError" class="text-xs text-red-600 mt-2 hidden font-bold">❌ 密碼錯誤或尚未註冊，請重試或點擊「首次進入 (註冊)」設定密碼。</p>
+                    </div>
+                    
+                    <div class="flex items-center justify-between mb-8">
+                        <label class="flex items-center text-sm text-slate-600 cursor-pointer font-bold">
+                            <input type="checkbox" id="rememberClub" class="mr-2 w-4 h-4 rounded border-slate-300 text-[#0b2463]">
+                            記住社名
+                        </label>
+                        <div class="text-sm">
+                            <span class="text-slate-500 font-medium">忘記密碼？</span>
+                            <a href="#" onclick="alert('請聯絡地區系統管理員重置密碼');" class="bg-[#0b2463] text-white px-2 py-1 rounded text-xs font-bold ml-1 hover:bg-blue-900 transition">聯絡管理員</a>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" id="loginBtnText" class="w-full bg-[#0b2463] hover:bg-blue-900 text-white font-bold py-3.5 rounded-lg transition shadow-lg flex items-center justify-center gap-2">
+                        進入報名系統 <span>→</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
 
     <!-- Top Navigation Header -->
     <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-50">
@@ -483,6 +553,34 @@
                 </div>
             </div>
         </section>
+
+        <!-- ================= VIEW 3: SUPER ADMIN DASHBOARD ================= -->
+        <section id="viewSuperAdmin" class="space-y-5 hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
+                <div class="pb-4 border-b border-slate-100 mb-4">
+                    <span class="text-xs font-bold text-amber-600 uppercase tracking-wider">Super Administrator</span>
+                    <h3 class="text-base sm:text-lg font-bold text-slate-900">👑 系統最高權限管理中心</h3>
+                    <p class="text-xs text-slate-500 mt-1">您可以指派各活動的主委（設定擁有該活動最高權限的社別）。當該社執秘登入時，將自動取得該活動的「主委戰情」權限。</p>
+                </div>
+                
+                <div class="max-w-2xl">
+                    <label class="block text-sm font-bold text-slate-700 mb-2">請選擇要設定的活動：</label>
+                    <select id="adminCategorySelect" onchange="renderAdminChairAssignment()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm font-bold text-slate-800 mb-4 focus:ring-2 focus:ring-blue-500">
+                        <!-- Populated dynamically -->
+                    </select>
+
+                    <label class="block text-sm font-bold text-slate-700 mb-2">指派主委社別 (可複選)：</label>
+                    <div id="adminChairClubsContainer" class="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-80 overflow-y-auto p-3 border border-slate-200 rounded-lg bg-slate-50 mb-4">
+                        <!-- Checkboxes populated dynamically -->
+                    </div>
+                    
+                    <button onclick="saveAdminChairAssignment()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-sm transition active:scale-95">
+                        💾 儲存權限設定
+                    </button>
+                </div>
+            </div>
+        </section>
+
 
         <!-- ================= VIEW 2: CHAIR DASHBOARD (主委後台) ================= -->
         <section id="viewChair" class="space-y-5 hidden">
@@ -2365,7 +2463,16 @@
         let paymentFilterDivision = 'ALL'; // 'ALL' | 1..13
         let paymentSearchQuery = '';
         let paymentActiveView = 'table'; // 'table' | 'cards'
-        let activePaymentCategory = 'seminars'; // 'seminars' | 'conference'
+        let activePaymentCategory = 'seminars';
+
+        // Auth State
+        let appAuthData = {
+            clubPasswords: {},
+            eventChairs: {}
+        };
+        let loggedInUser = null;
+        let currentLoginMode = 'login'; // 'login' | 'register'
+ // 'seminars' | 'conference'
 
         // ================= PERSISTENCE (LOCAL STORAGE) =================
 
@@ -2378,7 +2485,8 @@
                     registrationOrders,
                     chairConfig,
                     chairPaymentRecords,
-                    emailInboxLogs,
+                                        emailInboxLogs,
+                    appAuthData,
                     lastUpdated: new Date().toISOString()
                 };
                 if (supabaseClient) {
@@ -2422,6 +2530,9 @@
                             feeCompete: 1200,
                             feeMealOnly: 1000
                         }, parsed.chairConfig);
+                    }
+                    if (parsed.appAuthData) {
+                        appAuthData = parsed.appAuthData;
                     }
                 }
                 // 確保地區年會存在於 categoriesData 中
@@ -2468,7 +2579,8 @@
             await loadChairEventEmails();
             await loadPaymentRecords();
             await loadEmailInboxLogs();
-            initDefaultPaymentRecords();
+                        initDefaultPaymentRecords();
+            populateLoginClubs();
             renderNavTabs();
             renderDivisionDirectory();
             populateClubSelector();
@@ -2599,11 +2711,12 @@
             }
         }
 
-        function selectCategory(catId) {
+                function selectCategory(catId) {
             currentCatId = catId;
             currentSubEventIndex = 0;
             // 點一次換一次：切換主分類立即輪流換色
             currentThemeColorIndex = (currentThemeColorIndex === 0 ? 1 : 0);
+            if (loggedInUser) applyPermissions(); // Dynamic role switching based on category
             renderNavTabs();
             loadCategoryView();
         }
@@ -6924,6 +7037,211 @@
                 toast.style.opacity = '0';
             }, 3000);
         }
-    </script>
+    
+        // ================= AUTHENTICATION & LOGIN LOGIC =================
+        function populateLoginClubs() {
+            const loginSelect = document.getElementById('loginClubSelect');
+            if(!loginSelect) return;
+            loginSelect.innerHTML = '<option value="">👥 點擊選擇或輸入社名搜尋</option>';
+            divisionsData.forEach(div => {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = div.division;
+                div.clubs.forEach(club => {
+                    const opt = document.createElement('option');
+                    opt.value = club;
+                    opt.textContent = `[${div.id}] ${club}`;
+                    optgroup.appendChild(opt);
+                });
+                loginSelect.appendChild(optgroup);
+            });
+            const savedClub = localStorage.getItem('rotary_saved_login_club');
+            if (savedClub) {
+                loginSelect.value = savedClub;
+                document.getElementById('rememberClub').checked = true;
+            }
+        }
+
+        function switchLoginTab(mode) {
+            currentLoginMode = mode;
+            const tLogin = document.getElementById('tabLogin');
+            const tReg = document.getElementById('tabRegister');
+            const hint = document.getElementById('registerHint');
+            const btnText = document.getElementById('loginBtnText');
+            document.getElementById('loginError').classList.add('hidden');
+            document.getElementById('loginPassword').value = '';
+            
+            if (mode === 'login') {
+                tLogin.className = "pb-3 text-base font-bold text-[#0b2463] border-b-2 border-amber-500 mr-6 transition-all";
+                tReg.className = "pb-3 text-base font-bold text-slate-400 hover:text-slate-600 transition-all";
+                hint.classList.add('hidden');
+                btnText.innerHTML = '進入報名系統 <span>→</span>';
+            } else {
+                tReg.className = "pb-3 text-base font-bold text-[#0b2463] border-b-2 border-amber-500 transition-all";
+                tLogin.className = "pb-3 text-base font-bold text-slate-400 hover:text-slate-600 mr-6 transition-all";
+                hint.classList.remove('hidden');
+                btnText.innerHTML = '設定密碼並進入 <span>→</span>';
+            }
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const club = document.getElementById('loginClubSelect').value;
+            const pwd = document.getElementById('loginPassword').value;
+            const remember = document.getElementById('rememberClub').checked;
+            const errorEl = document.getElementById('loginError');
+            errorEl.classList.add('hidden');
+
+            if (!club && pwd !== 'fruit8428') {
+                errorEl.textContent = '❌ 請選擇所屬社名';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            if (pwd === 'fruit8428') {
+                // Super Admin Login
+                if(remember && club) localStorage.setItem('rotary_saved_login_club', club);
+                else localStorage.removeItem('rotary_saved_login_club');
+                
+                loggedInUser = { club: club || 'SuperAdmin', isSuperAdmin: true };
+                completeLogin();
+                return;
+            }
+
+            if (!appAuthData.clubPasswords) appAuthData.clubPasswords = {};
+
+            if (currentLoginMode === 'register') {
+                if (appAuthData.clubPasswords[club]) {
+                    errorEl.textContent = '❌ 此社已註冊過密碼！請切換至「社名登入」。';
+                    errorEl.classList.remove('hidden');
+                    return;
+                }
+                appAuthData.clubPasswords[club] = pwd;
+                saveToStorage();
+                
+                if(remember) localStorage.setItem('rotary_saved_login_club', club);
+                else localStorage.removeItem('rotary_saved_login_club');
+                
+                loggedInUser = { club: club, isSuperAdmin: false };
+                completeLogin();
+            } else {
+                // Login
+                if (!appAuthData.clubPasswords[club]) {
+                    errorEl.textContent = '❌ 此社尚未設定密碼，請點擊上方「首次進入 (註冊)」。';
+                    errorEl.classList.remove('hidden');
+                    return;
+                }
+                if (appAuthData.clubPasswords[club] !== pwd) {
+                    errorEl.textContent = '❌ 密碼錯誤，請重試。';
+                    errorEl.classList.remove('hidden');
+                    return;
+                }
+                
+                if(remember) localStorage.setItem('rotary_saved_login_club', club);
+                else localStorage.removeItem('rotary_saved_login_club');
+                
+                loggedInUser = { club: club, isSuperAdmin: false };
+                completeLogin();
+            }
+        }
+
+        function completeLogin() {
+            document.getElementById('loginOverlay').classList.add('hidden');
+            
+            // Set up initial state based on permissions
+            applyPermissions();
+            
+            // Re-render UI pieces that depend on role/permissions
+            renderNavTabs();
+            populateClubSelector();
+            loadCategoryView();
+            if(currentRole === 'chair' || currentRole === 'super_admin') {
+                updateChairDashboard();
+            }
+            if(loggedInUser.isSuperAdmin) {
+                populateAdminCategorySelect();
+            }
+        }
+
+        function applyPermissions() {
+            if (!loggedInUser) return;
+            
+            // 1. Lock club selector for normal users
+            const mainClubSelect = document.getElementById('clubSelector');
+            if (loggedInUser.isSuperAdmin) {
+                mainClubSelect.disabled = false;
+            } else {
+                mainClubSelect.value = loggedInUser.club;
+                mainClubSelect.disabled = true;
+                selectClub(loggedInUser.club); // trigger UI update for that club
+            }
+
+            // 2. Determine Role based on current category
+            if (loggedInUser.isSuperAdmin) {
+                currentRole = 'super_admin';
+            } else {
+                // Check if the club is a chair for the current category
+                if (!appAuthData.eventChairs) appAuthData.eventChairs = {};
+                const chairsForCat = appAuthData.eventChairs[currentCatId] || [];
+                if (chairsForCat.includes(loggedInUser.club)) {
+                    currentRole = 'chair';
+                } else {
+                    currentRole = 'secretary';
+                }
+            }
+            
+            // 3. Update view visibility
+            document.getElementById('viewSecretary').classList.toggle('hidden', currentRole !== 'secretary');
+            document.getElementById('viewChair').classList.toggle('hidden', currentRole === 'secretary');
+            document.getElementById('viewSuperAdmin').classList.toggle('hidden', currentRole !== 'super_admin');
+            
+            // Also show chair view content for super_admin so they can do everything
+            if (currentRole === 'super_admin') {
+                document.getElementById('viewSecretary').classList.remove('hidden');
+                document.getElementById('viewChair').classList.remove('hidden');
+            }
+        }
+
+        // ================= SUPER ADMIN MANAGEMENT =================
+        function populateAdminCategorySelect() {
+            const sel = document.getElementById('adminCategorySelect');
+            if(!sel) return;
+            sel.innerHTML = categoriesData.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            renderAdminChairAssignment();
+        }
+
+        function renderAdminChairAssignment() {
+            const catId = document.getElementById('adminCategorySelect').value;
+            const container = document.getElementById('adminChairClubsContainer');
+            if(!appAuthData.eventChairs) appAuthData.eventChairs = {};
+            const assigned = appAuthData.eventChairs[catId] || [];
+            
+            let html = '';
+            divisionsData.forEach(div => {
+                div.clubs.forEach(club => {
+                    const isChecked = assigned.includes(club) ? 'checked' : '';
+                    html += `
+                        <label class="flex items-center space-x-2 text-sm p-1.5 hover:bg-slate-100 rounded cursor-pointer">
+                            <input type="checkbox" value="${club}" class="admin-chair-checkbox rounded border-slate-300 text-blue-600 focus:ring-blue-500" ${isChecked}>
+                            <span class="text-slate-700 font-medium truncate">${club}</span>
+                        </label>
+                    `;
+                });
+            });
+            container.innerHTML = html;
+        }
+
+        function saveAdminChairAssignment() {
+            const catId = document.getElementById('adminCategorySelect').value;
+            const checkboxes = document.querySelectorAll('.admin-chair-checkbox:checked');
+            const selectedClubs = Array.from(checkboxes).map(cb => cb.value);
+            
+            if(!appAuthData.eventChairs) appAuthData.eventChairs = {};
+            appAuthData.eventChairs[catId] = selectedClubs;
+            saveToStorage();
+            
+            showToast(`✅ 已更新 ${catId} 的主委權限設定！`);
+            applyPermissions(); // re-apply in case it affects current view
+        }
+</script>
 </body>
 </html>
