@@ -7214,11 +7214,11 @@
             let html = '';
             divisionsData.forEach(div => {
                 div.clubs.forEach(club => {
-                    const isChecked = assigned.includes(club) ? 'checked' : '';
+                    const isChecked = assigned.includes(club.name) ? 'checked' : '';
                     html += `
                         <label class="flex items-center space-x-2 text-sm p-1.5 hover:bg-slate-100 rounded cursor-pointer">
-                            <input type="checkbox" value="${club}" class="admin-chair-checkbox rounded border-slate-300 text-blue-600 focus:ring-blue-500" ${isChecked}>
-                            <span class="text-slate-700 font-medium truncate">${club}</span>
+                            <input type="checkbox" value="${club.name}" class="admin-chair-checkbox rounded border-slate-300 text-blue-600 focus:ring-blue-500" ${isChecked}>
+                            <span class="text-slate-700 font-medium truncate">[${club.code}] ${club.name}</span>
                         </label>
                     `;
                 });
