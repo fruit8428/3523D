@@ -607,8 +607,14 @@
                 <!-- Chair Configuration Form -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-4">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">自訂活動全名：</label>
-                        <input type="text" id="cfgEventName" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium">
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1 flex justify-between items-center">
+                            <span>📝 自訂活動全名：</span>
+                            <div class="flex gap-1">
+                                <button type="button" id="chairDashAddSubEventBtn" onclick="openAddSubEventModal()" class="text-[10px] font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 px-1.5 py-0.5 rounded border border-amber-300 transition">➕ 新增</button>
+                                <button type="button" id="chairDashDeleteSubEventBtn" onclick="openDeleteSubEventModal()" class="text-[10px] font-bold text-rose-700 bg-rose-100 hover:bg-rose-200 px-1.5 py-0.5 rounded border border-rose-300 transition">🗑️ 刪除</button>
+                            </div>
+                        </label>
+                        <input type="text" id="cfgEventName" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium focus:bg-white focus:ring-1 focus:ring-blue-500">
                     </div>
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 mb-1">報名開放時間：</label>
@@ -2774,7 +2780,7 @@
             // Move sub-event name over to main title and link with dropdown (移過去及連動)
             document.getElementById('catTitle').innerText = subEventName;
             document.getElementById('regFormTitle').innerText = `報名：${subEventName}`;
-            document.getElementById('cfgEventName').value = `2026-27年度 ${subEventName}`;
+            document.getElementById('cfgEventName').value = subEventName;
 
             // Check if current event is Golf Tournament (Strict linkage with Golf Badge)
             const isGolf = subEventName.includes("高爾夫");
@@ -3458,6 +3464,15 @@
         }
 
         function saveChairSettings() {
+            // Update Event Name
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            if (cat && cat.subEvents && cat.subEvents.length > currentSubEventIndex) {
+                const newName = document.getElementById('cfgEventName').value.trim();
+                if (newName) {
+                    cat.subEvents[currentSubEventIndex] = newName.replace(/^2026-27年度 /, ''); // Strip prefix if they left it
+                }
+            }
+
             chairConfig.feeCoHost = parseFloat(document.getElementById('cfgFeeCoHost').value) || 0;
             chairConfig.feeOrganizer = parseFloat(document.getElementById('cfgFeeOrganizer').value) || 0;
             chairConfig.feeSponsor = parseFloat(document.getElementById('cfgFeeSponsor').value) || 0;
