@@ -3370,15 +3370,13 @@
             const isGolf = isCurrentEventGolf();
 
             const hcapBox = document.getElementById('modalHandicapContainer');
-            if (hcapBox) hcapBox.classList.toggle('hidden', !isGolf);
+            if (hcapBox) hcapBox.classList.remove('hidden');
 
             if (memberId) {
                 const members = clubMemberDatabase[selectedClubName] || [];
                 const target = members.find(m => m.id === memberId);
                 if (target) {
-                    title.innerHTML = isGolf 
-                        ? `✏️ 編輯社友資料與差點：<span class="text-blue-600">${target.name}</span>`
-                        : `✏️ 編輯社友資料：<span class="text-blue-600">${target.name}</span>`;
+                    title.innerHTML = `✏️ 編輯社友資料與差點：<span class="text-blue-600">${target.name}</span>`;
                     editIdInput.value = target.id;
                     document.getElementById('mRole').value = target.role || '社友';
                     document.getElementById('mNickname').value = target.nickname || '';
@@ -3421,14 +3419,8 @@
             const nickname = document.getElementById('mNickname').value.trim();
             const name = document.getElementById('mChineseName').value.trim();
             const isGolf = isCurrentEventGolf();
-            let handicap = '';
-            if (isGolf) {
-                const handicapVal = document.getElementById('mHandicap').value.trim();
-                handicap = handicapVal !== '' ? parseFloat(handicapVal) : '';
-            } else if (editId) {
-                const existing = clubMemberDatabase[selectedClubName]?.find(m => m.id === parseInt(editId));
-                handicap = existing && existing.handicap !== undefined ? existing.handicap : '';
-            }
+            const handicapVal = document.getElementById('mHandicap').value.trim();
+            const handicap = handicapVal !== '' ? parseFloat(handicapVal) : '';
             const diet = document.querySelector('input[name="mDiet"]:checked').value;
             const veganNote = diet === 'VEGAN' ? document.getElementById('mVeganNote').value.trim() : '';
 
