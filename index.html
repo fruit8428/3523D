@@ -29,6 +29,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- QRCode CDN for Cross-Device Mobile Linkage -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- SheetJS for Excel Export/Import -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <!-- SheetJS (XLSX) CDN for Native Excel (.xlsx) Export -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- Font Customizations & Tailwind Config -->
@@ -413,9 +415,14 @@
                             </h3>
                             <p class="text-[11px] text-slate-500" id="masterDbSubDesc">已整合<strong>高爾夫差點</strong>，預先維護一勞永逸</p>
                         </div>
-                        <button onclick="openAddMemberModal()" class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95">
-                            ➕ 新增社友
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button onclick="openExcelModal()" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95">
+                                📊 匯入/匯出 Excel
+                            </button>
+                            <button onclick="openAddMemberModal()" class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95">
+                                ➕ 新增社友
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Member Search Filter Input -->
@@ -1090,6 +1097,33 @@
         </section>
 
     </main>
+
+    <!-- ================= MODAL: EXCEL IMPORT / EXPORT ================= -->
+    <div id="excelModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm p-5 sm:p-6">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                <h3 class="font-bold text-slate-900 text-base">📊 Excel 名冊批次管理</h3>
+                <button onclick="closeExcelModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1 leading-none">&times;</button>
+            </div>
+            
+            <div class="space-y-4">
+                <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 text-center">
+                    <p class="text-xs text-blue-800 mb-3 font-medium">將目前 <span id="excelModalClubName" class="font-bold text-blue-900"></span> 的名冊下載為 Excel，亦可作為批次建檔範本。</p>
+                    <button onclick="exportClubMembersToExcel()" class="w-full py-2 bg-white border border-blue-600 text-blue-700 font-bold rounded-lg text-sm hover:bg-blue-600 hover:text-white transition shadow-sm">
+                        📥 下載目前名冊 (匯出)
+                    </button>
+                </div>
+                
+                <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 text-center">
+                    <p class="text-xs text-emerald-800 mb-3 font-medium">上傳編輯好的 Excel 檔案，系統將自動依據「中文姓名」覆蓋更新或新增社友。</p>
+                    <input type="file" id="excelFileInput" accept=".xlsx, .xls, .csv" class="hidden" onchange="importClubMembersFromExcel(event)">
+                    <button onclick="document.getElementById('excelFileInput').click()" class="w-full py-2 bg-emerald-600 text-white font-bold rounded-lg text-sm hover:bg-emerald-700 transition shadow-sm flex items-center justify-center gap-1">
+                        📤 上傳 Excel (批次匯入)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- ================= MODAL 1: ADD / EDIT MEMBER MODAL (新增與編輯社友含高爾夫差點) ================= -->
     <div id="addMemberModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
@@ -3374,6 +3408,156 @@
             showToast(`✅ ${selectedClubName} 成功送出《${subEventName}》報名表！`);
             updateLinePreviewText();
             if (currentRole === 'chair') updateChairDashboard();
+        }
+
+        // ================= EXCEL IMPORT / EXPORT HANDLERS =================
+        function openExcelModal() {
+            document.getElementById('excelModalClubName').innerText = selectedClubName;
+            document.getElementById('excelModal').classList.remove('hidden');
+        }
+
+        function closeExcelModal() {
+            document.getElementById('excelModal').classList.add('hidden');
+            const fileInput = document.getElementById('excelFileInput');
+            if (fileInput) fileInput.value = '';
+        }
+
+        function exportClubMembersToExcel() {
+            const members = clubMemberDatabase[selectedClubName] || [];
+            
+            const exportData = members.map(m => ({
+                '職務 (Role)': m.role || '',
+                '中文姓名 (Name)': m.name || '',
+                '英文名字 (Nick Name)': m.nickname || '',
+                '飲食需求 (MEAT/VEGAN)': m.diet === 'VEGAN' ? 'VEGAN' : 'MEAT',
+                '素食備註 (Vegan Note)': m.veganNote || '',
+                '高爾夫差點 (Handicap)': (m.handicap !== undefined && m.handicap !== null) ? m.handicap : '',
+                '寶尊眷對應社友 (Spouse Of)': m.spouseOfId ? (members.find(x => x.id === m.spouseOfId)?.name || '') : ''
+            }));
+            
+            if (exportData.length === 0) {
+                exportData.push({
+                    '職務 (Role)': '社友',
+                    '中文姓名 (Name)': '範例姓名',
+                    '英文名字 (Nick Name)': 'Example',
+                    '飲食需求 (MEAT/VEGAN)': 'MEAT',
+                    '素食備註 (Vegan Note)': '',
+                    '高爾夫差點 (Handicap)': '18',
+                    '寶尊眷對應社友 (Spouse Of)': ''
+                });
+            }
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wscols = [
+                {wch: 15}, {wch: 15}, {wch: 20}, {wch: 20}, {wch: 20}, {wch: 20}, {wch: 25}
+            ];
+            ws['!cols'] = wscols;
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "社友名冊");
+            
+            XLSX.writeFile(wb, `${selectedClubName}_社友名冊.xlsx`);
+            showToast(`✅ 已成功匯出 ${selectedClubName} 的社友名冊！`);
+            closeExcelModal();
+        }
+
+        async function importClubMembersFromExcel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, {defval: ''});
+
+                    if (jsonData.length === 0) {
+                        alert("⚠️ Excel 檔案似乎是空的，或格式不符！");
+                        return;
+                    }
+
+                    if (!clubMemberDatabase[selectedClubName]) {
+                        clubMemberDatabase[selectedClubName] = [];
+                    }
+                    const members = clubMemberDatabase[selectedClubName];
+                    
+                    let addedCount = 0;
+                    let updatedCount = 0;
+
+                    jsonData.forEach((row, idx) => {
+                        const rawRole = row['職務 (Role)'] || row['職務'] || row['Role'] || '';
+                        const role = rawRole.toString().trim() || '社友';
+                        const name = (row['中文姓名 (Name)'] || row['中文姓名'] || row['姓名'] || row['Name'] || '').toString().trim();
+                        const nickname = (row['英文名字 (Nick Name)'] || row['英文名字'] || row['Nick Name'] || row['Nickname'] || '').toString().trim();
+                        const rawDiet = (row['飲食需求 (MEAT/VEGAN)'] || row['飲食需求'] || row['Diet'] || '').toString().toUpperCase();
+                        const diet = (rawDiet.includes('VEGAN') || rawDiet.includes('素')) ? 'VEGAN' : 'MEAT';
+                        const veganNote = (row['素食備註 (Vegan Note)'] || row['素食備註'] || '').toString().trim();
+                        const rawHcap = row['高爾夫差點 (Handicap)'] || row['高爾夫差點'] || row['差點'] || row['Handicap'] || '';
+                        const handicap = rawHcap !== '' ? parseFloat(rawHcap) : '';
+                        const spouseOfName = (row['寶尊眷對應社友 (Spouse Of)'] || row['對應社友'] || '').toString().trim();
+                        
+                        let spouseOfId = null;
+                        if (!name) return; // Skip empty rows
+
+                        let existing = members.find(m => m.name === name);
+                        if (role === '寶(尊)眷' && spouseOfName) {
+                            const spouseObj = members.find(m => m.name === spouseOfName);
+                            if (spouseObj) spouseOfId = spouseObj.id;
+                        }
+
+                        if (existing) {
+                            existing.role = role;
+                            existing.nickname = nickname;
+                            existing.diet = diet;
+                            existing.veganNote = veganNote;
+                            existing.handicap = handicap;
+                            if (role === '寶(尊)眷') existing.spouseOfId = spouseOfId;
+                            updatedCount++;
+                        } else {
+                            members.push({
+                                id: Date.now() + idx, // unique ID
+                                role,
+                                nickname,
+                                name,
+                                diet,
+                                veganNote,
+                                handicap,
+                                spouseOfId: role === '寶(尊)眷' ? spouseOfId : null
+                            });
+                            addedCount++;
+                        }
+                    });
+
+                    // Second pass for forward-referenced spouses
+                    jsonData.forEach(row => {
+                        const name = (row['中文姓名 (Name)'] || row['中文姓名'] || row['姓名'] || '').toString().trim();
+                        const role = (row['職務 (Role)'] || row['職務'] || '').toString().trim();
+                        const spouseOfName = (row['寶尊眷對應社友 (Spouse Of)'] || row['對應社友'] || '').toString().trim();
+                        if (name && role === '寶(尊)眷' && spouseOfName) {
+                            const thisMember = members.find(m => m.name === name);
+                            const spouseMember = members.find(m => m.name === spouseOfName);
+                            if (thisMember && spouseMember) {
+                                thisMember.spouseOfId = spouseMember.id;
+                            }
+                        }
+                    });
+
+                    await saveToStorage();
+                    renderMemberMasterTable();
+                    closeExcelModal();
+                    
+                    alert(`✅ Excel 批次匯入完成！\n新增了 ${addedCount} 筆社友\n更新了 ${updatedCount} 筆社友`);
+                    showToast(`✅ Excel 名冊匯入成功！`);
+                } catch (err) {
+                    console.error(err);
+                    alert("⚠️ 讀取 Excel 檔案發生錯誤，請確認檔案格式是否正確。");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            event.target.value = '';
         }
 
         // ================= ADD / EDIT / DELETE MEMBER HANDLERS =================
