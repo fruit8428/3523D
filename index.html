@@ -3429,7 +3429,10 @@
                 populateSpouseSelect();
             } else {
                 container.classList.add('hidden');
-                document.getElementById('mSpouseOf').value = '';
+                const s = document.getElementById('mSpouseOf');
+                if(s && s.options && s.options.length > 0) {
+                    s.value = '';
+                }
             }
         }
 
@@ -3501,6 +3504,11 @@
 
             saveToStorage();
             closeAddMemberModal();
+            
+            // Clear search box so the newly added/edited member is visible
+            const searchInput = document.getElementById('memberSearchInput');
+            if (searchInput) searchInput.value = '';
+            
             renderMemberMasterTable();
         }
 
