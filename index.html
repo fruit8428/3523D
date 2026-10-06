@@ -3459,7 +3459,7 @@
             document.getElementById('veganNoteBox').classList.toggle('hidden', !isVegan);
         }
 
-        function handleSaveNewMember(e) {
+        async function handleSaveNewMember(e) {
             e.preventDefault();
             const editId = document.getElementById('mEditId').value;
             const role = document.getElementById('mRole').value;
@@ -3505,7 +3505,7 @@
                 showToast(`✅ 成功新增社友【${name}】至 ${selectedClubName}！`);
             }
 
-            saveToStorage();
+            await saveToStorage();
             closeAddMemberModal();
             
             // Clear search box so the newly added/edited member is visible
@@ -3515,7 +3515,7 @@
             renderMemberMasterTable();
         }
 
-        function deleteMember(memberId) {
+        async function deleteMember(memberId) {
             const members = clubMemberDatabase[selectedClubName] || [];
             const target = members.find(m => m.id === memberId);
             if (!target) return;
@@ -3524,7 +3524,7 @@
                 clubMemberDatabase[selectedClubName] = members.filter(m => m.id !== memberId);
                 // Also remove from current form if selected
                 currentFormSelectedMembers = currentFormSelectedMembers.filter(sm => !(sm.name === target.name && sm.nickname === target.nickname));
-                saveToStorage();
+                await saveToStorage();
                 renderMemberMasterTable();
                 renderSelectedMembersTable();
                 showToast(`已刪除社友【${target.name}】`);
