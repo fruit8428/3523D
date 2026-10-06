@@ -420,7 +420,7 @@
 
                     <!-- Member Search Filter Input -->
                     <div class="mb-2.5">
-                        <input type="text" id="memberSearchInput" oninput="renderMemberMasterTable()" placeholder="🔍 快速搜尋社友姓名 / 職稱 / 差點..." class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                        <input type="text" id="memberSearchInput" autocomplete="off" oninput="renderMemberMasterTable()" placeholder="🔍 快速搜尋社友姓名 / 職稱 / 差點..." class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
                     </div>
 
                     <!-- Master Member List Table -->
@@ -3008,6 +3008,9 @@
 
         function selectClub(clubName) {
             selectedClubName = clubName;
+            
+            const searchInput = document.getElementById('memberSearchInput');
+            if (searchInput) searchInput.value = '';
             document.getElementById('currentClubNameTitle').innerText = clubName;
             document.getElementById('lockedClubNameBadge').innerText = clubName;
             
@@ -7240,6 +7243,10 @@
 
         function completeLogin() {
             document.getElementById('loginOverlay').classList.add('hidden');
+            
+            // 強制清除瀏覽器可能暫存的搜尋條件
+            const searchInput = document.getElementById('memberSearchInput');
+            if (searchInput) searchInput.value = '';
             
             // Set up initial state based on permissions
             applyPermissions();
