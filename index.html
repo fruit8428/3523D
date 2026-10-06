@@ -2841,6 +2841,10 @@
             // 點一次換一次：切換子活動立即輪流換色
             currentThemeColorIndex = (currentThemeColorIndex === 0 ? 1 : 0);
             updateSubEventContext();
+            applyPermissions(); // Ensure role updates if sub-event chair permissions differ
+            if(currentRole === 'chair' || currentRole === 'super_admin') {
+                updateChairDashboard();
+            }
             renderDivisionPaymentSection();
         }
 
@@ -7458,17 +7462,31 @@
             } else {
                 mainClubSelect.value = loggedInUser.club;
                 mainClubSelect.disabled = true;
-                selectClub(loggedInUser.club); // trigger UI update for that club
+                if (selectedClubName !== loggedInUser.club) {
+                    selectClub(loggedInUser.club); // trigger UI update for that club
+                }
             }
 
-            // 2. Determine Role based on current category
+            // 2. Determine Role based on current category AND sub-event
             if (loggedInUser.isSuperAdmin) {
                 currentRole = 'super_admin';
             } else {
-                // Check if the club is a chair for the current category
                 if (!appAuthData.eventChairs) appAuthData.eventChairs = {};
+                
+                let isChair = false;
+                // Check broad category assignment
                 const chairsForCat = appAuthData.eventChairs[currentCatId] || [];
-                if (chairsForCat.includes(loggedInUser.club)) {
+                if (chairsForCat.includes(loggedInUser.club)) isChair = true;
+                
+                // Check specific sub-event assignment
+                const cat = categoriesData.find(c => c.id === currentCatId);
+                if (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) {
+                    const subName = cat.subEvents[currentSubEventIndex];
+                    const chairsForSub = appAuthData.eventChairs[`${currentCatId}::${subName}`] || [];
+                    if (chairsForSub.includes(loggedInUser.club)) isChair = true;
+                }
+                
+                if (isChair) {
                     currentRole = 'chair';
                 } else {
                     currentRole = 'secretary';
@@ -7548,7 +7566,16 @@
         function populateAdminCategorySelect() {
             const sel = document.getElementById('adminCategorySelect');
             if(!sel) return;
-            sel.innerHTML = categoriesData.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            let html = '';
+            categoriesData.forEach(c => {
+                html += `<option value="${c.id}">📂 ${c.name} (全類別主委)</option>`;
+                if (c.subEvents && c.subEvents.length > 0) {
+                    c.subEvents.forEach(sub => {
+                        html += `<option value="${c.id}::${sub}">&nbsp;&nbsp;↳ 📍 ${sub} (單一子活動主委)</option>`;
+                    });
+                }
+            });
+            sel.innerHTML = html;
             renderAdminChairAssignment();
         }
 
