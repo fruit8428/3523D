@@ -2615,6 +2615,9 @@
         // ================= INITIALIZATION & NAVIGATION =================
 
         document.addEventListener('DOMContentLoaded', async () => {
+            const searchInput = document.getElementById('memberSearchInput');
+            if (searchInput) searchInput.value = '';
+            
             await loadFromStorage();
             await loadChairEventEmails();
             await loadPaymentRecords();
