@@ -3413,7 +3413,6 @@
             const participantFee = isCurrentEventSports() ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             const existingIdx = registrationOrders[subEventName].findIndex(o => o.clubName === selectedClubName);
             
-            const cat = categoriesData.find(c => c.id === currentCatId);
             const isApportionment = cat && cat.name && (cat.name.includes('地辦分攤金') || cat.name.includes('配合款'));
             const isSeminar = cat && !cat.allowSponsors && !isApportionment;
             
