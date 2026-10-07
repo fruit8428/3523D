@@ -499,6 +499,18 @@
                             </div>
                         </div>
 
+                        <!-- Apportionment Input Box (Conditional display) -->
+                        <div id="apportionmentInputBox" class="mb-4 p-3 sm:p-3.5 bg-amber-50 border border-amber-200 rounded-xl hidden">
+                            <h4 class="text-xs font-bold text-amber-900 mb-2 flex items-center gap-1.5">
+                                💰 本社應繳總額 (依照 RI Invoice 人數計算)
+                            </h4>
+                            <div class="flex items-center gap-2 max-w-sm">
+                                <span class="text-xs text-amber-700 font-bold">NT$</span>
+                                <input type="number" id="secApportionmentInput" value="3000" oninput="updateTotalFeeSummaryDisplay()" class="w-full bg-white border border-amber-300 rounded p-1.5 text-sm font-bold text-slate-800 focus:ring-1 focus:ring-amber-500">
+                            </div>
+                            <p class="text-[10.5px] text-amber-700 mt-1.5 font-medium">※ 請各社執秘依 RI 發出之 mail 中 Club invoice 人數為主，乘上每個人該付的金額後填寫於此處。</p>
+                        </div>
+
                         <!-- Selected Participants Table -->
                         <div class="mb-4">
                             <div class="flex flex-wrap justify-between items-center mb-2 gap-1.5">
@@ -696,6 +708,9 @@
                         <label id="cfgFeeLabel1" class="block text-[11px] font-semibold text-slate-500">共同主辦社金額 (NT$)</label>
                         <input type="number" id="cfgFeeCoHost" value="50000" class="w-full bg-slate-50 border rounded p-1 text-xs focus:bg-white focus:ring-1 focus:ring-blue-500">
                         <input type="number" id="cfgFeeApportionment" value="3000" class="w-full bg-slate-50 border rounded p-1 text-xs hidden focus:bg-white focus:ring-1 focus:ring-blue-500">
+                        <div id="cfgFeeApportionmentMsg" class="hidden w-full bg-slate-100 text-slate-500 border border-slate-200 rounded p-1 text-[11px] font-medium flex items-center h-[26px]">
+                            由各社執秘依 Invoice 填寫
+                        </div>
                     </div>
                     <div id="cfgFeeBox2">
                         <label class="block text-[11px] font-semibold text-slate-500">協辦社金額 (NT$)</label>
@@ -2902,9 +2917,17 @@
                     if (!item.participation) item.participation = '參賽';
                 });
                 currentSelectedSponsorTier = existingClubOrder.sponsorTier;
+                const secAppInput = document.getElementById('secApportionmentInput');
+                if (secAppInput && existingClubOrder.apportionmentFee !== undefined) {
+                    secAppInput.value = existingClubOrder.apportionmentFee;
+                }
             } else {
                 currentFormSelectedMembers = [];
                 currentSelectedSponsorTier = "PARTICIPANT";
+                const secAppInput = document.getElementById('secApportionmentInput');
+                if (secAppInput) {
+                    secAppInput.value = 3000;
+                }
             }
 
             // Sync radio button
@@ -2988,6 +3011,23 @@
             const isSports = isCurrentEventSports();
             const totalParticipantFee = isSports ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             const sponsorInfo = getCurrentSponsorshipInfo();
+            
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const isApportionment = cat && cat.name && (cat.name.includes('地辦分攤金') || cat.name.includes('配合款'));
+            const isSeminar = cat && !cat.allowSponsors && !isApportionment;
+            
+            const appBox = document.getElementById('apportionmentInputBox');
+            if (appBox) {
+                appBox.classList.toggle('hidden', !isApportionment);
+            }
+            
+            let apportionmentFee = 0;
+            if (isApportionment) {
+                const secAppInput = document.getElementById('secApportionmentInput');
+                if (secAppInput) apportionmentFee = parseFloat(secAppInput.value) || 0;
+            } else if (isSeminar) {
+                apportionmentFee = chairConfig.feeApportionment || 0;
+            }
 
             // 1. 出席費用合計
             const regFeeTotalLabel = document.getElementById('regFeeTotalLabel');
@@ -3009,11 +3049,11 @@
                 }
             }
 
-            // 3. 應繳總計 (出席費用合計 + 贊助金額)
+            // 3. 應繳總計 (出席費用合計 + 贊助金額 + apportionmentFee)
             const regGrandTotalLabel = document.getElementById('regGrandTotalLabel');
             if (regGrandTotalLabel) {
-                const grandTotal = totalParticipantFee + (sponsorInfo.enabled ? sponsorInfo.amount : 0);
-                const showGrandTotal = isSports || (sponsorInfo.enabled && sponsorInfo.amount > 0);
+                const grandTotal = totalParticipantFee + (sponsorInfo.enabled ? sponsorInfo.amount : 0) + apportionmentFee;
+                const showGrandTotal = isSports || (sponsorInfo.enabled && sponsorInfo.amount > 0) || (apportionmentFee > 0);
                 regGrandTotalLabel.classList.toggle('hidden', !showGrandTotal);
                 const grandDisp = document.getElementById('regGrandTotalDisplay');
                 if (grandDisp) grandDisp.innerText = `$${grandTotal.toLocaleString()}元`;
@@ -3372,7 +3412,19 @@
 
             const participantFee = isCurrentEventSports() ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             const existingIdx = registrationOrders[subEventName].findIndex(o => o.clubName === selectedClubName);
-            const apportionmentFee = chairConfig.sponsorshipEnabled ? 0 : (chairConfig.feeApportionment || 0);
+            
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const isApportionment = cat && cat.name && (cat.name.includes('地辦分攤金') || cat.name.includes('配合款'));
+            const isSeminar = cat && !cat.allowSponsors && !isApportionment;
+            
+            let apportionmentFee = 0;
+            if (isApportionment) {
+                const secAppInput = document.getElementById('secApportionmentInput');
+                if (secAppInput) apportionmentFee = parseFloat(secAppInput.value) || 0;
+            } else if (isSeminar) {
+                apportionmentFee = chairConfig.feeApportionment || 0;
+            }
+            
             const grandTotal = amount + participantFee + apportionmentFee;
             const orderPayload = {
                 clubName: selectedClubName,
@@ -3749,7 +3801,6 @@
             const selectionBox = document.getElementById('sponsorshipSelectionBox');
             if(selectionBox) selectionBox.classList.toggle('hidden', !enabled);
             
-            // For Seminar/Apportionment, we always show the container but change the inputs inside it
             const sponsorFeeInputs = document.getElementById('chairSponsorFeeInputs');
             if(sponsorFeeInputs) sponsorFeeInputs.classList.remove('hidden');
             
@@ -3758,18 +3809,28 @@
             const box3 = document.getElementById('cfgFeeBox3');
             const inputCoHost = document.getElementById('cfgFeeCoHost');
             const inputApport = document.getElementById('cfgFeeApportionment');
+            const msgApport = document.getElementById('cfgFeeApportionmentMsg');
             
             if(label1 && box2 && box3 && inputCoHost && inputApport) {
-                if (enabled) {
+                if (val === 'sports') {
                     label1.innerText = '共同主辦社金額 (NT$)';
                     inputCoHost.classList.remove('hidden');
                     inputApport.classList.add('hidden');
+                    if(msgApport) msgApport.classList.add('hidden');
                     box2.classList.remove('hidden');
                     box3.classList.remove('hidden');
-                } else {
+                } else if (val === 'seminar') {
                     label1.innerText = '每社應繳金額 (NT$)';
                     inputCoHost.classList.add('hidden');
                     inputApport.classList.remove('hidden');
+                    if(msgApport) msgApport.classList.add('hidden');
+                    box2.classList.add('hidden');
+                    box3.classList.add('hidden');
+                } else if (val === 'apportionment') {
+                    label1.innerText = '每社應繳金額 (NT$)';
+                    inputCoHost.classList.add('hidden');
+                    inputApport.classList.add('hidden');
+                    if(msgApport) msgApport.classList.remove('hidden');
                     box2.classList.add('hidden');
                     box3.classList.add('hidden');
                 }
