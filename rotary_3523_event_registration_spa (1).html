@@ -558,7 +558,7 @@
                                     <span id="selectedMealOnlyCountBox" class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold hidden">🍽️ 只用餐: <b id="selectedMealOnlyCount">0</b> 名</span>
                                     <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">素食: <b id="selectedVeganCount">0</b> 名</span>
                                     <span id="selectedAvgHandicapBox" class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">⛳ 平均差點: <b id="selectedAvgHandicap">--</b></span>
-                                    <span id="selectedTotalFeeBox" class="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded font-bold hidden">💰 出席費用: <b id="selectedTotalFee">$0</b></span>
+                                    <span id="selectedTotalFeeBox" class="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded font-bold hidden">💰 <span id="selectedTotalFeeLabel">出席費用</span>: <b id="selectedTotalFee">$0</b></span>
                                 </div>
                             </div>
 
@@ -593,7 +593,7 @@
                     <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-2.5">
                         <div class="text-[11px] xl:text-xs text-slate-500 flex-1 min-w-0 text-left flex flex-wrap items-center gap-x-1.5 gap-y-1">
                             <span class="whitespace-nowrap">狀態：<span id="regStatusLabel" class="font-bold text-emerald-600">編輯中</span></span>
-                            <span id="regFeeTotalLabel" class="text-slate-700 font-bold whitespace-nowrap hidden">| 出席費用合計：<b id="regFeeTotalDisplay" class="text-emerald-700 font-mono">$0</b></span>
+                            <span id="regFeeTotalLabel" class="text-slate-700 font-bold whitespace-nowrap hidden">| <span id="regFeeTotalText">出席費用合計</span>：<b id="regFeeTotalDisplay" class="text-emerald-700 font-mono">$0</b></span>
                             <span id="regSponsorFeeLabel" class="text-slate-700 font-bold whitespace-nowrap hidden">| <span id="regSponsorTierName">共同主辦社</span>：<b id="regSponsorFeeDisplay" class="text-emerald-700 font-mono">$0</b></span>
                             <span id="regGrandTotalLabel" class="font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-[11px] xl:text-xs whitespace-nowrap hidden">總計：<b id="regGrandTotalDisplay" class="text-red-600 font-mono font-extrabold">$0元</b></span>
                         </div>
@@ -778,6 +778,18 @@
                         </div>
                         <input type="number" id="cfgFeeMealOnly" value="1000" min="0" step="50" oninput="liveUpdateChairFee()" class="w-full bg-white border border-amber-300 rounded p-1.5 text-xs font-bold text-slate-800 focus:ring-1 focus:ring-amber-500">
                         <p class="text-[10px] text-amber-700 mt-1">內定預設 1,000 元；加油團/眷屬選「只用餐」之社友將帶入此金額</p>
+                    </div>
+                </div>
+
+                <!-- 社慶餐費設定（僅社慶模式顯示，金額由主委/管理者後台調整） -->
+                <div id="chairAnnivFeeInputs" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 pt-3 border-t border-dashed border-slate-200 hidden">
+                    <div class="bg-pink-50/70 p-2.5 rounded-lg border border-pink-200">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="text-xs font-bold text-pink-900">🍽️ 社慶餐費 (每人 NT$)：</label>
+                            <span class="text-[10px] text-pink-700 font-semibold">主委自訂金額</span>
+                        </div>
+                        <input type="number" id="cfgFeeAnnivMeal" value="1000" min="0" step="50" oninput="liveUpdateChairFee()" class="w-full bg-white border border-pink-300 rounded p-1.5 text-xs font-bold text-slate-800 focus:ring-1 focus:ring-pink-500">
+                        <p class="text-[10px] text-pink-700 mt-1">每位出席社友帶入此金額，顯示於出席名冊「餐費」欄並計入應繳總計</p>
                     </div>
                 </div>
 
@@ -2564,6 +2576,7 @@
             feeOrganizer: 20000,
             feeSponsor: 10000,
             feeFlower: 3000,       // 社慶友社花款（統一辦理）預設 3000 元
+            feeAnnivMeal: 1000,    // 社慶每人餐費預設 1000 元（主委後台可調整）
             feeCompete: 1200,      // 內定參賽 1200 元
             feeMealOnly: 1000,     // 只用餐 1000 元
             startDate: '2026-09-01T09:00'
@@ -2672,7 +2685,8 @@
                         chairConfig = Object.assign({
                             feeCompete: 1200,
                             feeMealOnly: 1000,
-                            feeFlower: 3000
+                            feeFlower: 3000,
+                            feeAnnivMeal: 1000
                         }, parsed.chairConfig);
                     }
                     if (parsed.appAuthData) {
@@ -2708,6 +2722,7 @@
                     feeOrganizer: 20000,
                     feeSponsor: 10000,
                     feeFlower: 3000,
+                    feeAnnivMeal: 1000,
                     feeCompete: 1200,
                     feeMealOnly: 1000,
                     startDate: '2026-09-01T09:00'
@@ -3027,6 +3042,10 @@
         // 取得社友出席費用 (參賽 預設1200 / 只用餐 預設1000，由主委設定)
         function getMemberFee(m) {
             if (!m) return 0;
+            // 社慶模式：每位出席社友一律帶入主委後台設定的「社慶餐費」
+            if (isAnniversaryMode()) {
+                return (chairConfig && chairConfig.feeAnnivMeal !== undefined) ? Number(chairConfig.feeAnnivMeal) || 0 : 1000;
+            }
             if (m.fee !== undefined && m.fee !== null && !isNaN(Number(m.fee))) return Number(m.fee);
             const feeMealOnly = (chairConfig && chairConfig.feeMealOnly !== undefined) ? Number(chairConfig.feeMealOnly) : 1000;
             const feeCompete = (chairConfig && chairConfig.feeCompete !== undefined) ? Number(chairConfig.feeCompete) : 1200;
@@ -3067,7 +3086,8 @@
         // 即時更新報名表底部費用統計與應繳總計 (出席費用 + 贊助金額)
         function updateTotalFeeSummaryDisplay() {
             const isSports = isCurrentEventSports();
-            const totalParticipantFee = isSports ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
+            const showFee = isSports || isAnniversaryMode();
+            const totalParticipantFee = showFee ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             const sponsorInfo = getCurrentSponsorshipInfo();
             
             const cat = categoriesData.find(c => c.id === currentCatId);
@@ -3097,7 +3117,9 @@
             // 1. 出席費用合計
             const regFeeTotalLabel = document.getElementById('regFeeTotalLabel');
             if (regFeeTotalLabel) {
-                regFeeTotalLabel.classList.toggle('hidden', !isSports);
+                regFeeTotalLabel.classList.toggle('hidden', !showFee);
+                const feeText = document.getElementById('regFeeTotalText');
+                if (feeText) feeText.innerText = isAnniversaryMode() ? '餐費合計' : '出席費用合計';
                 const feeDisp = document.getElementById('regFeeTotalDisplay');
                 if (feeDisp) feeDisp.innerText = `$${totalParticipantFee.toLocaleString()}`;
             }
@@ -3118,7 +3140,7 @@
             const regGrandTotalLabel = document.getElementById('regGrandTotalLabel');
             if (regGrandTotalLabel) {
                 const grandTotal = totalParticipantFee + (sponsorInfo.enabled ? sponsorInfo.amount : 0) + apportionmentFee;
-                const showGrandTotal = isSports || (sponsorInfo.enabled && sponsorInfo.amount > 0) || (apportionmentFee > 0);
+                const showGrandTotal = showFee || (sponsorInfo.enabled && sponsorInfo.amount > 0) || (apportionmentFee > 0);
                 regGrandTotalLabel.classList.toggle('hidden', !showGrandTotal);
                 const grandDisp = document.getElementById('regGrandTotalDisplay');
                 if (grandDisp) grandDisp.innerText = `$${grandTotal.toLocaleString()}元`;
@@ -3129,6 +3151,10 @@
         function liveUpdateChairFee() {
             const compInput = document.getElementById('cfgFeeCompete');
             const mealInput = document.getElementById('cfgFeeMealOnly');
+            const annivMealInput = document.getElementById('cfgFeeAnnivMeal');
+            if (annivMealInput && !isNaN(parseFloat(annivMealInput.value))) {
+                chairConfig.feeAnnivMeal = parseFloat(annivMealInput.value);
+            }
             if (compInput && !isNaN(parseFloat(compInput.value))) {
                 chairConfig.feeCompete = parseFloat(compInput.value);
             }
@@ -3308,6 +3334,7 @@
         function renderSelectedMembersTable() {
             const isGolf = isCurrentEventGolf();
             const isSports = isCurrentEventSports();
+            const showFee = isSports || isAnniversaryMode();
 
             const thPart = document.getElementById('thParticipation');
             if (thPart) thPart.classList.toggle('hidden', !isSports);
@@ -3319,7 +3346,10 @@
             if (avgBox) avgBox.classList.toggle('hidden', !isGolf);
 
             const thFee = document.getElementById('thFee');
-            if (thFee) thFee.classList.toggle('hidden', !isSports);
+            if (thFee) {
+                thFee.classList.toggle('hidden', !showFee);
+                thFee.innerText = isAnniversaryMode() ? '🍽️ 餐費' : '費用';
+            }
 
             // 統計參賽與只用餐人數
             const competeCount = currentFormSelectedMembers.filter(m => m.participation !== '只用餐').length;
@@ -3339,7 +3369,9 @@
             const totalFee = calculateTotalParticipantsFee(currentFormSelectedMembers);
             const totalFeeBox = document.getElementById('selectedTotalFeeBox');
             if (totalFeeBox) {
-                totalFeeBox.classList.toggle('hidden', !isSports);
+                totalFeeBox.classList.toggle('hidden', !showFee);
+                const totalFeeLabel = document.getElementById('selectedTotalFeeLabel');
+                if (totalFeeLabel) totalFeeLabel.innerText = isAnniversaryMode() ? '餐費合計' : '出席費用';
                 document.getElementById('selectedTotalFee').innerText = `$${totalFee.toLocaleString()}`;
             }
 
@@ -3364,6 +3396,7 @@
 
             let colSpan = 5;
             if (isSports) colSpan += 2; // 參賽選項 + 費用
+            else if (showFee) colSpan += 1; // 社慶：餐費
             if (isGolf) colSpan += 1;   // 差點
 
             if (currentFormSelectedMembers.length === 0) {
@@ -3399,7 +3432,7 @@
                 ` : '';
 
                 const rowFee = getMemberFee(m);
-                const feeCell = isSports ? `
+                const feeCell = showFee ? `
                     <td class="p-2 text-center bg-amber-50/20 border-x border-amber-50/60 whitespace-nowrap">
                         <span class="font-mono font-bold text-xs ${isMealOnly ? 'text-amber-700 bg-amber-100/90 border border-amber-300/80' : 'text-blue-700 bg-blue-100/90 border border-blue-300/80'} px-2 py-0.5 rounded-full">$${rowFee.toLocaleString()}</span>
                     </td>
@@ -3494,7 +3527,7 @@
                 registrationOrders[subEventName] = [];
             }
 
-            const participantFee = isCurrentEventSports() ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
+            const participantFee = (isCurrentEventSports() || isAnniversaryMode()) ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             const existingIdx = registrationOrders[subEventName].findIndex(o => o.clubName === selectedClubName);
             
             // isApportionment already declared above
@@ -3897,6 +3930,12 @@
             
             const sponsorFeeInputs = document.getElementById('chairSponsorFeeInputs');
             if(sponsorFeeInputs) sponsorFeeInputs.classList.remove('hidden');
+
+            // 社慶餐費設定只在社慶模式顯示
+            const annivFeeInputs = document.getElementById('chairAnnivFeeInputs');
+            if (annivFeeInputs) annivFeeInputs.classList.toggle('hidden', val !== 'anniversary');
+            const annivMealInput = document.getElementById('cfgFeeAnnivMeal');
+            if (annivMealInput && document.activeElement !== annivMealInput) annivMealInput.value = chairConfig.feeAnnivMeal !== undefined ? chairConfig.feeAnnivMeal : 1000;
             
             const label1 = document.getElementById('cfgFeeLabel1');
             const box2 = document.getElementById('cfgFeeBox2');
@@ -3966,6 +4005,8 @@
             chairConfig.feeSponsor = parseFloat(document.getElementById('cfgFeeSponsor').value) || 0;
             const flowerInput = document.getElementById('cfgFeeFlower');
             if (flowerInput && !isNaN(parseFloat(flowerInput.value))) chairConfig.feeFlower = parseFloat(flowerInput.value);
+            const annivMealInputSave = document.getElementById('cfgFeeAnnivMeal');
+            if (annivMealInputSave && !isNaN(parseFloat(annivMealInputSave.value))) chairConfig.feeAnnivMeal = parseFloat(annivMealInputSave.value);
             const compInput = document.getElementById('cfgFeeCompete');
             const mealInput = document.getElementById('cfgFeeMealOnly');
             if (compInput && !isNaN(parseFloat(compInput.value))) chairConfig.feeCompete = parseFloat(compInput.value);
@@ -4077,6 +4118,7 @@
             const bannerMerged = document.getElementById('chairMergedExcelBanner');
 
             const isSports = isCurrentEventSports() || subEventName.includes("球") || subEventName.includes("賽");
+            const showFee = isSports || isAnniversaryMode();
 
             if (orders.length === 0) {
                 if (thead) {
@@ -4114,7 +4156,7 @@
                     const competeCount = allParticipants.filter(i => i.participation !== '只用餐').length;
                     const mealOnlyCount = allParticipants.filter(i => i.participation === '只用餐').length;
                     const overallAvgHcap = isGolf ? calculateAvgHandicap(allParticipants) : '--';
-                    const totalFees = isSports ? calculateTotalParticipantsFee(allParticipants) : 0;
+                    const totalFees = showFee ? calculateTotalParticipantsFee(allParticipants) : 0;
                     const grandTotalSum = totalFees + totalSponsorship;
 
                     bannerMerged.innerHTML = `
@@ -4159,7 +4201,7 @@
                             ${isSports ? '<th class="p-2.5 text-center">參賽選項</th>' : ''}
                             ${isGolf ? '<th class="p-2.5 text-center">⛳ 差點</th>' : ''}
                             <th class="p-2.5">飲食需求</th>
-                            ${isSports ? '<th class="p-2.5 text-center">出席費用</th>' : ''}
+                            ${showFee ? `<th class="p-2.5 text-center">${isAnniversaryMode() ? '餐費' : '出席費用'}</th>` : ''}
                             <th class="p-2.5">素食備註</th>
                             <th class="p-2.5">提交時間</th>
                         </tr>
@@ -4190,7 +4232,7 @@
                             </td>
                         ` : '';
                         const rowFee = getMemberFee(item);
-                        const feeCell = isSports ? `
+                        const feeCell = showFee ? `
                             <td class="p-2.5 text-center font-mono font-bold">
                                 <span class="${isMealOnly ? 'text-amber-700 bg-amber-50' : 'text-blue-700 bg-blue-50'} px-2 py-0.5 rounded text-[11px]">$${rowFee.toLocaleString()}</span>
                             </td>
@@ -4352,7 +4394,7 @@
                                                         </td>
                                                     ` : '';
                                                     const rowFee = getMemberFee(item);
-                                                    const feeCell = isSports ? `
+                                                    const feeCell = showFee ? `
                                                         <td class="p-2 text-center font-mono font-bold">
                                                             <span class="${isMealOnly ? 'text-amber-700 bg-amber-50' : 'text-blue-700 bg-blue-50'} px-2 py-0.5 rounded text-[11px]">$${rowFee.toLocaleString()}</span>
                                                         </td>
@@ -4434,6 +4476,7 @@
             const orders = registrationOrders[subEventName] || [];
             const isGolf = isCurrentEventGolf();
             const isSports = isCurrentEventSports() || subEventName.includes("球") || subEventName.includes("賽");
+            const showFee = isSports || isAnniversaryMode();
 
             if (orders.length === 0) {
                 alert("目前尚無任何扶輪社提交此活動報名，無法產生報表！");
@@ -4464,8 +4507,8 @@
                     }
                     rowObj["飲食需求"] = item.diet === 'VEGAN' ? '素食' : '葷食';
                     rowObj["素食細項備註"] = item.veganNote || '';
-                    if (isSports) {
-                        rowObj["出席費用"] = getMemberFee(item);
+                    if (showFee) {
+                        rowObj[isAnniversaryMode() ? "餐費" : "出席費用"] = getMemberFee(item);
                     }
                     rowObj["報名提交時間"] = order.submittedAt || '';
                     data.push(rowObj);
@@ -4507,6 +4550,7 @@
             const orders = registrationOrders[subEventName] || [];
             const isGolf = isCurrentEventGolf();
             const isSports = isCurrentEventSports() || subEventName.includes("球") || subEventName.includes("賽");
+            const showFee = isSports || isAnniversaryMode();
 
             if (orders.length === 0) return;
 
@@ -4523,7 +4567,7 @@
                 order.items.forEach(item => {
                     const partStr = isSports ? ` [${item.participation || '參賽'}]` : '';
                     const hcapStr = (isGolf && item.handicap !== undefined && item.handicap !== null && item.handicap !== '') ? ` | 差點: ${item.handicap}` : '';
-                    const feeStr = isSports ? ` | 費用: $${getMemberFee(item).toLocaleString()}` : '';
+                    const feeStr = showFee ? ` | 費用: $${getMemberFee(item).toLocaleString()}` : '';
                     const dietStr = item.diet === 'VEGAN' ? `素食(${item.veganNote||'通用'})` : '葷食';
                     lines.push(`${idx++}. [${item.role||'社友'}] ${item.name} (${item.nickname||''})${partStr}${hcapStr} - ${dietStr}${feeStr}`);
                 });
@@ -4622,6 +4666,7 @@
             currentInspectedSubEvent = subEventName;
             const isGolf = subEventName.includes("高爾夫");
             const isSports = isCurrentEventSports() || subEventName.includes("球") || subEventName.includes("賽");
+            const showFee = isSports || isAnniversaryMode();
 
             document.getElementById('detailModalClubTitle').innerText = `${order.clubName} - 《${subEventName}》出席名冊`;
             
@@ -4642,9 +4687,9 @@
             const sponsorAmount = order.sponsorAmount || 0;
             const grandTotal = totalOrderFee + sponsorAmount;
             let feeSubStr = '';
-            if (isSports && sponsorAmount > 0) {
-                feeSubStr = ` | 出席費用：$${totalOrderFee.toLocaleString()} | 總計：$${grandTotal.toLocaleString()}元`;
-            } else if (isSports) {
+            if (showFee && sponsorAmount > 0) {
+                feeSubStr = ` | ${isAnniversaryMode() ? '餐費' : '出席費用'}：$${totalOrderFee.toLocaleString()} | 總計：$${grandTotal.toLocaleString()}元`;
+            } else if (showFee) {
                 feeSubStr = ` | 出席費用：$${totalOrderFee.toLocaleString()} | 總計：$${totalOrderFee.toLocaleString()}元`;
             } else if (sponsorAmount > 0) {
                 feeSubStr = ` | 總計：$${sponsorAmount.toLocaleString()}元`;
@@ -4658,7 +4703,7 @@
             if (thPart) thPart.classList.toggle('hidden', !isSports);
 
             const thFee = document.getElementById('detailModalThFee');
-            if (thFee) thFee.classList.toggle('hidden', !isSports);
+            if (thFee) thFee.classList.toggle('hidden', !showFee);
 
             const thHcap = document.getElementById('detailModalThHandicap');
             if (thHcap) thHcap.classList.toggle('hidden', !isGolf);
@@ -4695,7 +4740,7 @@
                 ` : '';
 
                 const rowFee = getMemberFee(item);
-                const feeCell = isSports ? `
+                const feeCell = showFee ? `
                     <td class="p-2.5 text-center bg-amber-50/20 border-x border-amber-50 font-mono font-bold whitespace-nowrap">
                         <span class="${isMealOnly ? 'text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full' : 'text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full'} text-xs">$${rowFee.toLocaleString()}</span>
                     </td>
@@ -4728,12 +4773,13 @@
             const order = currentInspectedOrder;
             const isGolf = (currentInspectedSubEvent || '').includes("高爾夫");
             const isSports = isCurrentEventSports() || (currentInspectedSubEvent || '').includes("球") || (currentInspectedSubEvent || '').includes("賽");
+            const showFee = isSports || isAnniversaryMode();
             let lines = [];
             lines.push(isGolf ? `【${order.clubName} 出席名冊與高爾夫差點】` : `【${order.clubName} 出席名冊】`);
             order.items.forEach((item, idx) => {
                 const partStr = isSports ? ` [${item.participation || '參賽'}]` : '';
                 const hcapStr = (isGolf && item.handicap !== undefined && item.handicap !== '') ? ` | 差點: ${item.handicap}` : '';
-                const feeStr = isSports ? ` | 費用: $${getMemberFee(item).toLocaleString()}` : '';
+                const feeStr = showFee ? ` | 費用: $${getMemberFee(item).toLocaleString()}` : '';
                 const dietStr = item.diet === 'VEGAN' ? `素食(${item.veganNote||''})` : '葷食';
                 lines.push(`${idx + 1}. [${item.role}] ${item.name} (${item.nickname})${partStr}${hcapStr} - ${dietStr}${feeStr}`);
             });
@@ -4762,6 +4808,7 @@
             const orders = registrationOrders[subEventName] || [];
             const isGolf = isCurrentEventGolf();
             const isSports = isCurrentEventSports();
+            const showFee = isSports || isAnniversaryMode();
 
             if (orders.length === 0) {
                 alert("目前尚無任何扶輪社提交此活動報名，無法產生報表！");
@@ -4935,6 +4982,7 @@
 
             const isGolf = isCurrentEventGolf();
             const isSports = isCurrentEventSports();
+            const showFee = isSports || isAnniversaryMode();
             const avgHcap = calculateAvgHandicap(currentFormSelectedMembers);
 
             let lines = [];
@@ -4953,18 +5001,21 @@
             const competeCount = currentFormSelectedMembers.filter(m => m.participation !== '只用餐').length;
             const mealOnlyCount = currentFormSelectedMembers.filter(m => m.participation === '只用餐').length;
 
-            const totalFee = isSports ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
+            const totalFee = showFee ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             if (isSports) {
                 lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length} 位 (🏃參賽 ${competeCount} / 🍽️只用餐 ${mealOnlyCount} | 葷食 ${meatCount} / 素食 ${veganCount})`);
                 lines.push(`💰 出席費用：NT$ ${totalFee.toLocaleString()}`);
+            } else if (showFee) {
+                lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length} 位 (葷食 ${meatCount} / 素食 ${veganCount})`);
+                lines.push(`🍽️ 餐費合計：NT$ ${totalFee.toLocaleString()} (每人 $${getMemberFee({}).toLocaleString()})`);
             } else {
                 lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length} 位 (葷食 ${meatCount} / 素食 ${veganCount})`);
             }
 
             const grandTotal = totalFee + amount;
-            if (chairConfig.sponsorshipEnabled && isSports && amount > 0) {
-                lines.push(`💳 應繳總計：NT$ ${grandTotal.toLocaleString()} 元 (${tierName} $${amount.toLocaleString()} + 出席費用 $${totalFee.toLocaleString()})`);
-            } else if (isSports) {
+            if (chairConfig.sponsorshipEnabled && showFee && amount > 0) {
+                lines.push(`💳 應繳總計：NT$ ${grandTotal.toLocaleString()} 元 (${tierName} $${amount.toLocaleString()} + ${isAnniversaryMode() ? '餐費' : '出席費用'} $${totalFee.toLocaleString()})`);
+            } else if (showFee) {
                 lines.push(`💳 應繳總計：NT$ ${grandTotal.toLocaleString()} 元`);
             } else if (chairConfig.sponsorshipEnabled && amount > 0) {
                 lines.push(`💳 應繳總計：NT$ ${grandTotal.toLocaleString()} 元`);
@@ -4982,7 +5033,7 @@
                     const dietStr = m.diet === 'VEGAN' ? `素食(${m.veganNote || '通用'})` : '葷食';
                     const hcapStr = (isGolf && m.handicap !== undefined && m.handicap !== null && m.handicap !== '') ? ` | ⛳差點: ${m.handicap}` : '';
                     const partStr = isSports ? ` [${m.participation || '參賽'}]` : '';
-                    const feeStr = isSports ? ` | 費用: $${getMemberFee(m).toLocaleString()}` : '';
+                    const feeStr = showFee ? ` | 費用: $${getMemberFee(m).toLocaleString()}` : '';
                     lines.push(`${idx + 1}. [${m.role}] ${m.name} (${m.nickname})${partStr}${hcapStr} | ${dietStr}${feeStr}`);
                 });
             }
@@ -6226,6 +6277,7 @@
 
             // 依附圖45指示：如果是運動賽事,因為不需要，就不用顯示
             const isSports = isCurrentEventSports();
+            const showFee = isSports || isAnniversaryMode();
             const shouldShow = (currentRole === 'chair') && !isSports;
             section.classList.toggle('hidden', !shouldShow);
             if (!shouldShow) return;
