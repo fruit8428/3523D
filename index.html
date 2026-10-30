@@ -192,6 +192,11 @@
             display: none !important;
         }
 
+        /* 社慶模式：隱藏一般贊助等級，只顯示「友社花款統一辦理」 */
+        body[data-mode="anniversary"] .tier-standard { display: none !important; }
+        body:not([data-mode="anniversary"]) .tier-flower { display: none !important; }
+        body[data-mode="anniversary"] #sponsorTierGrid { grid-template-columns: 1fr !important; max-width: 20rem; }
+
         /* Apportionment mode layout adjustments */
         body[data-mode="apportionment"] #memberMasterCol {
             display: none !important;
@@ -498,25 +503,31 @@
                         <!-- Sponsorship Options (Conditional display based on Event Type) -->
                         <div id="sponsorshipSelectionBox" class="mb-4 p-3 sm:p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl hidden">
                             <h4 class="text-xs font-bold text-emerald-900 mb-2 flex items-center gap-1.5">
-                                🏆 本社贊助門檻選擇 (主委已開放贊助選項)
+                                <span class="tier-standard">🏆 本社贊助門檻選擇 (主委已開放贊助選項)</span>
+                                <span class="tier-flower">💐 社慶花款 (友社花款統一辦理)</span>
                             </h4>
-                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                <label class="flex flex-col p-2 bg-white rounded-lg border border-emerald-200 cursor-pointer text-center hover:bg-emerald-100 transition">
+                            <div id="sponsorTierGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                <label class="tier-flower flex flex-col p-2 bg-white rounded-lg border border-pink-200 cursor-pointer text-center hover:bg-pink-50 transition">
+                                    <input type="radio" name="sponsorTier" value="FLOWER" onchange="updateSponsorshipSelection()" class="mx-auto mb-1">
+                                    <span class="text-[11px] font-bold text-slate-800">友社花款統一辦理</span>
+                                    <span class="text-xs font-extrabold text-pink-700" id="feeFlowerText">$3,000</span>
+                                </label>
+                                <label class="tier-standard flex flex-col p-2 bg-white rounded-lg border border-emerald-200 cursor-pointer text-center hover:bg-emerald-100 transition">
                                     <input type="radio" name="sponsorTier" value="CO_HOST" onchange="updateSponsorshipSelection()" class="mx-auto mb-1">
                                     <span class="text-[11px] font-bold text-slate-800">共同主辦社</span>
                                     <span class="text-xs font-extrabold text-emerald-700" id="feeCoHostText">$50,000</span>
                                 </label>
-                                <label class="flex flex-col p-2 bg-white rounded-lg border border-emerald-200 cursor-pointer text-center hover:bg-emerald-100 transition">
+                                <label class="tier-standard flex flex-col p-2 bg-white rounded-lg border border-emerald-200 cursor-pointer text-center hover:bg-emerald-100 transition">
                                     <input type="radio" name="sponsorTier" value="ORGANIZER" onchange="updateSponsorshipSelection()" class="mx-auto mb-1">
                                     <span class="text-[11px] font-bold text-slate-800">協辦社</span>
                                     <span class="text-xs font-extrabold text-emerald-700" id="feeOrganizerText">$20,000</span>
                                 </label>
-                                <label class="flex flex-col p-2 bg-white rounded-lg border border-emerald-200 cursor-pointer text-center hover:bg-emerald-100 transition">
+                                <label class="tier-standard flex flex-col p-2 bg-white rounded-lg border border-emerald-200 cursor-pointer text-center hover:bg-emerald-100 transition">
                                     <input type="radio" name="sponsorTier" value="SPONSOR" onchange="updateSponsorshipSelection()" class="mx-auto mb-1">
                                     <span class="text-[11px] font-bold text-slate-800">贊助社</span>
                                     <span class="text-xs font-extrabold text-emerald-700" id="feeSponsorText">$10,000</span>
                                 </label>
-                                <label class="flex flex-col p-2 bg-white rounded-lg border border-emerald-200 cursor-pointer text-center hover:bg-emerald-100 transition">
+                                <label class="tier-standard flex flex-col p-2 bg-white rounded-lg border border-emerald-200 cursor-pointer text-center hover:bg-emerald-100 transition">
                                     <input type="radio" name="sponsorTier" value="PARTICIPANT" checked onchange="updateSponsorshipSelection()" class="mx-auto mb-1">
                                     <span class="text-[11px] font-bold text-slate-800">一般參賽社</span>
                                     <span class="text-xs font-semibold text-slate-500">標準註冊</span>
@@ -718,6 +729,7 @@
                             <option value="seminar">研討會及講習會</option>
                             <option value="sports">運動賽事/RYLA/義診</option>
                             <option value="apportionment">地辦分攤金/配合款</option>
+                            <option value="anniversary">社慶 (友社花款統一辦理)</option>
                         </select>
                     </div>
                     <div class="flex items-end">
@@ -732,6 +744,7 @@
                     <div id="cfgFeeBox1">
                         <label id="cfgFeeLabel1" class="block text-[11px] font-semibold text-slate-500">共同主辦社金額 (NT$)</label>
                         <input type="number" id="cfgFeeCoHost" value="50000" class="w-full bg-slate-50 border rounded p-1 text-xs focus:bg-white focus:ring-1 focus:ring-blue-500">
+                        <input type="number" id="cfgFeeFlower" value="3000" class="w-full bg-slate-50 border rounded p-1 text-xs hidden focus:bg-white focus:ring-1 focus:ring-pink-500">
                         <input type="number" id="cfgFeeApportionment" value="3000" class="w-full bg-slate-50 border rounded p-1 text-xs hidden focus:bg-white focus:ring-1 focus:ring-blue-500">
                         <div id="cfgFeeApportionmentMsg" class="hidden w-full bg-slate-100 text-slate-500 border border-slate-200 rounded p-1 text-[11px] font-medium flex items-center h-[26px]">
                             由各社執秘依 Invoice 填寫
@@ -2549,6 +2562,7 @@
             feeCoHost: 50000,
             feeOrganizer: 20000,
             feeSponsor: 10000,
+            feeFlower: 3000,       // 社慶友社花款（統一辦理）預設 3000 元
             feeCompete: 1200,      // 內定參賽 1200 元
             feeMealOnly: 1000,     // 只用餐 1000 元
             startDate: '2026-09-01T09:00'
@@ -2656,7 +2670,8 @@
                     if (parsed.chairConfig) {
                         chairConfig = Object.assign({
                             feeCompete: 1200,
-                            feeMealOnly: 1000
+                            feeMealOnly: 1000,
+                            feeFlower: 3000
                         }, parsed.chairConfig);
                     }
                     if (parsed.appAuthData) {
@@ -2691,6 +2706,7 @@
             feeCoHost: 50000,
                     feeOrganizer: 20000,
                     feeSponsor: 10000,
+                    feeFlower: 3000,
                     feeCompete: 1200,
                     feeMealOnly: 1000,
                     startDate: '2026-09-01T09:00'
@@ -2865,9 +2881,14 @@
             let currentMode = 'seminar';
             const hasApportionmentKeyword = (cat.name && (cat.name.includes('分攤金') || cat.name.includes('配合款'))) || (cat.subEvents && cat.subEvents.some(se => se.includes('分攤金') || se.includes('配合款')));
             
+            const hasAnniversaryKeyword = (cat.name && cat.name.includes('社慶')) || (cat.subEvents && cat.subEvents.some(se => se.includes('社慶')));
+
             if (hasApportionmentKeyword) {
                 currentMode = 'apportionment';
                 chairConfig.sponsorshipEnabled = false;
+            } else if (hasAnniversaryKeyword) {
+                currentMode = 'anniversary';
+                chairConfig.sponsorshipEnabled = true;
             } else if (cat.allowSponsors) {
                 currentMode = 'sports';
                 chairConfig.sponsorshipEnabled = true;
@@ -2876,6 +2897,8 @@
             }
             document.getElementById('cfgSponsorToggle').value = currentMode;
             if (document.getElementById('cfgFeeApportionment')) document.getElementById('cfgFeeApportionment').value = chairConfig.feeApportionment !== undefined ? chairConfig.feeApportionment : 3000;
+            if (document.getElementById('cfgFeeFlower')) document.getElementById('cfgFeeFlower').value = chairConfig.feeFlower !== undefined ? chairConfig.feeFlower : 3000;
+            if (document.getElementById('feeFlowerText')) document.getElementById('feeFlowerText').innerText = `$${Number(chairConfig.feeFlower || 3000).toLocaleString()}`;
             toggleSponsorConfig(currentMode);
 
             // Sports participant fee inputs for Chair
@@ -2953,7 +2976,7 @@
                 }
             } else {
                 currentFormSelectedMembers = [];
-                currentSelectedSponsorTier = "PARTICIPANT";
+                currentSelectedSponsorTier = (document.body.getAttribute('data-mode') === 'anniversary') ? "FLOWER" : "PARTICIPANT";
                 const secAppInput = document.getElementById('secApportionmentInput');
                 if (secAppInput) {
                     secAppInput.value = 3000;
@@ -3032,6 +3055,9 @@
             } else if (currentSelectedSponsorTier === 'SPONSOR') {
                 tierName = '贊助社';
                 amount = Number(chairConfig.feeSponsor) || 10000;
+            } else if (currentSelectedSponsorTier === 'FLOWER') {
+                tierName = '友社花款統一辦理';
+                amount = Number(chairConfig.feeFlower) || 3000;
             }
             return { tierName, amount, enabled: true };
         }
@@ -3443,6 +3469,7 @@
                 if (currentSelectedSponsorTier === 'CO_HOST') amount = chairConfig.feeCoHost;
                 else if (currentSelectedSponsorTier === 'ORGANIZER') amount = chairConfig.feeOrganizer;
                 else if (currentSelectedSponsorTier === 'SPONSOR') amount = chairConfig.feeSponsor;
+                else if (currentSelectedSponsorTier === 'FLOWER') amount = Number(chairConfig.feeFlower) || 3000;
             }
 
             if (!registrationOrders[subEventName]) {
@@ -3834,8 +3861,16 @@
 
         function toggleSponsorConfig(val) {
             document.body.setAttribute('data-mode', val);
-            const enabled = (val === 'sports');
+            const enabled = (val === 'sports' || val === 'anniversary');
             chairConfig.sponsorshipEnabled = enabled;
+
+            // 切換模式時同步修正目前選取的贊助等級：社慶只能選花款，其他模式不可停留在花款
+            if (val === 'anniversary' && currentSelectedSponsorTier !== 'FLOWER') {
+                currentSelectedSponsorTier = 'FLOWER';
+            } else if (val !== 'anniversary' && currentSelectedSponsorTier === 'FLOWER') {
+                currentSelectedSponsorTier = 'PARTICIPANT';
+            }
+            document.getElementsByName('sponsorTier').forEach(r => r.checked = (r.value === currentSelectedSponsorTier));
             
             const selectionBox = document.getElementById('sponsorshipSelectionBox');
             if(selectionBox) {
@@ -3851,9 +3886,11 @@
             const box3 = document.getElementById('cfgFeeBox3');
             const inputCoHost = document.getElementById('cfgFeeCoHost');
             const inputApport = document.getElementById('cfgFeeApportionment');
+            const inputFlower = document.getElementById('cfgFeeFlower');
             const msgApport = document.getElementById('cfgFeeApportionmentMsg');
             
             if(label1 && box2 && box3 && inputCoHost && inputApport) {
+                if(inputFlower) inputFlower.classList.add('hidden');
                 if (val === 'sports') {
                     label1.innerText = '共同主辦社金額 (NT$)';
                     inputCoHost.classList.remove('hidden');
@@ -3861,6 +3898,14 @@
                     if(msgApport) msgApport.classList.add('hidden');
                     box2.classList.remove('hidden');
                     box3.classList.remove('hidden');
+                } else if (val === 'anniversary') {
+                    label1.innerText = '友社花款金額 (NT$)';
+                    inputCoHost.classList.add('hidden');
+                    inputApport.classList.add('hidden');
+                    if(inputFlower) inputFlower.classList.remove('hidden');
+                    if(msgApport) msgApport.classList.add('hidden');
+                    box2.classList.add('hidden');
+                    box3.classList.add('hidden');
                 } else if (val === 'seminar') {
                     label1.innerText = '每社應繳金額 (NT$)';
                     inputCoHost.classList.add('hidden');
@@ -3902,6 +3947,8 @@
             chairConfig.feeCoHost = parseFloat(document.getElementById('cfgFeeCoHost').value) || 0;
             chairConfig.feeOrganizer = parseFloat(document.getElementById('cfgFeeOrganizer').value) || 0;
             chairConfig.feeSponsor = parseFloat(document.getElementById('cfgFeeSponsor').value) || 0;
+            const flowerInput = document.getElementById('cfgFeeFlower');
+            if (flowerInput && !isNaN(parseFloat(flowerInput.value))) chairConfig.feeFlower = parseFloat(flowerInput.value);
             const compInput = document.getElementById('cfgFeeCompete');
             const mealInput = document.getElementById('cfgFeeMealOnly');
             if (compInput && !isNaN(parseFloat(compInput.value))) chairConfig.feeCompete = parseFloat(compInput.value);
@@ -3910,6 +3957,7 @@
             document.getElementById('feeCoHostText').innerText = `$${chairConfig.feeCoHost.toLocaleString()}`;
             document.getElementById('feeOrganizerText').innerText = `$${chairConfig.feeOrganizer.toLocaleString()}`;
             document.getElementById('feeSponsorText').innerText = `$${chairConfig.feeSponsor.toLocaleString()}`;
+            if (document.getElementById('feeFlowerText')) document.getElementById('feeFlowerText').innerText = `$${Number(chairConfig.feeFlower || 0).toLocaleString()}`;
 
             saveToStorage();
             showToast('💾 主委設定已成功更新！');
@@ -3953,7 +4001,7 @@
             let meatCount = 0;
             let veganCount = 0;
             let totalSponsorship = 0;
-            let countCoHost = 0, countOrganizer = 0, countSponsor = 0;
+            let countCoHost = 0, countOrganizer = 0, countSponsor = 0, countFlower = 0;
             let allParticipants = [];
 
             orders.forEach(o => {
@@ -3961,6 +4009,7 @@
                 if (o.sponsorTier === 'CO_HOST') countCoHost++;
                 if (o.sponsorTier === 'ORGANIZER') countOrganizer++;
                 if (o.sponsorTier === 'SPONSOR') countSponsor++;
+                if (o.sponsorTier === 'FLOWER') countFlower++;
 
                 o.items.forEach(item => {
                     totalPeople++;
@@ -3975,7 +4024,9 @@
             document.getElementById('kpiClubCount').innerText = orders.length;
             document.getElementById('kpiDietSummary').innerText = `${meatCount} 葷 / ${veganCount} 素`;
             document.getElementById('kpiTotalSponsorship').innerText = `$${totalSponsorship.toLocaleString()}`;
-            document.getElementById('kpiSponsorClubsDetail').innerText = `共同主辦 ${countCoHost} | 協辦 ${countOrganizer} | 贊助 ${countSponsor}`;
+            document.getElementById('kpiSponsorClubsDetail').innerText = countFlower > 0
+                ? `友社花款 ${countFlower} 社`
+                : `共同主辦 ${countCoHost} | 協辦 ${countOrganizer} | 贊助 ${countSponsor}`;
 
             // Calculate overall golf stats for 4th card & table titles
             const isGolf = subEventName.includes("高爾夫");
@@ -4102,10 +4153,10 @@
                 tbody.innerHTML = orders.flatMap((order, oIdx) => {
                     const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
                                      order.sponsorTier === 'ORGANIZER' ? '協辦社' :
-                                     order.sponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社';
+                                     order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社';
                     const tierClass = order.sponsorTier === 'CO_HOST' ? 'bg-amber-100 text-amber-800' :
                                       order.sponsorTier === 'ORGANIZER' ? 'bg-blue-100 text-blue-800' :
-                                      order.sponsorTier === 'SPONSOR' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600';
+                                      order.sponsorTier === 'SPONSOR' ? 'bg-emerald-100 text-emerald-800' : order.sponsorTier === 'FLOWER' ? 'bg-pink-100 text-pink-800' : 'bg-slate-100 text-slate-600';
                     return order.items.map((item, iIdx) => {
                         const isMealOnly = (item.participation === '只用餐');
                         const partCell = isSports ? `
@@ -4200,11 +4251,11 @@
                                 <span class="px-2 py-0.5 rounded text-[10px] font-bold ${
                                     o.sponsorTier === 'CO_HOST' ? 'bg-amber-100 text-amber-800' :
                                     o.sponsorTier === 'ORGANIZER' ? 'bg-blue-100 text-blue-800' :
-                                    o.sponsorTier === 'SPONSOR' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                                    o.sponsorTier === 'SPONSOR' ? 'bg-emerald-100 text-emerald-800' : o.sponsorTier === 'FLOWER' ? 'bg-pink-100 text-pink-800' : 'bg-slate-100 text-slate-600'
                                 }">${
                                     o.sponsorTier === 'CO_HOST' ? '共同主辦社' :
                                     o.sponsorTier === 'ORGANIZER' ? '協辦社' :
-                                    o.sponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社'
+                                    o.sponsorTier === 'SPONSOR' ? '贊助社' : o.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社'
                                 }</span>
                             </td>
                             <td class="p-2.5 font-mono font-bold text-emerald-700">$${(o.sponsorAmount || 0).toLocaleString()}</td>
@@ -4377,7 +4428,7 @@
             orders.forEach(order => {
                 const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
                                  order.sponsorTier === 'ORGANIZER' ? '協辦社' :
-                                 order.sponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社';
+                                 order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社';
                 order.items.forEach(item => {
                     const rowObj = {
                         "序號": pIdx++,
@@ -4450,7 +4501,7 @@
             orders.forEach(order => {
                 const tierStr = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
                                 order.sponsorTier === 'ORGANIZER' ? '協辦社' :
-                                order.sponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社';
+                                order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社';
                 lines.push(`\n📌 【${order.clubName}】(${tierStr}${order.sponsorAmount ? ` 贊助 $${order.sponsorAmount.toLocaleString()}` : ''})：`);
                 order.items.forEach(item => {
                     const partStr = isSports ? ` [${item.participation || '參賽'}]` : '';
@@ -4559,7 +4610,7 @@
             
             const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
                               order.sponsorTier === 'ORGANIZER' ? '協辦社' :
-                              order.sponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社';
+                              order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社';
             document.getElementById('detailModalSubTitle').innerText = `贊助等級：${tierLabel} ($${(order.sponsorAmount||0).toLocaleString()}) | 提交時間：${order.submittedAt}`;
 
             const competeCount = order.items.filter(i => i.participation !== '只用餐').length;
@@ -4713,7 +4764,7 @@
             orders.forEach(order => {
                 const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
                                  order.sponsorTier === 'ORGANIZER' ? '協辦社' :
-                                 order.sponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社';
+                                 order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社';
                 order.items.forEach(item => {
                     const dietLabel = item.diet === 'VEGAN' ? '素食' : '葷食';
                     const hcap = (item.handicap !== undefined && item.handicap !== null && item.handicap !== '') ? item.handicap : '-';
@@ -4856,12 +4907,13 @@
             const subEventName = cat.subEvents[currentSubEventIndex];
             const tierName = currentSelectedSponsorTier === 'CO_HOST' ? '共同主辦社' :
                              currentSelectedSponsorTier === 'ORGANIZER' ? '協辦社' :
-                             currentSelectedSponsorTier === 'SPONSOR' ? '贊助社' : '一般參賽社';
+                             currentSelectedSponsorTier === 'SPONSOR' ? '贊助社' : currentSelectedSponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社';
             let amount = 0;
             if (chairConfig.sponsorshipEnabled) {
                 if (currentSelectedSponsorTier === 'CO_HOST') amount = chairConfig.feeCoHost;
                 else if (currentSelectedSponsorTier === 'ORGANIZER') amount = chairConfig.feeOrganizer;
                 else if (currentSelectedSponsorTier === 'SPONSOR') amount = chairConfig.feeSponsor;
+                else if (currentSelectedSponsorTier === 'FLOWER') amount = Number(chairConfig.feeFlower) || 3000;
             }
 
             const isGolf = isCurrentEventGolf();
@@ -5407,6 +5459,7 @@
             const colorHexMap = { blue: '#1A56DB', green: '#16A34A', orange: '#EA580C', red: '#DC2626', purple: '#9333EA' };
 
             const isApportionment = name.includes('分攤金') || name.includes('配合款');
+            // 名稱含「社慶」者會由 loadCategoryView 自動切換為社慶（友社花款）模式
 
             const newCat = {
                 id: 'custom_' + Date.now(),
