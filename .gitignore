@@ -4,3 +4,19 @@ Thumbs.db
 *.bak
 *.tmp
 node_modules/
+
+# 開發期暫存腳本與產物（不隨 GitHub Pages 公開）
+patch_*.py
+fix_*.py
+check_*.js
+check_*.py
+extract_js.js
+stub.js
+test.js
+test_supabase*.js
+temp_script_*.js
+rotary_3523_event_registration_spa.html
+
+# 參考用截圖
+GitHub-33.jpg
+IMG_7003.PNG

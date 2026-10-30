@@ -13,10 +13,24 @@
     <meta name="format-detection" content="telephone=no">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js CDN -->
+        <!-- Supabase CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // ================= SUPABASE CONFIGURATION =================
+        // 請在此填入您的 Supabase 專案 URL 與 anon key
+        const SUPABASE_URL = 'https://ncrvmhfggfczicpyebvn.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_oTRCxVE73AYelSw9P-Zf4A_f_Ooj98u';
+        let supabaseClient = null;
+        if (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY') {
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+    </script>
+<!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- QRCode CDN for Cross-Device Mobile Linkage -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- SheetJS for Excel Export/Import -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <!-- SheetJS (XLSX) CDN for Native Excel (.xlsx) Export -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- Font Customizations & Tailwind Config -->
@@ -168,9 +182,104 @@
                 box-shadow: none !important;
             }
         }
-    </style>
+    
+        /* Hide role switchers for normal users */
+        #roleSecBtn, #roleChairBtn, #roleArchBtn { display: none !important; }
+
+        /* Force hide sponsorship selection for seminar and apportionment modes */
+        body[data-mode="seminar"] #sponsorshipSelectionBox,
+        body[data-mode="apportionment"] #sponsorshipSelectionBox {
+            display: none !important;
+        }
+
+        /* Apportionment mode layout adjustments */
+        body[data-mode="apportionment"] #memberMasterCol {
+            display: none !important;
+        }
+        body[data-mode="apportionment"] #selectedParticipantsBox {
+            display: none !important;
+        }
+        body[data-mode="apportionment"] #secQuickActionsBar {
+            display: none !important;
+        }
+        body[data-mode="apportionment"] #clearSelectedMembersBtn {
+            display: none !important;
+        }
+        @media (min-width: 1024px) {
+            body[data-mode="apportionment"] #registrationFormCol {
+                grid-column: span 12 / span 12 !important;
+            }
+        }
+</style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col pb-16 md:pb-0">
+
+    <!-- Login Overlay -->
+    <div id="loginOverlay" class="fixed inset-0 z-[100] bg-slate-100 overflow-y-auto flex flex-col">
+        <div class="flex-grow flex items-center justify-center p-4 py-8">
+            <div class="bg-white rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden max-w-4xl w-full">
+            <!-- Left Side -->
+            <div class="bg-[#0b2463] text-white p-8 md:p-12 md:w-5/12 flex flex-col justify-center items-center relative text-center">
+                <div class="mb-6 flex items-center justify-center">
+                    <img src="./logo.png" alt="Logo" class="w-28 h-28 object-contain">
+                </div>
+                <p class="text-amber-500 font-bold tracking-widest text-xs mb-3">ROTARY INTERNATIONAL</p>
+                <h1 class="text-2xl md:text-3xl font-black mb-6 leading-tight">國際扶輪3523地區<br>報名系統</h1>
+                <p class="text-sm text-blue-100 leading-relaxed mb-12">專為各地區社打造的專屬報名平台，提供高效率、安全的活動報名管理服務。</p>
+                <div class="text-[10px] text-blue-300/60 mt-auto">© 2026 Rotary District 3523. All rights reserved.</div>
+            </div>
+            
+            <!-- Right Side -->
+            <div class="p-8 md:p-12 md:w-7/12 relative">
+                <button type="button" onclick="document.getElementById('loginPassword').focus();" class="absolute top-6 right-6 text-xs text-slate-400 hover:text-slate-600 font-bold flex items-center gap-1">
+                    🛡️ 管理員登入
+                </button>
+                
+                <div class="flex border-b border-slate-200 mb-8 mt-2">
+                    <button type="button" id="tabLogin" onclick="switchLoginTab('login')" class="pb-3 text-base font-bold text-[#0b2463] border-b-2 border-amber-500 mr-6 transition-all">社名登入</button>
+                    <button type="button" id="tabRegister" onclick="switchLoginTab('register')" class="pb-3 text-base font-bold text-slate-400 hover:text-slate-600 transition-all">首次進入 (註冊)</button>
+                </div>
+                
+                <form id="loginForm" onsubmit="handleLogin(event)">
+                    <div class="mb-5">
+                        <label class="block text-sm font-bold text-[#0b2463] mb-2">所屬社名 <span class="text-red-500">*</span></label>
+                        <select id="loginClubSelect" required class="w-full border border-slate-300 rounded-lg p-3 text-slate-700 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#0b2463] focus:outline-none font-bold">
+                            <option value="">👥 點擊選擇或輸入社名搜尋</option>
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+                    
+                    <div class="mb-5 relative">
+                        <label class="block text-sm font-bold text-[#0b2463] mb-2">登入密碼 <span class="text-red-500">*</span></label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">🔒</span>
+                            <input type="password" id="loginPassword" required class="w-full border border-slate-300 rounded-lg p-3 pl-10 text-slate-700 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#0b2463] focus:outline-none font-medium" placeholder="請輸入您設定的密碼 (管理員請輸入管理員密碼)">
+                            <button type="button" onclick="const p=document.getElementById('loginPassword'); p.type=p.type==='password'?'text':'password';" class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600">👁️</button>
+                        </div>
+                        <p id="registerHint" class="text-xs text-amber-600 mt-2 hidden font-bold">💡 這是您第一次登入，請自行設定一組密碼。未來皆須使用此密碼登入。</p>
+                        <p id="loginError" class="text-xs text-red-600 mt-2 hidden font-bold">❌ 密碼錯誤或尚未註冊，請重試或點擊「首次進入 (註冊)」設定密碼。</p>
+                    </div>
+                    
+                    <div class="flex items-center justify-between mb-8">
+                        <label class="flex items-center text-sm text-slate-600 cursor-pointer font-bold">
+                            <input type="checkbox" id="rememberClub" class="mr-2 w-4 h-4 rounded border-slate-300 text-[#0b2463]">
+                            記住社名
+                        </label>
+                        <div class="text-sm">
+                            <span class="text-slate-500 font-medium">忘記密碼？</span>
+                            <a href="#" onclick="alert('請聯絡地區系統管理員重置密碼');" class="bg-[#0b2463] text-white px-2 py-1 rounded text-xs font-bold ml-1 hover:bg-blue-900 transition">聯絡管理員</a>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" id="loginBtnText" class="w-full bg-[#0b2463] hover:bg-blue-900 text-white font-bold py-3.5 rounded-lg transition shadow-lg flex items-center justify-center gap-2">
+                        進入報名系統 <span>→</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+        </div>
+    </div>
+
 
     <!-- Top Navigation Header -->
     <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-50">
@@ -304,7 +413,7 @@
             </div>
 
             <!-- Quick Action Shortcuts for Secretary -->
-            <div class="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm text-xs">
+            <div id="secQuickActionsBar" class="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm text-xs">
                 <div class="flex items-center gap-2 flex-wrap">
                     <span class="font-bold text-slate-600">⚡ 行動快捷功能：</span>
                     <button onclick="copyLineText()" class="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold rounded-md transition flex items-center gap-1">
@@ -323,7 +432,7 @@
 
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
                 <!-- Left: Club Member Master Database (各社執秘社友資料庫) -->
-                <div class="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col">
+                <div id="memberMasterCol" class="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col">
                     <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-3">
                         <div>
                             <h3 class="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-1.5">
@@ -331,14 +440,19 @@
                             </h3>
                             <p class="text-[11px] text-slate-500" id="masterDbSubDesc">已整合<strong>高爾夫差點</strong>，預先維護一勞永逸</p>
                         </div>
-                        <button onclick="openAddMemberModal()" class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95">
-                            ➕ 新增社友
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button onclick="openExcelModal()" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95">
+                                📊 匯入/匯出 Excel
+                            </button>
+                            <button onclick="openAddMemberModal()" class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95">
+                                ➕ 新增社友
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Member Search Filter Input -->
                     <div class="mb-2.5">
-                        <input type="text" id="memberSearchInput" oninput="renderMemberMasterTable()" placeholder="🔍 快速搜尋社友姓名 / 職稱 / 差點..." class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                        <input type="text" id="memberSearchInput" autocomplete="off" oninput="renderMemberMasterTable()" placeholder="🔍 快速搜尋社友姓名 / 職稱 / 差點..." class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
                     </div>
 
                     <!-- Master Member List Table -->
@@ -367,7 +481,7 @@
                 </div>
 
                 <!-- Right: Active Event Registration Form (報名填表處) -->
-                <div class="lg:col-span-7 bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col justify-between">
+                <div id="registrationFormCol" class="lg:col-span-7 bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col justify-between">
                     <div>
                         <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
                             <div>
@@ -410,8 +524,20 @@
                             </div>
                         </div>
 
+                        <!-- Apportionment Input Box (Conditional display) -->
+                        <div id="apportionmentInputBox" class="mb-4 p-3 sm:p-3.5 bg-amber-50 border border-amber-200 rounded-xl hidden">
+                            <h4 class="text-xs font-bold text-amber-900 mb-2 flex items-center gap-1.5">
+                                💰 本社應繳總額 (依照 RI Invoice 人數計算)
+                            </h4>
+                            <div class="flex items-center gap-2 max-w-sm">
+                                <span class="text-xs text-amber-700 font-bold">NT$</span>
+                                <input type="number" id="secApportionmentInput" value="3000" oninput="updateTotalFeeSummaryDisplay()" class="w-full bg-white border border-amber-300 rounded p-1.5 text-sm font-bold text-slate-800 focus:ring-1 focus:ring-amber-500">
+                            </div>
+                            <p class="text-[10.5px] text-amber-700 mt-1.5 font-medium">※ 請各社執秘依 RI 發出之 mail 中 Club invoice 人數為主，乘上每個人該付的金額後填寫於此處。</p>
+                        </div>
+
                         <!-- Selected Participants Table -->
-                        <div class="mb-4">
+                        <div id="selectedParticipantsBox" class="mb-4">
                             <div class="flex flex-wrap justify-between items-center mb-2 gap-1.5">
                                 <h4 class="text-xs font-bold text-slate-700" id="selectedRosterTitle">本次出席社友名冊:</h4>
                                 <div class="text-[11px] flex items-center gap-1.5 flex-wrap">
@@ -460,7 +586,7 @@
                             <span id="regGrandTotalLabel" class="font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-[11px] xl:text-xs whitespace-nowrap hidden">總計：<b id="regGrandTotalDisplay" class="text-red-600 font-mono font-extrabold">$0元</b></span>
                         </div>
                         <div class="flex gap-1.5 sm:gap-2 shrink-0 justify-end w-full sm:w-auto">
-                            <button onclick="clearSelectedMembers()" class="px-2.5 sm:px-3 py-1.5 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold active:scale-95 transition whitespace-nowrap">
+                            <button id="clearSelectedMembersBtn" onclick="clearSelectedMembers()" class="px-2.5 sm:px-3 py-1.5 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold active:scale-95 transition whitespace-nowrap">
                                 清空重選
                             </button>
                             <button id="submitRegBtn" onclick="submitRegistration()" class="px-3.5 sm:px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow transition flex-1 sm:flex-none text-center active:scale-95 whitespace-nowrap">
@@ -471,6 +597,88 @@
                 </div>
             </div>
         </section>
+
+        <!-- ================= VIEW 3: SUPER ADMIN DASHBOARD ================= -->
+        <section id="viewSuperAdmin" class="space-y-5 hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
+                <div class="pb-4 border-b border-slate-100 mb-4">
+                    <span class="text-xs font-bold text-amber-600 uppercase tracking-wider">Super Administrator</span>
+                    <h3 class="text-base sm:text-lg font-bold text-slate-900">👑 系統最高權限管理中心</h3>
+                    <p class="text-xs text-slate-500 mt-1">您可以指派各活動的主委（設定擁有該活動最高權限的社別）。當該社執秘登入時，將自動取得該活動的「主委戰情」權限。</p>
+                </div>
+                
+                <div class="max-w-2xl">
+                    <label class="block text-sm font-bold text-slate-700 mb-2">請選擇要設定的活動：</label>
+                    <select id="adminCategorySelect" onchange="renderAdminChairAssignment()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm font-bold text-slate-800 mb-4 focus:ring-2 focus:ring-blue-500">
+                        <!-- Populated dynamically -->
+                    </select>
+
+                    <div class="flex justify-between items-end mb-2">
+                        <label class="block text-sm font-bold text-slate-700">指派主委社別 (可複選)：</label>
+                        <a href="#divisionDirectoryHeaderTitle" class="text-xs text-blue-600 hover:text-blue-800 font-bold px-2 py-1 bg-blue-50 hover:bg-blue-100 rounded transition border border-blue-200">
+                            ⚙️ 管理地區社名冊 (增刪改)
+                        </a>
+                    </div>
+                    <div id="adminChairClubsContainer" class="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-80 overflow-y-auto p-3 border border-slate-200 rounded-lg bg-slate-50 mb-4">
+                        <!-- Checkboxes populated dynamically -->
+                    </div>
+                    
+                    <button onclick="saveAdminChairAssignment()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-sm transition active:scale-95">
+                        💾 儲存權限設定
+                    </button>
+                </div>
+            </div>
+
+            <!-- Division & Club Standard Appendix Directory (支援增加、修改、刪除) -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sm:p-6 mt-5">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+                    <div>
+                        <h3 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2 flex-wrap" id="divisionDirectoryHeaderTitle">
+                            <span>📍 3523 地區分區所屬扶輪社標準名單</span>
+                            <span id="divisionTotalSummaryBadge" class="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
+                                (依地區排序，共 13 分區 80 社)
+                            </span>
+                        </h3>
+                        <p class="text-xs text-slate-500 mt-1">完整提供地區 13 分區與所屬扶輪社標準名錄，支援「增加」、「修改」、「刪除」管理功能。</p>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button onclick="openAddClubModal()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 transition" title="增加新扶輪社">
+                            <span>➕</span><span>增加扶輪社</span>
+                        </button>
+                        <button onclick="resetDivisionsData()" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 rounded-lg text-xs font-medium whitespace-nowrap flex items-center gap-1 active:scale-95 transition" title="重置回初始標準 80 社名錄">
+                            <span>🔄</span><span>還原 80 社</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 text-xs" id="divisionDirectoryContainer">
+                    <!-- Dynamic rendering of Divisions with Add, Edit, Delete -->
+                </div>
+            </div>
+            <!-- Password Management Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 mt-5">
+                <div class="pb-4 border-b border-slate-100 mb-4">
+                    <span class="text-xs font-bold text-rose-600 uppercase tracking-wider">Password Management</span>
+                    <h3 class="text-base sm:text-lg font-bold text-slate-900">🔑 密碼查詢與重置</h3>
+                    <p class="text-xs text-slate-500 mt-1">若各社執秘忘記密碼，您可以在此查詢目前的密碼，或是直接刪除紀錄，讓他們能於登入畫面點選「首次進入(註冊)」重新設定。</p>
+                </div>
+                
+                <div class="max-w-2xl">
+                    <label class="block text-sm font-bold text-slate-700 mb-2">請選擇社別：</label>
+                    <select id="adminPasswordClubSelect" onchange="renderAdminPasswordStatus()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm font-bold text-slate-800 mb-4 focus:ring-2 focus:ring-rose-500">
+                        <option value="">請選擇要查詢的社別...</option>
+                    </select>
+
+                    <div id="adminPasswordStatusBox" class="hidden p-4 rounded-lg border border-slate-200 bg-slate-50 mb-4">
+                        <p class="text-sm font-bold mb-2">註冊狀態：<span id="adminPasswordStatusText"></span></p>
+                        <p class="text-sm font-bold mb-3 text-slate-600">目前密碼：<span id="adminPasswordRevealText" class="font-mono text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-100"></span></p>
+                        <button id="adminResetPasswordBtn" onclick="resetClubPassword()" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-bold shadow-sm transition active:scale-95">
+                            🗑️ 重置並清除此社密碼
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
 
         <!-- ================= VIEW 2: CHAIR DASHBOARD (主委後台) ================= -->
         <section id="viewChair" class="space-y-5 hidden">
@@ -498,17 +706,18 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-4">
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 mb-1">自訂活動全名：</label>
-                        <input type="text" id="cfgEventName" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium">
+                        <input type="text" id="cfgEventName" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium focus:bg-white focus:ring-1 focus:ring-blue-500">
                     </div>
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 mb-1">報名開放時間：</label>
                         <input type="datetime-local" id="cfgStartDate" value="2026-09-01T09:00" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">贊助機制啟用：</label>
-                        <select id="cfgSponsorToggle" onchange="toggleSponsorConfig(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-bold">
-                            <option value="disabled">關閉 (研討會預設關閉)</option>
-                            <option value="enabled">開啟 (運動賽事/RYLA/義診)</option>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">活動屬性設定：</label>
+                        <select id="cfgSponsorToggle" onchange="toggleSponsorConfig(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-[11px] font-bold">
+                            <option value="seminar">研討會及講習會</option>
+                            <option value="sports">運動賽事/RYLA/義診</option>
+                            <option value="apportionment">地辦分攤金/配合款</option>
                         </select>
                     </div>
                     <div class="flex items-end">
@@ -519,16 +728,20 @@
                 </div>
 
                 <!-- Custom Sponsor Fee Tier Settings (Visible if enabled) -->
-                <div id="chairSponsorFeeInputs" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3 pt-3 border-t border-dashed border-slate-200 hidden">
-                    <div>
-                        <label class="block text-[11px] font-semibold text-slate-500">共同主辦社金額 (NT$)</label>
-                        <input type="number" id="cfgFeeCoHost" value="50000" class="w-full bg-slate-50 border rounded p-1 text-xs">
+                <div id="chairSponsorFeeInputs" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3 pt-3 border-t border-dashed border-slate-200">
+                    <div id="cfgFeeBox1">
+                        <label id="cfgFeeLabel1" class="block text-[11px] font-semibold text-slate-500">共同主辦社金額 (NT$)</label>
+                        <input type="number" id="cfgFeeCoHost" value="50000" class="w-full bg-slate-50 border rounded p-1 text-xs focus:bg-white focus:ring-1 focus:ring-blue-500">
+                        <input type="number" id="cfgFeeApportionment" value="3000" class="w-full bg-slate-50 border rounded p-1 text-xs hidden focus:bg-white focus:ring-1 focus:ring-blue-500">
+                        <div id="cfgFeeApportionmentMsg" class="hidden w-full bg-slate-100 text-slate-500 border border-slate-200 rounded p-1 text-[11px] font-medium flex items-center h-[26px]">
+                            由各社執秘依 Invoice 填寫
+                        </div>
                     </div>
-                    <div>
+                    <div id="cfgFeeBox2">
                         <label class="block text-[11px] font-semibold text-slate-500">協辦社金額 (NT$)</label>
                         <input type="number" id="cfgFeeOrganizer" value="20000" class="w-full bg-slate-50 border rounded p-1 text-xs">
                     </div>
-                    <div>
+                    <div id="cfgFeeBox3">
                         <label class="block text-[11px] font-semibold text-slate-500">贊助社金額 (NT$)</label>
                         <input type="number" id="cfgFeeSponsor" value="10000" class="w-full bg-slate-50 border rounded p-1 text-xs">
                     </div>
@@ -924,34 +1137,36 @@
                 </div>
             </div>
 
-            <!-- Division & Club Standard Appendix Directory (支援增加、修改、刪除) -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sm:p-6">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
-                    <div>
-                        <h3 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2 flex-wrap" id="divisionDirectoryHeaderTitle">
-                            <span>📍 3523 地區分區所屬扶輪社標準名單</span>
-                            <span id="divisionTotalSummaryBadge" class="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
-                                (依地區排序，共 13 分區 80 社)
-                            </span>
-                        </h3>
-                        <p class="text-xs text-slate-500 mt-1">完整提供地區 13 分區與所屬扶輪社標準名錄，支援「增加」、「修改」、「刪除」管理功能。</p>
-                    </div>
-                    <div class="flex items-center gap-2 shrink-0">
-                        <button onclick="openAddClubModal()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 transition" title="增加新扶輪社">
-                            <span>➕</span><span>增加扶輪社</span>
-                        </button>
-                        <button onclick="resetDivisionsData()" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 rounded-lg text-xs font-medium whitespace-nowrap flex items-center gap-1 active:scale-95 transition" title="重置回初始標準 80 社名錄">
-                            <span>🔄</span><span>還原 80 社</span>
-                        </button>
-                    </div>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 text-xs" id="divisionDirectoryContainer">
-                    <!-- Dynamic rendering of Divisions with Add, Edit, Delete -->
-                </div>
-            </div>
         </section>
 
     </main>
+
+    <!-- ================= MODAL: EXCEL IMPORT / EXPORT ================= -->
+    <div id="excelModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm p-5 sm:p-6">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                <h3 class="font-bold text-slate-900 text-base">📊 Excel 名冊批次管理</h3>
+                <button onclick="closeExcelModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1 leading-none">&times;</button>
+            </div>
+            
+            <div class="space-y-4">
+                <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 text-center">
+                    <p class="text-xs text-blue-800 mb-3 font-medium">將目前 <span id="excelModalClubName" class="font-bold text-blue-900"></span> 的名冊下載為 Excel，亦可作為批次建檔範本。</p>
+                    <button onclick="exportClubMembersToExcel()" class="w-full py-2 bg-white border border-blue-600 text-blue-700 font-bold rounded-lg text-sm hover:bg-blue-600 hover:text-white transition shadow-sm">
+                        📥 下載目前名冊 (匯出)
+                    </button>
+                </div>
+                
+                <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 text-center">
+                    <p class="text-xs text-emerald-800 mb-3 font-medium">上傳編輯好的 Excel 檔案，系統將自動依據「中文姓名」覆蓋更新或新增社友。</p>
+                    <input type="file" id="excelFileInput" accept=".xlsx, .xls, .csv" class="hidden" onchange="importClubMembersFromExcel(event)">
+                    <button onclick="document.getElementById('excelFileInput').click()" class="w-full py-2 bg-emerald-600 text-white font-bold rounded-lg text-sm hover:bg-emerald-700 transition shadow-sm flex items-center justify-center gap-1">
+                        📤 上傳 Excel (批次匯入)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- ================= MODAL 1: ADD / EDIT MEMBER MODAL (新增與編輯社友含高爾夫差點) ================= -->
     <div id="addMemberModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
@@ -968,7 +1183,7 @@
                 
                 <div>
                     <label class="block font-semibold text-slate-700 mb-1">今年扶輪職務：</label>
-                    <select id="mRole" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:ring-1 focus:ring-blue-500">
+                    <select id="mRole" onchange="toggleSpouseSelection(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:ring-1 focus:ring-blue-500">
                         <option value="社友">社友</option>
                         <option value="社長">社長</option>
                         <option value="秘書">秘書</option>
@@ -978,15 +1193,28 @@
                         <option value="理事">理事</option>
                         <option value="監事">監事</option>
                         <option value="糾察">糾察</option>
-                        <option value="寶眷">寶眷</option>
+                        <option value="行政管理主委">行政管理主委</option>
+                        <option value="社員發展主委">社員發展主委</option>
+                        <option value="服務計畫主委">服務計畫主委</option>
+                        <option value="扶輪基金主委">扶輪基金主委</option>
+                        <option value="公共形象主委">公共形象主委</option>
+                        <option value="寶(尊)眷">寶(尊)眷</option>
                         <option value="貴賓">貴賓</option>
                     </select>
+                </div>
+
+                <div id="mSpouseContainer" class="hidden mb-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                    <label class="block font-semibold text-blue-900 mb-1">對應之社友：</label>
+                    <select id="mSpouseOf" class="w-full bg-white border border-blue-200 rounded-lg p-2 font-medium focus:ring-1 focus:ring-blue-500 text-sm">
+                        <!-- Options generated dynamically -->
+                    </select>
+                    <p class="text-[10px] text-blue-600 mt-1">💡 方便串連是哪個社友的寶尊眷</p>
                 </div>
 
                 <div class="grid grid-cols-2 gap-2.5">
                     <div>
                         <label class="block font-semibold text-slate-700 mb-1">Nick Name：</label>
-                        <input type="text" id="mNickname" required placeholder="例如: CPA" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium">
+                        <input type="text" id="mNickname" required placeholder="例如: AG Albert" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium">
                     </div>
                     <div>
                         <label class="block font-semibold text-slate-700 mb-1">真實中文姓名：</label>
@@ -1726,405 +1954,415 @@
 
         // Appendix: Division & Clubs Dictionary (依據 3523地區現有社名排序.xlsx 完整 13 分區 80 社)
         const DEFAULT_DIVISIONS_DATA = [
-                    {
-                                "id": 1,
-                                "name": "第一分區",
-                                "clubs": [
-                                            {
-                                                        "code": "01-1",
-                                                        "name": "臺北市南區扶輪社"
-                                            },
-                                            {
-                                                        "code": "01-2",
-                                                        "name": "台北逸仙扶輪社"
-                                            },
-                                            {
-                                                        "code": "01-3",
-                                                        "name": "台北逸天扶輪社"
-                                            },
-                                            {
-                                                        "code": "01-4",
-                                                        "name": "台北市雲聯網扶輪社"
-                                            },
-                                            {
-                                                        "code": "01-5",
-                                                        "name": "台北逸澤扶輪社"
-                                            },
-                                            {
-                                                        "code": "01-6",
-                                                        "name": "臺北黃埔扶輪社"
-                                            },
-                                            {
-                                                        "code": "01-7",
-                                                        "name": "台北逸新扶輪社"
-                                            },
-                                            {
-                                                        "code": "01-8",
-                                                        "name": "台北蘭亭鐵馬扶輪社"
-                                            },
-                                            {
-                                                        "code": "01-9",
-                                                        "name": "台北銀河扶輪社"
-                                            }
-                                ]
-                    },
-                    {
-                                "id": 2,
-                                "name": "第二分區",
-                                "clubs": [
-                                            {
-                                                        "code": "02-1",
-                                                        "name": "台北市西南區扶輪社"
-                                            },
-                                            {
-                                                        "code": "02-2",
-                                                        "name": "台北健康扶輪社"
-                                            },
-                                            {
-                                                        "code": "02-3",
-                                                        "name": "台北高峰扶輪社"
-                                            },
-                                            {
-                                                        "code": "02-4",
-                                                        "name": "台北永康扶輪社"
-                                            },
-                                            {
-                                                        "code": "02-5",
-                                                        "name": "台北市南山扶輪社"
-                                            }
-                                ]
-                    },
-                    {
-                                "id": 3,
-                                "name": "第三分區",
-                                "clubs": [
-                                            {
-                                                        "code": "03-1",
-                                                        "name": "台北市華南扶輪社"
-                                            },
-                                            {
-                                                        "code": "03-2",
-                                                        "name": "台北市華陽扶輪社"
-                                            },
-                                            {
-                                                        "code": "03-3",
-                                                        "name": "台北市瑞光扶輪社"
-                                            },
-                                            {
-                                                        "code": "03-4",
-                                                        "name": "台北市華東扶輪社"
-                                            },
-                                            {
-                                                        "code": "03-5",
-                                                        "name": "台北市永續扶輪社"
-                                            },
-                                            {
-                                                        "code": "03-6",
-                                                        "name": "影響力扶輪社"
-                                            }
-                                ]
-                    },
-                    {
-                                "id": 4,
-                                "name": "第四分區",
-                                "clubs": [
-                                            {
-                                                        "code": "04-1",
-                                                        "name": "台北市南欣扶輪社"
-                                            },
-                                            {
-                                                        "code": "04-2",
-                                                        "name": "台北松山扶輪社"
-                                            },
-                                            {
-                                                        "code": "04-3",
-                                                        "name": "台北市民生扶輪社"
-                                            },
-                                            {
-                                                        "code": "04-4",
-                                                        "name": "台北政愛扶輪社"
-                                            },
-                                            {
-                                                        "code": "04-5",
-                                                        "name": "台北添愛扶輪社"
-                                            },
-                                            {
-                                                        "code": "04-6",
-                                                        "name": "台北泰愛扶輪社"
-                                            },
-                                            {
-                                                        "code": "04-7",
-                                                        "name": "文化扶輪社"
-                                            }
-                                ]
-                    },
-                    {
-                                "id": 5,
-                                "name": "第五分區",
-                                "clubs": [
-                                            {
-                                                        "code": "05-1",
-                                                        "name": "台北府門扶輪社"
-                                            },
-                                            {
-                                                        "code": "05-2",
-                                                        "name": "台北南陽扶輪社"
-                                            },
-                                            {
-                                                        "code": "05-3",
-                                                        "name": "台北明星扶輪社"
-                                            },
-                                            {
-                                                        "code": "05-4",
-                                                        "name": "台北風雲扶輪社"
-                                            }
-                                ]
-                    },
-                    {
-                                "id": 6,
-                                "name": "第六分區",
-                                "clubs": [
-                                            {
-                                                        "code": "06-1",
-                                                        "name": "台北市南門扶輪社"
-                                            },
-                                            {
-                                                        "code": "06-2",
-                                                        "name": "台北大都會扶輪社"
-                                            },
-                                            {
-                                                        "code": "06-3",
-                                                        "name": "台北市南方扶輪社"
-                                            },
-                                            {
-                                                        "code": "06-4",
-                                                        "name": "台北市南光扶輪社"
-                                            },
-                                            {
-                                                        "code": "06-5",
-                                                        "name": "台北南英扶輪社"
-                                            },
-                                            {
-                                                        "code": "06-6",
-                                                        "name": "台北市南揚扶輪社"
-                                            },
-                                            {
-                                                        "code": "06-7",
-                                                        "name": "台北市南波扶輪社"
-                                            },
-                                            {
-                                                        "code": "06-8",
-                                                        "name": "臺北市南星扶輪社"
-                                            },
-                                            {
-                                                        "code": "06-9",
-                                                        "name": "台北南法扶輪社"
-                                            }
-                                ]
-                    },
-                    {
-                                "id": 7,
-                                "name": "第七分區",
-                                "clubs": [
-                                            {
-                                                        "code": "07-1",
-                                                        "name": "台北市南海扶輪社"
-                                            },
-                                            {
-                                                        "code": "07-2",
-                                                        "name": "台北市南雅扶輪社"
-                                            },
-                                            {
-                                                        "code": "07-3",
-                                                        "name": "台北市新世代扶輪社"
-                                            },
-                                            {
-                                                        "code": "07-4",
-                                                        "name": "台北市南鷹扶輪社"
-                                            },
-                                            {
-                                                        "code": "07-5",
-                                                        "name": "台北大加蚋扶輪社"
-                                            }
-                                ]
-                    },
-                    {
-                                "id": 8,
-                                "name": "第八分區",
-                                "clubs": [
-                                            {
-                                                        "code": "08-1",
-                                                        "name": "台北市華麗扶輪社"
-                                            },
-                                            {
-                                                        "code": "08-2",
-                                                        "name": "台北市華欣扶輪社"
-                                            },
-                                            {
-                                                        "code": "08-3",
-                                                        "name": "台北市華樂扶輪社"
-                                            },
-                                            {
-                                                        "code": "08-4",
-                                                        "name": "台北網路扶輪社"
-                                            },
-                                            {
-                                                        "code": "08-5",
-                                                        "name": "臺北新北投扶輪社"
-                                            },
-                                            {
-                                                        "code": "08-6",
-                                                        "name": "台北市華真扶輪社"
-                                            }
-                                ]
-                    },
-                    {
-                                "id": 9,
-                                "name": "第九分區",
-                                "clubs": [
-                                            {
-                                                        "code": "09-1",
-                                                        "name": "台北市華安扶輪社"
-                                            },
-                                            {
-                                                        "code": "09-2",
-                                                        "name": "台北市華中扶輪社"
-                                            },
-                                            {
-                                                        "code": "09-3",
-                                                        "name": "台北市益成扶輪社"
-                                            },
-                                            {
-                                                        "code": "09-4",
-                                                        "name": "台北市南德扶輪社"
-                                            },
-                                            {
-                                                        "code": "09-5",
-                                                        "name": "台北市華茂扶輪社"
-                                            },
-                                            {
-                                                        "code": "09-6",
-                                                        "name": "台北南茂扶輪社"
-                                            },
-                                            {
-                                                        "code": "09-7",
-                                                        "name": "台北市三友扶輪社"
-                                            }
-                                ]
-                    },
-                    {
-                                "id": 10,
-                                "name": "第十分區",
-                                "clubs": [
-                                            {
-                                                        "code": "10-1",
-                                                        "name": "台北市南港扶輪社"
-                                            },
-                                            {
-                                                        "code": "10-2",
-                                                        "name": "台北市南北扶輪社"
-                                            },
-                                            {
-                                                        "code": "10-3",
-                                                        "name": "台北市南西扶輪社"
-                                            },
-                                            {
-                                                        "code": "10-4",
-                                                        "name": "台北市南東扶輪社"
-                                            }
-                                ]
-                    },
-                    {
-                                "id": 11,
-                                "name": "第十一分區",
-                                "clubs": [
-                                            {
-                                                        "code": "11-1",
-                                                        "name": "台北市南華扶輪社"
-                                            },
-                                            {
-                                                        "code": "11-2",
-                                                        "name": "台北市文華扶輪社"
-                                            },
-                                            {
-                                                        "code": "11-3",
-                                                        "name": "台北永華扶輪社"
-                                            },
-                                            {
-                                                        "code": "11-4",
-                                                        "name": "台北市西華扶輪社"
-                                            },
-                                            {
-                                                        "code": "11-5",
-                                                        "name": "台北市碩華扶輪社"
-                                            },
-                                            {
-                                                        "code": "11-6",
-                                                        "name": "台北富華扶輪社"
-                                            }
-                                ]
-                    },
-                    {
-                                "id": 12,
-                                "name": "第十二分區",
-                                "clubs": [
-                                            {
-                                                        "code": "12-1",
-                                                        "name": "台北龍門扶輪社"
-                                            },
-                                            {
-                                                        "code": "12-2",
-                                                        "name": "台北龍華扶輪社"
-                                            },
-                                            {
-                                                        "code": "12-3",
-                                                        "name": "台北龍鳳扶輪社"
-                                            },
-                                            {
-                                                        "code": "12-4",
-                                                        "name": "台北龍族扶輪社"
-                                            },
-                                            {
-                                                        "code": "12-5",
-                                                        "name": "台北龍欣扶輪社"
-                                            },
-                                            {
-                                                        "code": "12-6",
-                                                        "name": "台北龍來扶輪社"
-                                            },
-                                            {
-                                                        "code": "12-7",
-                                                        "name": "台北龍穎扶輪社"
-                                            },
-                                            {
-                                                        "code": "12-8",
-                                                        "name": "台北龍舟扶輪社"
-                                            }
-                                ]
-                    },
-                    {
-                                "id": 13,
-                                "name": "第十三分區",
-                                "clubs": [
-                                            {
-                                                        "code": "13-1",
-                                                        "name": "台北市南天扶輪社"
-                                            },
-                                            {
-                                                        "code": "13-2",
-                                                        "name": "台北市天一扶輪社"
-                                            },
-                                            {
-                                                        "code": "13-3",
-                                                        "name": "台北樂雅扶輪社"
-                                            },
-                                            {
-                                                        "code": "13-4",
-                                                        "name": "台北風澤扶輪社"
-                                            }
-                                ]
-                    }
-        ];
+    {
+        "id": 1,
+        "name": "第一分區",
+        "clubs": [
+            {
+                "code": "01-1",
+                "name": "臺北市南區扶輪社"
+            },
+            {
+                "code": "01-2",
+                "name": "台北逸仙扶輪社"
+            },
+            {
+                "code": "01-3",
+                "name": "台北逸天扶輪社"
+            },
+            {
+                "code": "01-4",
+                "name": "台北市雲聯網扶輪社"
+            },
+            {
+                "code": "01-5",
+                "name": "台北逸澤扶輪社"
+            },
+            {
+                "code": "01-6",
+                "name": "臺北黃埔扶輪社"
+            },
+            {
+                "code": "01-7",
+                "name": "台北逸新扶輪社"
+            },
+            {
+                "code": "01-8",
+                "name": "台北蘭亭鐵馬扶輪社"
+            },
+            {
+                "code": "01-9",
+                "name": "台北銀河扶輪社"
+            }
+        ]
+    },
+    {
+        "id": 2,
+        "name": "第二分區",
+        "clubs": [
+            {
+                "code": "02-1",
+                "name": "台北市西南區扶輪社"
+            },
+            {
+                "code": "02-2",
+                "name": "台北健康扶輪社"
+            },
+            {
+                "code": "02-3",
+                "name": "台北高峰扶輪社"
+            },
+            {
+                "code": "02-4",
+                "name": "台北永康扶輪社"
+            },
+            {
+                "code": "02-5",
+                "name": "台北市南山扶輪社"
+            }
+        ]
+    },
+    {
+        "id": 3,
+        "name": "第三分區",
+        "clubs": [
+            {
+                "code": "03-1",
+                "name": "台北市華南扶輪社"
+            },
+            {
+                "code": "03-2",
+                "name": "台北市華陽扶輪社"
+            },
+            {
+                "code": "03-3",
+                "name": "台北市瑞光扶輪社"
+            },
+            {
+                "code": "03-4",
+                "name": "台北市華東扶輪社"
+            },
+            {
+                "code": "03-5",
+                "name": "台北市永續扶輪社"
+            },
+            {
+                "code": "03-6",
+                "name": "影響力扶輪社"
+            }
+        ]
+    },
+    {
+        "id": 4,
+        "name": "第四分區",
+        "clubs": [
+            {
+                "code": "04-1",
+                "name": "台北市南欣扶輪社"
+            },
+            {
+                "code": "04-2",
+                "name": "台北松山扶輪社"
+            },
+            {
+                "code": "04-3",
+                "name": "台北市民生扶輪社"
+            },
+            {
+                "code": "04-4",
+                "name": "台北政愛扶輪社"
+            },
+            {
+                "code": "04-5",
+                "name": "台北添愛扶輪社"
+            },
+            {
+                "code": "04-6",
+                "name": "台北泰愛扶輪社"
+            },
+            {
+                "code": "04-7",
+                "name": "文化扶輪社"
+            }
+        ]
+    },
+    {
+        "id": 5,
+        "name": "第五分區",
+        "clubs": [
+            {
+                "code": "05-1",
+                "name": "台北府門扶輪社"
+            },
+            {
+                "code": "05-2",
+                "name": "台北南陽扶輪社"
+            },
+            {
+                "code": "05-3",
+                "name": "台北明星扶輪社"
+            },
+            {
+                "code": "05-4",
+                "name": "台北風雲扶輪社"
+            }
+        ]
+    },
+    {
+        "id": 6,
+        "name": "第六分區",
+        "clubs": [
+            {
+                "code": "06-1",
+                "name": "台北市南門扶輪社"
+            },
+            {
+                "code": "06-2",
+                "name": "台北大都會扶輪社"
+            },
+            {
+                "code": "06-3",
+                "name": "台北市南方扶輪社"
+            },
+            {
+                "code": "06-4",
+                "name": "台北市南光扶輪社"
+            },
+            {
+                "code": "06-5",
+                "name": "台北南英扶輪社"
+            },
+            {
+                "code": "06-6",
+                "name": "台北市南揚扶輪社"
+            },
+            {
+                "code": "06-7",
+                "name": "台北市南波扶輪社"
+            },
+            {
+                "code": "06-8",
+                "name": "臺北市南星扶輪社"
+            },
+            {
+                "code": "06-9",
+                "name": "台北南法扶輪社"
+            }
+        ]
+    },
+    {
+        "id": 7,
+        "name": "第七分區",
+        "clubs": [
+            {
+                "code": "07-1",
+                "name": "台北市南海扶輪社"
+            },
+            {
+                "code": "07-2",
+                "name": "台北市南雅扶輪社"
+            },
+            {
+                "code": "07-3",
+                "name": "台北市新世代扶輪社"
+            },
+            {
+                "code": "07-4",
+                "name": "台北市南鷹扶輪社"
+            },
+            {
+                "code": "07-5",
+                "name": "台北大加蚋扶輪社"
+            }
+        ]
+    },
+    {
+        "id": 8,
+        "name": "第八分區",
+        "clubs": [
+            {
+                "code": "08-1",
+                "name": "台北市華麗扶輪社"
+            },
+            {
+                "code": "08-2",
+                "name": "台北市華欣扶輪社"
+            },
+            {
+                "code": "08-3",
+                "name": "台北市華樂扶輪社"
+            },
+            {
+                "code": "08-4",
+                "name": "台北網路扶輪社"
+            },
+            {
+                "code": "08-5",
+                "name": "臺北新北投扶輪社"
+            },
+            {
+                "code": "08-6",
+                "name": "台北市華真扶輪社"
+            }
+        ]
+    },
+    {
+        "id": 9,
+        "name": "第九分區",
+        "clubs": [
+            {
+                "code": "09-1",
+                "name": "台北市華安扶輪社"
+            },
+            {
+                "code": "09-2",
+                "name": "台北市華中扶輪社"
+            },
+            {
+                "code": "09-3",
+                "name": "台北市益成扶輪社"
+            },
+            {
+                "code": "09-4",
+                "name": "台北市南德扶輪社"
+            },
+            {
+                "code": "09-5",
+                "name": "台北市華茂扶輪社"
+            },
+            {
+                "code": "09-6",
+                "name": "台北南茂扶輪社"
+            },
+            {
+                "code": "09-7",
+                "name": "台北市三友扶輪社"
+            }
+        ]
+    },
+    {
+        "id": 10,
+        "name": "第十分區",
+        "clubs": [
+            {
+                "code": "10-1",
+                "name": "台北市南港扶輪社"
+            },
+            {
+                "code": "10-2",
+                "name": "台北市南北扶輪社"
+            },
+            {
+                "code": "10-3",
+                "name": "台北市南西扶輪社"
+            },
+            {
+                "code": "10-4",
+                "name": "台北市南東扶輪社"
+            }
+        ]
+    },
+    {
+        "id": 11,
+        "name": "第十一分區",
+        "clubs": [
+            {
+                "code": "11-1",
+                "name": "台北市南華扶輪社"
+            },
+            {
+                "code": "11-2",
+                "name": "台北市文華扶輪社"
+            },
+            {
+                "code": "11-3",
+                "name": "台北永華扶輪社"
+            },
+            {
+                "code": "11-4",
+                "name": "台北市西華扶輪社"
+            },
+            {
+                "code": "11-5",
+                "name": "台北市碩華扶輪社"
+            },
+            {
+                "code": "11-6",
+                "name": "台北富華扶輪社"
+            }
+        ]
+    },
+    {
+        "id": 12,
+        "name": "第十二分區",
+        "clubs": [
+            {
+                "code": "12-1",
+                "name": "台北龍門扶輪社"
+            },
+            {
+                "code": "12-2",
+                "name": "台北龍華扶輪社"
+            },
+            {
+                "code": "12-3",
+                "name": "台北龍鳳扶輪社"
+            },
+            {
+                "code": "12-4",
+                "name": "台北龍族扶輪社"
+            },
+            {
+                "code": "12-5",
+                "name": "台北龍欣扶輪社"
+            },
+            {
+                "code": "12-6",
+                "name": "台北龍來扶輪社"
+            },
+            {
+                "code": "12-7",
+                "name": "台北龍穎扶輪社"
+            },
+            {
+                "code": "12-8",
+                "name": "台北龍舟扶輪社"
+            }
+        ]
+    },
+    {
+        "id": 13,
+        "name": "第十三分區",
+        "clubs": [
+            {
+                "code": "13-1",
+                "name": "台北市南天扶輪社"
+            },
+            {
+                "code": "13-2",
+                "name": "台北市天一扶輪社"
+            },
+            {
+                "code": "13-3",
+                "name": "台北樂雅扶輪社"
+            },
+            {
+                "code": "13-4",
+                "name": "台北風澤扶輪社"
+            }
+        ]
+    },
+    {
+        "id": 14,
+        "name": "地區團隊",
+        "clubs": [
+            {
+                "code": "3523",
+                "name": "地區辦公室"
+            }
+        ]
+    }
+];
 
         // Categories & Sub-Events Master List
         const DEFAULT_CATEGORIES = [
@@ -2307,6 +2545,7 @@
 
         let chairConfig = {
             sponsorshipEnabled: false,
+            feeApportionment: 3000,
             feeCoHost: 50000,
             feeOrganizer: 20000,
             feeSponsor: 10000,
@@ -2353,31 +2592,51 @@
         let paymentFilterDivision = 'ALL'; // 'ALL' | 1..13
         let paymentSearchQuery = '';
         let paymentActiveView = 'table'; // 'table' | 'cards'
-        let activePaymentCategory = 'seminars'; // 'seminars' | 'conference'
+        let activePaymentCategory = 'seminars';
+
+        // Auth State
+        let appAuthData = {
+            clubPasswords: {},
+            eventChairs: {}
+        };
+        let loggedInUser = null;
+        let currentLoginMode = 'login'; // 'login' | 'register'
+ // 'seminars' | 'conference'
 
         // ================= PERSISTENCE (LOCAL STORAGE) =================
 
-        function saveToStorage() {
+                async function saveToStorage() {
             try {
                 const data = {
                     categoriesData,
-                    divisionsData,
                     clubMemberDatabase,
                     registrationOrders,
                     chairConfig,
                     chairPaymentRecords,
                     emailInboxLogs,
+                    appAuthData,
+                    divisionsData,
                     lastUpdated: new Date().toISOString()
                 };
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+                if (supabaseClient) {
+                    await supabaseClient.from('app_storage').upsert({ key: LOCAL_STORAGE_KEY, value: data });
+                } else {
+                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+                }
             } catch (e) {
-                console.warn("無法寫入 LocalStorage", e);
+                console.warn("無法寫入 Storage", e);
             }
         }
 
-        function loadFromStorage() {
+                async function loadFromStorage() {
             try {
-                const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+                let stored = null;
+                if (supabaseClient) {
+                    const { data, error } = await supabaseClient.from('app_storage').select('value').eq('key', LOCAL_STORAGE_KEY).maybeSingle();
+                    if (data) stored = JSON.stringify(data.value);
+                } else {
+                    stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+                }
                 if (stored) {
                     const parsed = JSON.parse(stored);
                     if (parsed.categoriesData) {
@@ -2388,9 +2647,8 @@
                             return { ...c, allowAddSubEvents: c.allowAddSubEvents !== false };
                         });
                     }
-                    if (parsed.divisionsData && Array.isArray(parsed.divisionsData)) {
-                        divisionsData = parsed.divisionsData;
-                    }
+                    
+                    if (parsed.divisionsData) divisionsData = parsed.divisionsData;
                     if (parsed.clubMemberDatabase) clubMemberDatabase = parsed.clubMemberDatabase;
                     if (parsed.registrationOrders) registrationOrders = parsed.registrationOrders;
                     if (parsed.chairPaymentRecords) chairPaymentRecords = parsed.chairPaymentRecords;
@@ -2400,6 +2658,9 @@
                             feeCompete: 1200,
                             feeMealOnly: 1000
                         }, parsed.chairConfig);
+                    }
+                    if (parsed.appAuthData) {
+                        appAuthData = parsed.appAuthData;
                     }
                 }
                 // 確保地區年會存在於 categoriesData 中
@@ -2412,8 +2673,11 @@
             }
         }
 
-        function resetSystemData() {
+                async function resetSystemData() {
             if (confirm("⚠️ 確定將所有社友名冊與報名資料重置為初始預設值？本機修改將被清除。\n（📌 活動 Email 與密碼設定將保留不變）")) {
+                if (supabaseClient) {
+                    await supabaseClient.from('app_storage').delete().eq('key', LOCAL_STORAGE_KEY);
+                }
                 localStorage.removeItem(LOCAL_STORAGE_KEY);
                 categoriesData = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
                 divisionsData = JSON.parse(JSON.stringify(DEFAULT_DIVISIONS_DATA));
@@ -2423,7 +2687,8 @@
                 emailInboxLogs = [];
                 chairConfig = {
                     sponsorshipEnabled: false,
-                    feeCoHost: 50000,
+                    feeApportionment: 3000,
+            feeCoHost: 50000,
                     feeOrganizer: 20000,
                     feeSponsor: 10000,
                     feeCompete: 1200,
@@ -2438,12 +2703,16 @@
 
         // ================= INITIALIZATION & NAVIGATION =================
 
-        document.addEventListener('DOMContentLoaded', () => {
-            loadFromStorage();
-            loadChairEventEmails();
-            loadPaymentRecords();
-            loadEmailInboxLogs();
-            initDefaultPaymentRecords();
+        document.addEventListener('DOMContentLoaded', async () => {
+            const searchInput = document.getElementById('memberSearchInput');
+            if (searchInput) searchInput.value = '';
+            
+            await loadFromStorage();
+            await loadChairEventEmails();
+            await loadPaymentRecords();
+            await loadEmailInboxLogs();
+                        initDefaultPaymentRecords();
+            populateLoginClubs();
             renderNavTabs();
             renderDivisionDirectory();
             populateClubSelector();
@@ -2495,7 +2764,7 @@
         }
 
         function updateRolePermissionsUI() {
-            const isChair = (currentRole === 'chair');
+            const isChair = (currentRole === 'chair' || currentRole === 'super_admin');
             const cat = categoriesData.find(c => c.id === currentCatId);
             const allowsSubEvents = cat ? (cat.allowAddSubEvents !== false) : true;
 
@@ -2518,7 +2787,7 @@
 
         function renderNavTabs() {
             const container = document.getElementById('mainNavContainer');
-            const isChair = (currentRole === 'chair');
+            const isChair = (currentRole === 'chair' || currentRole === 'super_admin');
             const catButtons = categoriesData.map(cat => {
                 const isActive = cat.id === currentCatId;
                 const activeStyle = isActive 
@@ -2574,11 +2843,12 @@
             }
         }
 
-        function selectCategory(catId) {
+                function selectCategory(catId) {
             currentCatId = catId;
             currentSubEventIndex = 0;
             // 點一次換一次：切換主分類立即輪流換色
             currentThemeColorIndex = (currentThemeColorIndex === 0 ? 1 : 0);
+            if (loggedInUser) applyPermissions(); // Dynamic role switching based on category
             renderNavTabs();
             loadCategoryView();
         }
@@ -2592,10 +2862,21 @@
             banner.className = `bg-white rounded-xl shadow-sm border p-4 sm:p-5 mb-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-8 theme-${cat.themeColor}`;
 
             // Sponsor capability flag
-            chairConfig.sponsorshipEnabled = cat.allowSponsors;
-            document.getElementById('cfgSponsorToggle').value = cat.allowSponsors ? 'enabled' : 'disabled';
-            document.getElementById('sponsorshipSelectionBox').classList.toggle('hidden', !cat.allowSponsors);
-            document.getElementById('chairSponsorFeeInputs').classList.toggle('hidden', !cat.allowSponsors);
+            let currentMode = 'seminar';
+            const hasApportionmentKeyword = (cat.name && (cat.name.includes('分攤金') || cat.name.includes('配合款'))) || (cat.subEvents && cat.subEvents.some(se => se.includes('分攤金') || se.includes('配合款')));
+            
+            if (hasApportionmentKeyword) {
+                currentMode = 'apportionment';
+                chairConfig.sponsorshipEnabled = false;
+            } else if (cat.allowSponsors) {
+                currentMode = 'sports';
+                chairConfig.sponsorshipEnabled = true;
+            } else {
+                chairConfig.sponsorshipEnabled = false;
+            }
+            document.getElementById('cfgSponsorToggle').value = currentMode;
+            if (document.getElementById('cfgFeeApportionment')) document.getElementById('cfgFeeApportionment').value = chairConfig.feeApportionment !== undefined ? chairConfig.feeApportionment : 3000;
+            toggleSponsorConfig(currentMode);
 
             // Sports participant fee inputs for Chair
             const isSports = cat.id === 'sports' || (cat.name && (cat.name.includes('運動') || cat.name.includes('賽事') || cat.name.includes('體育')));
@@ -2623,6 +2904,10 @@
             // 點一次換一次：切換子活動立即輪流換色
             currentThemeColorIndex = (currentThemeColorIndex === 0 ? 1 : 0);
             updateSubEventContext();
+            applyPermissions(); // Ensure role updates if sub-event chair permissions differ
+            if(currentRole === 'chair' || currentRole === 'super_admin') {
+                updateChairDashboard();
+            }
             renderDivisionPaymentSection();
         }
 
@@ -2639,7 +2924,7 @@
             // Move sub-event name over to main title and link with dropdown (移過去及連動)
             document.getElementById('catTitle').innerText = subEventName;
             document.getElementById('regFormTitle').innerText = `報名：${subEventName}`;
-            document.getElementById('cfgEventName').value = `2026-27年度 ${subEventName}`;
+            document.getElementById('cfgEventName').value = subEventName;
 
             // Check if current event is Golf Tournament (Strict linkage with Golf Badge)
             const isGolf = subEventName.includes("高爾夫");
@@ -2662,9 +2947,17 @@
                     if (!item.participation) item.participation = '參賽';
                 });
                 currentSelectedSponsorTier = existingClubOrder.sponsorTier;
+                const secAppInput = document.getElementById('secApportionmentInput');
+                if (secAppInput && existingClubOrder.apportionmentFee !== undefined) {
+                    secAppInput.value = existingClubOrder.apportionmentFee;
+                }
             } else {
                 currentFormSelectedMembers = [];
                 currentSelectedSponsorTier = "PARTICIPANT";
+                const secAppInput = document.getElementById('secApportionmentInput');
+                if (secAppInput) {
+                    secAppInput.value = 3000;
+                }
             }
 
             // Sync radio button
@@ -2748,6 +3041,30 @@
             const isSports = isCurrentEventSports();
             const totalParticipantFee = isSports ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             const sponsorInfo = getCurrentSponsorshipInfo();
+            
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const subEventName = (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : '';
+            const isApportionment = cat && ((cat.name && (cat.name.includes('分攤金') || cat.name.includes('配合款'))) || (subEventName.includes('分攤金') || subEventName.includes('配合款')));
+            const isSeminar = cat && !cat.allowSponsors && !isApportionment;
+            
+            const appBox = document.getElementById('apportionmentInputBox');
+            if (appBox) {
+                appBox.classList.toggle('hidden', !isApportionment);
+            }
+
+            const sponsorshipBox = document.getElementById('sponsorshipSelectionBox');
+            if (sponsorshipBox && isApportionment) {
+                sponsorshipBox.classList.add('hidden');
+                sponsorshipBox.style.display = 'none';
+            }
+            
+            let apportionmentFee = 0;
+            if (isApportionment) {
+                const secAppInput = document.getElementById('secApportionmentInput');
+                if (secAppInput) apportionmentFee = parseFloat(secAppInput.value) || 0;
+            } else if (isSeminar) {
+                apportionmentFee = chairConfig.feeApportionment || 0;
+            }
 
             // 1. 出席費用合計
             const regFeeTotalLabel = document.getElementById('regFeeTotalLabel');
@@ -2769,11 +3086,11 @@
                 }
             }
 
-            // 3. 應繳總計 (出席費用合計 + 贊助金額)
+            // 3. 應繳總計 (出席費用合計 + 贊助金額 + apportionmentFee)
             const regGrandTotalLabel = document.getElementById('regGrandTotalLabel');
             if (regGrandTotalLabel) {
-                const grandTotal = totalParticipantFee + (sponsorInfo.enabled ? sponsorInfo.amount : 0);
-                const showGrandTotal = isSports || (sponsorInfo.enabled && sponsorInfo.amount > 0);
+                const grandTotal = totalParticipantFee + (sponsorInfo.enabled ? sponsorInfo.amount : 0) + apportionmentFee;
+                const showGrandTotal = isSports || (sponsorInfo.enabled && sponsorInfo.amount > 0) || (apportionmentFee > 0);
                 regGrandTotalLabel.classList.toggle('hidden', !showGrandTotal);
                 const grandDisp = document.getElementById('regGrandTotalDisplay');
                 if (grandDisp) grandDisp.innerText = `$${grandTotal.toLocaleString()}元`;
@@ -2824,6 +3141,9 @@
 
         function selectClub(clubName) {
             selectedClubName = clubName;
+            
+            const searchInput = document.getElementById('memberSearchInput');
+            if (searchInput) searchInput.value = '';
             document.getElementById('currentClubNameTitle').innerText = clubName;
             document.getElementById('lockedClubNameBadge').innerText = clubName;
             
@@ -2898,6 +3218,7 @@
                         <td class="p-2">
                             <div class="font-bold text-slate-900">${m.name}</div>
                             <span class="px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded text-[10px] font-semibold">${m.role}</span>
+                            ${m.role === '寶(尊)眷' && m.spouseOfId ? `<div class="text-[10px] text-blue-500 mt-0.5">${(members.find(x => x.id === m.spouseOfId) || {}).nickname || (members.find(x => x.id === m.spouseOfId) || {}).name || ''}的寶眷</div>` : ''}
                         </td>
                         <td class="p-2 font-mono font-medium text-slate-600">${m.nickname || '-'}</td>
                         ${handicapCell}
@@ -3110,7 +3431,9 @@
             const cat = categoriesData.find(c => c.id === currentCatId);
             const subEventName = cat.subEvents[currentSubEventIndex];
 
-            if (currentFormSelectedMembers.length === 0) {
+            const isApportionment = cat && ((cat.name && (cat.name.includes('分攤金') || cat.name.includes('配合款'))) || (subEventName.includes('分攤金') || subEventName.includes('配合款')));
+
+            if (!isApportionment && currentFormSelectedMembers.length === 0) {
                 alert('請至少勾選一名社友出席！');
                 return;
             }
@@ -3128,12 +3451,26 @@
 
             const participantFee = isCurrentEventSports() ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             const existingIdx = registrationOrders[subEventName].findIndex(o => o.clubName === selectedClubName);
+            
+            // isApportionment already declared above
+            const isSeminar = cat && !cat.allowSponsors && !isApportionment;
+            
+            let apportionmentFee = 0;
+            if (isApportionment) {
+                const secAppInput = document.getElementById('secApportionmentInput');
+                if (secAppInput) apportionmentFee = parseFloat(secAppInput.value) || 0;
+            } else if (isSeminar) {
+                apportionmentFee = chairConfig.feeApportionment || 0;
+            }
+            
+            const grandTotal = amount + participantFee + apportionmentFee;
             const orderPayload = {
                 clubName: selectedClubName,
                 sponsorTier: currentSelectedSponsorTier,
                 sponsorAmount: amount,
                 participantFee: participantFee,
-                grandTotal: amount + participantFee,
+                apportionmentFee: apportionmentFee,
+                grandTotal: grandTotal,
                 submittedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
                 items: currentFormSelectedMembers.map(m => ({
                     ...JSON.parse(JSON.stringify(m)),
@@ -3185,27 +3522,178 @@
             if (currentRole === 'chair') updateChairDashboard();
         }
 
+        // ================= EXCEL IMPORT / EXPORT HANDLERS =================
+        function openExcelModal() {
+            document.getElementById('excelModalClubName').innerText = selectedClubName;
+            document.getElementById('excelModal').classList.remove('hidden');
+        }
+
+        function closeExcelModal() {
+            document.getElementById('excelModal').classList.add('hidden');
+            const fileInput = document.getElementById('excelFileInput');
+            if (fileInput) fileInput.value = '';
+        }
+
+        function exportClubMembersToExcel() {
+            const members = clubMemberDatabase[selectedClubName] || [];
+            
+            const exportData = members.map(m => ({
+                '職務 (Role)': m.role || '',
+                '中文姓名 (Name)': m.name || '',
+                '英文名字 (Nick Name)': m.nickname || '',
+                '飲食需求 (MEAT/VEGAN)': m.diet === 'VEGAN' ? 'VEGAN' : 'MEAT',
+                '素食備註 (Vegan Note)': m.veganNote || '',
+                '高爾夫差點 (Handicap)': (m.handicap !== undefined && m.handicap !== null) ? m.handicap : '',
+                '寶尊眷對應社友 (Spouse Of)': m.spouseOfId ? (members.find(x => x.id === m.spouseOfId)?.name || '') : ''
+            }));
+            
+            if (exportData.length === 0) {
+                exportData.push({
+                    '職務 (Role)': '社友',
+                    '中文姓名 (Name)': '範例姓名',
+                    '英文名字 (Nick Name)': 'Example',
+                    '飲食需求 (MEAT/VEGAN)': 'MEAT',
+                    '素食備註 (Vegan Note)': '',
+                    '高爾夫差點 (Handicap)': '18',
+                    '寶尊眷對應社友 (Spouse Of)': ''
+                });
+            }
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wscols = [
+                {wch: 15}, {wch: 15}, {wch: 20}, {wch: 20}, {wch: 20}, {wch: 20}, {wch: 25}
+            ];
+            ws['!cols'] = wscols;
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "社友名冊");
+            
+            XLSX.writeFile(wb, `${selectedClubName}_社友名冊.xlsx`);
+            showToast(`✅ 已成功匯出 ${selectedClubName} 的社友名冊！`);
+            closeExcelModal();
+        }
+
+        async function importClubMembersFromExcel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, {defval: ''});
+
+                    if (jsonData.length === 0) {
+                        alert("⚠️ Excel 檔案似乎是空的，或格式不符！");
+                        return;
+                    }
+
+                    if (!clubMemberDatabase[selectedClubName]) {
+                        clubMemberDatabase[selectedClubName] = [];
+                    }
+                    const members = clubMemberDatabase[selectedClubName];
+                    
+                    let addedCount = 0;
+                    let updatedCount = 0;
+
+                    jsonData.forEach((row, idx) => {
+                        const rawRole = row['職務 (Role)'] || row['職務'] || row['Role'] || '';
+                        const role = rawRole.toString().trim() || '社友';
+                        const name = (row['中文姓名 (Name)'] || row['中文姓名'] || row['姓名'] || row['Name'] || '').toString().trim();
+                        const nickname = (row['英文名字 (Nick Name)'] || row['英文名字'] || row['Nick Name'] || row['Nickname'] || '').toString().trim();
+                        const rawDiet = (row['飲食需求 (MEAT/VEGAN)'] || row['飲食需求'] || row['Diet'] || '').toString().toUpperCase();
+                        const diet = (rawDiet.includes('VEGAN') || rawDiet.includes('素')) ? 'VEGAN' : 'MEAT';
+                        const veganNote = (row['素食備註 (Vegan Note)'] || row['素食備註'] || '').toString().trim();
+                        const rawHcap = row['高爾夫差點 (Handicap)'] || row['高爾夫差點'] || row['差點'] || row['Handicap'] || '';
+                        const handicap = rawHcap !== '' ? parseFloat(rawHcap) : '';
+                        const spouseOfName = (row['寶尊眷對應社友 (Spouse Of)'] || row['對應社友'] || '').toString().trim();
+                        
+                        let spouseOfId = null;
+                        if (!name) return; // Skip empty rows
+
+                        let existing = members.find(m => m.name === name);
+                        if (role === '寶(尊)眷' && spouseOfName) {
+                            const spouseObj = members.find(m => m.name === spouseOfName);
+                            if (spouseObj) spouseOfId = spouseObj.id;
+                        }
+
+                        if (existing) {
+                            existing.role = role;
+                            existing.nickname = nickname;
+                            existing.diet = diet;
+                            existing.veganNote = veganNote;
+                            existing.handicap = handicap;
+                            if (role === '寶(尊)眷') existing.spouseOfId = spouseOfId;
+                            updatedCount++;
+                        } else {
+                            members.push({
+                                id: Date.now() + idx, // unique ID
+                                role,
+                                nickname,
+                                name,
+                                diet,
+                                veganNote,
+                                handicap,
+                                spouseOfId: role === '寶(尊)眷' ? spouseOfId : null
+                            });
+                            addedCount++;
+                        }
+                    });
+
+                    // Second pass for forward-referenced spouses
+                    jsonData.forEach(row => {
+                        const name = (row['中文姓名 (Name)'] || row['中文姓名'] || row['姓名'] || '').toString().trim();
+                        const role = (row['職務 (Role)'] || row['職務'] || '').toString().trim();
+                        const spouseOfName = (row['寶尊眷對應社友 (Spouse Of)'] || row['對應社友'] || '').toString().trim();
+                        if (name && role === '寶(尊)眷' && spouseOfName) {
+                            const thisMember = members.find(m => m.name === name);
+                            const spouseMember = members.find(m => m.name === spouseOfName);
+                            if (thisMember && spouseMember) {
+                                thisMember.spouseOfId = spouseMember.id;
+                            }
+                        }
+                    });
+
+                    await saveToStorage();
+                    renderMemberMasterTable();
+                    closeExcelModal();
+                    
+                    alert(`✅ Excel 批次匯入完成！\n新增了 ${addedCount} 筆社友\n更新了 ${updatedCount} 筆社友`);
+                    showToast(`✅ Excel 名冊匯入成功！`);
+                } catch (err) {
+                    console.error(err);
+                    alert("⚠️ 讀取 Excel 檔案發生錯誤，請確認檔案格式是否正確。");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            event.target.value = '';
+        }
+
         // ================= ADD / EDIT / DELETE MEMBER HANDLERS =================
 
         function openAddMemberModal(memberId = null) {
-            document.getElementById('modalClubName').innerText = selectedClubName;
             const modal = document.getElementById('addMemberModal');
             const title = document.getElementById('memberModalTitle');
             const editIdInput = document.getElementById('mEditId');
             const isGolf = isCurrentEventGolf();
 
             const hcapBox = document.getElementById('modalHandicapContainer');
-            if (hcapBox) hcapBox.classList.toggle('hidden', !isGolf);
+            if (hcapBox) hcapBox.classList.remove('hidden');
 
             if (memberId) {
                 const members = clubMemberDatabase[selectedClubName] || [];
                 const target = members.find(m => m.id === memberId);
                 if (target) {
-                    title.innerHTML = isGolf 
-                        ? `✏️ 編輯社友資料與差點：<span class="text-blue-600">${target.name}</span>`
-                        : `✏️ 編輯社友資料：<span class="text-blue-600">${target.name}</span>`;
+                    title.innerHTML = `✏️ 編輯社友資料與差點：<span class="text-blue-600">${target.name}</span>`;
                     editIdInput.value = target.id;
                     document.getElementById('mRole').value = target.role || '社友';
+                    toggleSpouseSelection(target.role || '社友');
+                    if (target.role === '寶(尊)眷' && target.spouseOfId) {
+                        document.getElementById('mSpouseOf').value = target.spouseOfId;
+                    }
                     document.getElementById('mNickname').value = target.nickname || '';
                     document.getElementById('mChineseName').value = target.name || '';
                     document.getElementById('mHandicap').value = (target.handicap !== undefined && target.handicap !== null) ? target.handicap : '';
@@ -3219,6 +3707,7 @@
                 title.innerHTML = `➕ 新增社友至 <span class="text-blue-600">${selectedClubName}</span> 名冊`;
                 editIdInput.value = '';
                 document.getElementById('mRole').value = '社友';
+                toggleSpouseSelection('社友');
                 document.getElementById('mNickname').value = '';
                 document.getElementById('mChineseName').value = '';
                 document.getElementById('mHandicap').value = '';
@@ -3235,25 +3724,50 @@
             document.getElementById('addMemberModal').classList.add('hidden');
         }
 
+        function toggleSpouseSelection(roleVal) {
+            const container = document.getElementById('mSpouseContainer');
+            if (roleVal === '寶(尊)眷') {
+                container.classList.remove('hidden');
+                populateSpouseSelect();
+            } else {
+                container.classList.add('hidden');
+                const s = document.getElementById('mSpouseOf');
+                if(s && s.options && s.options.length > 0) {
+                    s.value = '';
+                }
+            }
+        }
+
+        function populateSpouseSelect() {
+            const select = document.getElementById('mSpouseOf');
+            const members = clubMemberDatabase[selectedClubName] || [];
+            const primaryMembers = members.filter(m => m.role !== '寶(尊)眷' && m.role !== '貴賓');
+            
+            let html = '<option value="">請選擇對應的社友...</option>';
+            primaryMembers.forEach(m => {
+                const displayName = m.nickname ? `${m.name} (${m.nickname})` : m.name;
+                html += `<option value="${m.id}">${displayName}</option>`;
+            });
+            // Keep existing value if any
+            const existingVal = select.value;
+            select.innerHTML = html;
+            if (existingVal) select.value = existingVal;
+        }
+
         function toggleVeganNoteInput(isVegan) {
             document.getElementById('veganNoteBox').classList.toggle('hidden', !isVegan);
         }
 
-        function handleSaveNewMember(e) {
+        async function handleSaveNewMember(e) {
             e.preventDefault();
             const editId = document.getElementById('mEditId').value;
             const role = document.getElementById('mRole').value;
             const nickname = document.getElementById('mNickname').value.trim();
             const name = document.getElementById('mChineseName').value.trim();
             const isGolf = isCurrentEventGolf();
-            let handicap = '';
-            if (isGolf) {
-                const handicapVal = document.getElementById('mHandicap').value.trim();
-                handicap = handicapVal !== '' ? parseFloat(handicapVal) : '';
-            } else if (editId) {
-                const existing = clubMemberDatabase[selectedClubName]?.find(m => m.id === parseInt(editId));
-                handicap = existing && existing.handicap !== undefined ? existing.handicap : '';
-            }
+            const spouseOfId = role === '寶(尊)眷' ? parseInt(document.getElementById('mSpouseOf').value) || null : null;
+            const handicapVal = document.getElementById('mHandicap').value.trim();
+            const handicap = handicapVal !== '' ? parseFloat(handicapVal) : '';
             const diet = document.querySelector('input[name="mDiet"]:checked').value;
             const veganNote = diet === 'VEGAN' ? document.getElementById('mVeganNote').value.trim() : '';
 
@@ -3283,18 +3797,24 @@
                     name,
                     diet,
                     veganNote,
-                    handicap
+                    handicap,
+                    spouseOfId
                 };
                 clubMemberDatabase[selectedClubName].push(newMember);
                 showToast(`✅ 成功新增社友【${name}】至 ${selectedClubName}！`);
             }
 
-            saveToStorage();
+            await saveToStorage();
             closeAddMemberModal();
+            
+            // Clear search box so the newly added/edited member is visible
+            const searchInput = document.getElementById('memberSearchInput');
+            if (searchInput) searchInput.value = '';
+            
             renderMemberMasterTable();
         }
 
-        function deleteMember(memberId) {
+        async function deleteMember(memberId) {
             const members = clubMemberDatabase[selectedClubName] || [];
             const target = members.find(m => m.id === memberId);
             if (!target) return;
@@ -3303,7 +3823,7 @@
                 clubMemberDatabase[selectedClubName] = members.filter(m => m.id !== memberId);
                 // Also remove from current form if selected
                 currentFormSelectedMembers = currentFormSelectedMembers.filter(sm => !(sm.name === target.name && sm.nickname === target.nickname));
-                saveToStorage();
+                await saveToStorage();
                 renderMemberMasterTable();
                 renderSelectedMembersTable();
                 showToast(`已刪除社友【${target.name}】`);
@@ -3313,16 +3833,72 @@
         // ================= CHAIR DASHBOARD & CHARTS =================
 
         function toggleSponsorConfig(val) {
-            const enabled = (val === 'enabled');
+            document.body.setAttribute('data-mode', val);
+            const enabled = (val === 'sports');
             chairConfig.sponsorshipEnabled = enabled;
-            document.getElementById('sponsorshipSelectionBox').classList.toggle('hidden', !enabled);
-            document.getElementById('chairSponsorFeeInputs').classList.toggle('hidden', !enabled);
+            
+            const selectionBox = document.getElementById('sponsorshipSelectionBox');
+            if(selectionBox) {
+                selectionBox.classList.toggle('hidden', !enabled);
+                selectionBox.style.display = enabled ? '' : 'none';
+            }
+            
+            const sponsorFeeInputs = document.getElementById('chairSponsorFeeInputs');
+            if(sponsorFeeInputs) sponsorFeeInputs.classList.remove('hidden');
+            
+            const label1 = document.getElementById('cfgFeeLabel1');
+            const box2 = document.getElementById('cfgFeeBox2');
+            const box3 = document.getElementById('cfgFeeBox3');
+            const inputCoHost = document.getElementById('cfgFeeCoHost');
+            const inputApport = document.getElementById('cfgFeeApportionment');
+            const msgApport = document.getElementById('cfgFeeApportionmentMsg');
+            
+            if(label1 && box2 && box3 && inputCoHost && inputApport) {
+                if (val === 'sports') {
+                    label1.innerText = '共同主辦社金額 (NT$)';
+                    inputCoHost.classList.remove('hidden');
+                    inputApport.classList.add('hidden');
+                    if(msgApport) msgApport.classList.add('hidden');
+                    box2.classList.remove('hidden');
+                    box3.classList.remove('hidden');
+                } else if (val === 'seminar') {
+                    label1.innerText = '每社應繳金額 (NT$)';
+                    inputCoHost.classList.add('hidden');
+                    inputApport.classList.remove('hidden');
+                    if(msgApport) msgApport.classList.add('hidden');
+                    box2.classList.add('hidden');
+                    box3.classList.add('hidden');
+                } else if (val === 'apportionment') {
+                    label1.innerText = '每社應繳金額 (NT$)';
+                    inputCoHost.classList.add('hidden');
+                    inputApport.classList.add('hidden');
+                    if(msgApport) msgApport.classList.remove('hidden');
+                    box2.classList.add('hidden');
+                    box3.classList.add('hidden');
+                }
+            }
+            
+            let cat = categoriesData.find(c => c.id === currentCatId);
+            if (cat) {
+                cat.allowSponsors = enabled;
+            }
+            
             saveToStorage();
-            updateTotalFeeSummaryDisplay();
-            updateLinePreviewText();
+            if(typeof updateTotalFeeSummaryDisplay === 'function') updateTotalFeeSummaryDisplay();
+            if(typeof updateLinePreviewText === 'function') updateLinePreviewText();
         }
 
         function saveChairSettings() {
+            // Update Event Name
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            if (cat && cat.subEvents && cat.subEvents.length > currentSubEventIndex) {
+                const newName = document.getElementById('cfgEventName').value.trim();
+                if (newName) {
+                    cat.subEvents[currentSubEventIndex] = newName.replace(/^2026-27年度 /, ''); // Strip prefix if they left it
+                }
+            }
+
+            chairConfig.feeApportionment = parseFloat(document.getElementById('cfgFeeApportionment').value) || 0;
             chairConfig.feeCoHost = parseFloat(document.getElementById('cfgFeeCoHost').value) || 0;
             chairConfig.feeOrganizer = parseFloat(document.getElementById('cfgFeeOrganizer').value) || 0;
             chairConfig.feeSponsor = parseFloat(document.getElementById('cfgFeeSponsor').value) || 0;
@@ -4425,8 +5001,7 @@
                 registrationOrders,
                 chairConfig,
                 categoriesData,
-                divisionsData,
-                chairEventEmails,
+                                chairEventEmails,
                 chairPaymentRecords,
                 emailInboxLogs
             };
@@ -4805,7 +5380,7 @@
 
         // Custom Category Modal (主委專屬新增主選單)
         function openAddCategoryModal() {
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以新增主選單！執秘報名端無法新增。\n如需新增，請先點擊右上角【📊 主委戰情】。');
                 return;
             }
@@ -4820,7 +5395,7 @@
 
         function handleSaveNewCategory(e) {
             e.preventDefault();
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以新增主選單！執秘無此權限。');
                 return;
             }
@@ -4831,12 +5406,14 @@
 
             const colorHexMap = { blue: '#1A56DB', green: '#16A34A', orange: '#EA580C', red: '#DC2626', purple: '#9333EA' };
 
+            const isApportionment = name.includes('分攤金') || name.includes('配合款');
+
             const newCat = {
                 id: 'custom_' + Date.now(),
                 name: name,
                 themeColor: color,
                 hexColor: colorHexMap[color] || '#1A56DB',
-                allowSponsors: true,
+                allowSponsors: !isApportionment,
                 allowAddSubEvents: true,
                 desc: '後台自訂主選單模組，支援彈性增刪與名單彙整。',
                 subEvents: subEvents.length > 0 ? subEvents : [`${name} 主活動`]
@@ -4855,7 +5432,7 @@
 
         // Delete Category Modal (主委專屬刪除主選單)
         function openDeleteCategoryModal() {
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以刪除主選單！執秘報名端無法操作。\n如需操作，請先點擊右上角【📊 主委戰情】。');
                 return;
             }
@@ -4931,7 +5508,7 @@
 
         function handleConfirmDeleteCategory(e) {
             e.preventDefault();
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以刪除主選單！');
                 return;
             }
@@ -4979,7 +5556,7 @@
 
         // Sub-Event Modal (主委專屬新增子活動)
         function openAddSubEventModal() {
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以新增子活動！執秘報名端無法新增。\n如需新增，請先點擊右上角【📊 主委戰情】。');
                 return;
             }
@@ -5006,7 +5583,7 @@
 
         function handleSaveNewSubEvent(e) {
             e.preventDefault();
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以新增子活動！執秘無此權限。');
                 return;
             }
@@ -5047,7 +5624,7 @@
 
         // Delete Sub-Event Modal (主委專屬刪除子活動)
         function openDeleteSubEventModal() {
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以刪除子活動！執秘報名端無法操作。\n如需操作，請先點擊右上角【📊 主委戰情】。');
                 return;
             }
@@ -5164,7 +5741,7 @@
 
         function handleConfirmDeleteSubEvent(e) {
             e.preventDefault();
-            if (currentRole !== 'chair') {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
                 alert('⚠️ 權限限制：只有主委可以刪除子活動！');
                 return;
             }
@@ -5224,9 +5801,15 @@
             return cat.id;
         }
 
-        function loadChairEventEmails() {
+        async function loadChairEventEmails() {
             try {
-                const stored = localStorage.getItem(CHAIR_EVENT_EMAILS_STORAGE_KEY);
+                let stored = null;
+                if (supabaseClient) {
+                    const { data, error } = await supabaseClient.from('app_storage').select('value').eq('key', CHAIR_EVENT_EMAILS_STORAGE_KEY).maybeSingle();
+                    if (data) stored = JSON.stringify(data.value);
+                } else {
+                    stored = localStorage.getItem(CHAIR_EVENT_EMAILS_STORAGE_KEY);
+                }
                 if (stored) {
                     const parsed = JSON.parse(stored);
                     chairEventEmails = Object.assign({
@@ -5239,17 +5822,27 @@
             }
         }
 
-        function saveChairEventEmails() {
+        async function saveChairEventEmails() {
             try {
-                localStorage.setItem(CHAIR_EVENT_EMAILS_STORAGE_KEY, JSON.stringify(chairEventEmails));
+                if (supabaseClient) {
+                    await supabaseClient.from('app_storage').upsert({ key: CHAIR_EVENT_EMAILS_STORAGE_KEY, value: chairEventEmails });
+                } else {
+                    localStorage.setItem(CHAIR_EVENT_EMAILS_STORAGE_KEY, JSON.stringify(chairEventEmails));
+                }
             } catch (e) {
                 console.warn('儲存活動信箱設定失敗', e);
             }
         }
 
-        function loadPaymentRecords() {
+        async function loadPaymentRecords() {
             try {
-                const stored = localStorage.getItem(PAYMENT_RECORDS_STORAGE_KEY);
+                let stored = null;
+                if (supabaseClient) {
+                    const { data, error } = await supabaseClient.from('app_storage').select('value').eq('key', PAYMENT_RECORDS_STORAGE_KEY).maybeSingle();
+                    if (data) stored = JSON.stringify(data.value);
+                } else {
+                    stored = localStorage.getItem(PAYMENT_RECORDS_STORAGE_KEY);
+                }
                 if (stored) {
                     chairPaymentRecords = JSON.parse(stored);
                 }
@@ -5258,17 +5851,27 @@
             }
         }
 
-        function savePaymentRecords() {
+        async function savePaymentRecords() {
             try {
-                localStorage.setItem(PAYMENT_RECORDS_STORAGE_KEY, JSON.stringify(chairPaymentRecords));
+                if (supabaseClient) {
+                    await supabaseClient.from('app_storage').upsert({ key: PAYMENT_RECORDS_STORAGE_KEY, value: chairPaymentRecords });
+                } else {
+                    localStorage.setItem(PAYMENT_RECORDS_STORAGE_KEY, JSON.stringify(chairPaymentRecords));
+                }
             } catch (e) {
                 console.warn('儲存繳費資料失敗', e);
             }
         }
 
-        function loadEmailInboxLogs() {
+        async function loadEmailInboxLogs() {
             try {
-                const stored = localStorage.getItem(EMAIL_INBOX_LOGS_STORAGE_KEY);
+                let stored = null;
+                if (supabaseClient) {
+                    const { data, error } = await supabaseClient.from('app_storage').select('value').eq('key', EMAIL_INBOX_LOGS_STORAGE_KEY).maybeSingle();
+                    if (data) stored = JSON.stringify(data.value);
+                } else {
+                    stored = localStorage.getItem(EMAIL_INBOX_LOGS_STORAGE_KEY);
+                }
                 if (stored) {
                     emailInboxLogs = JSON.parse(stored);
                 }
@@ -5277,9 +5880,13 @@
             }
         }
 
-        function saveEmailInboxLogs() {
+        async function saveEmailInboxLogs() {
             try {
-                localStorage.setItem(EMAIL_INBOX_LOGS_STORAGE_KEY, JSON.stringify(emailInboxLogs));
+                if (supabaseClient) {
+                    await supabaseClient.from('app_storage').upsert({ key: EMAIL_INBOX_LOGS_STORAGE_KEY, value: emailInboxLogs });
+                } else {
+                    localStorage.setItem(EMAIL_INBOX_LOGS_STORAGE_KEY, JSON.stringify(emailInboxLogs));
+                }
             } catch (e) {
                 console.warn('儲存郵件記錄失敗', e);
             }
@@ -6869,6 +7476,297 @@
                 toast.style.opacity = '0';
             }, 3000);
         }
-    </script>
+    
+        // ================= AUTHENTICATION & LOGIN LOGIC =================
+        function populateLoginClubs() {
+            const loginSelect = document.getElementById('loginClubSelect');
+            if(!loginSelect) return;
+            loginSelect.innerHTML = '<option value="">👥 點擊選擇或輸入社名搜尋</option>';
+            divisionsData.forEach(div => {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = div.name;
+                div.clubs.forEach(club => {
+                    const opt = document.createElement('option');
+                    opt.value = club.name;
+                    opt.textContent = `[${club.code}] ${club.name}`;
+                    optgroup.appendChild(opt);
+                });
+                loginSelect.appendChild(optgroup);
+            });
+            const savedClub = localStorage.getItem('rotary_saved_login_club');
+            if (savedClub) {
+                loginSelect.value = savedClub;
+                document.getElementById('rememberClub').checked = true;
+            }
+        }
+
+        function switchLoginTab(mode) {
+            currentLoginMode = mode;
+            const tLogin = document.getElementById('tabLogin');
+            const tReg = document.getElementById('tabRegister');
+            const hint = document.getElementById('registerHint');
+            const btnText = document.getElementById('loginBtnText');
+            document.getElementById('loginError').classList.add('hidden');
+            document.getElementById('loginPassword').value = '';
+            
+            if (mode === 'login') {
+                tLogin.className = "pb-3 text-base font-bold text-[#0b2463] border-b-2 border-amber-500 mr-6 transition-all";
+                tReg.className = "pb-3 text-base font-bold text-slate-400 hover:text-slate-600 transition-all";
+                hint.classList.add('hidden');
+                btnText.innerHTML = '進入報名系統 <span>→</span>';
+            } else {
+                tReg.className = "pb-3 text-base font-bold text-[#0b2463] border-b-2 border-amber-500 transition-all";
+                tLogin.className = "pb-3 text-base font-bold text-slate-400 hover:text-slate-600 mr-6 transition-all";
+                hint.classList.remove('hidden');
+                btnText.innerHTML = '設定密碼並進入 <span>→</span>';
+            }
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const club = document.getElementById('loginClubSelect').value;
+            const pwd = document.getElementById('loginPassword').value;
+            const remember = document.getElementById('rememberClub').checked;
+            const errorEl = document.getElementById('loginError');
+            errorEl.classList.add('hidden');
+
+            if (!club && pwd !== 'fruit8428') {
+                errorEl.textContent = '❌ 請選擇所屬社名';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            if (pwd === 'fruit8428') {
+                // Super Admin Login
+                if(remember && club) localStorage.setItem('rotary_saved_login_club', club);
+                else localStorage.removeItem('rotary_saved_login_club');
+                
+                loggedInUser = { club: club || 'SuperAdmin', isSuperAdmin: true };
+                completeLogin();
+                return;
+            }
+
+            if (!appAuthData.clubPasswords) appAuthData.clubPasswords = {};
+
+            if (currentLoginMode === 'register') {
+                if (appAuthData.clubPasswords[club]) {
+                    errorEl.textContent = '❌ 此社已註冊過密碼！請切換至「社名登入」。';
+                    errorEl.classList.remove('hidden');
+                    return;
+                }
+                appAuthData.clubPasswords[club] = pwd;
+                saveToStorage();
+                
+                if(remember) localStorage.setItem('rotary_saved_login_club', club);
+                else localStorage.removeItem('rotary_saved_login_club');
+                
+                loggedInUser = { club: club, isSuperAdmin: false };
+                completeLogin();
+            } else {
+                // Login
+                if (!appAuthData.clubPasswords[club]) {
+                    errorEl.textContent = '❌ 此社尚未設定密碼，請點擊上方「首次進入 (註冊)」。';
+                    errorEl.classList.remove('hidden');
+                    return;
+                }
+                if (appAuthData.clubPasswords[club] !== pwd) {
+                    errorEl.textContent = '❌ 密碼錯誤，請重試。';
+                    errorEl.classList.remove('hidden');
+                    return;
+                }
+                
+                if(remember) localStorage.setItem('rotary_saved_login_club', club);
+                else localStorage.removeItem('rotary_saved_login_club');
+                
+                loggedInUser = { club: club, isSuperAdmin: false };
+                completeLogin();
+            }
+        }
+
+        function completeLogin() {
+            document.getElementById('loginOverlay').classList.add('hidden');
+            
+            // 強制清除瀏覽器可能暫存的搜尋條件
+            const searchInput = document.getElementById('memberSearchInput');
+            if (searchInput) searchInput.value = '';
+            
+            // Set up initial state based on permissions
+            applyPermissions();
+            
+            // Re-render UI pieces that depend on role/permissions
+            renderNavTabs();
+            populateClubSelector();
+            loadCategoryView();
+            if(currentRole === 'chair' || currentRole === 'super_admin') {
+                updateChairDashboard();
+            }
+            if(loggedInUser.isSuperAdmin) {
+                populateAdminCategorySelect();
+                populateAdminPasswordClubs();
+                renderDivisionDirectory();
+            }
+        }
+
+        function applyPermissions() {
+            if (!loggedInUser) return;
+            
+            // 1. Lock club selector for normal users
+            const mainClubSelect = document.getElementById('clubSelector');
+            if (loggedInUser.isSuperAdmin) {
+                mainClubSelect.disabled = false;
+            } else {
+                mainClubSelect.value = loggedInUser.club;
+                mainClubSelect.disabled = true;
+                if (selectedClubName !== loggedInUser.club) {
+                    selectClub(loggedInUser.club); // trigger UI update for that club
+                }
+            }
+
+            // 2. Determine Role based on current category AND sub-event
+            if (loggedInUser.isSuperAdmin) {
+                currentRole = 'super_admin';
+            } else {
+                if (!appAuthData.eventChairs) appAuthData.eventChairs = {};
+                
+                let isChair = false;
+                // Check broad category assignment
+                const chairsForCat = appAuthData.eventChairs[currentCatId] || [];
+                if (chairsForCat.includes(loggedInUser.club)) isChair = true;
+                
+                // Check specific sub-event assignment
+                const cat = categoriesData.find(c => c.id === currentCatId);
+                if (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) {
+                    const subName = cat.subEvents[currentSubEventIndex];
+                    const chairsForSub = appAuthData.eventChairs[`${currentCatId}::${subName}`] || [];
+                    if (chairsForSub.includes(loggedInUser.club)) isChair = true;
+                }
+                
+                if (isChair) {
+                    currentRole = 'chair';
+                } else {
+                    currentRole = 'secretary';
+                }
+            }
+            
+            // 3. Update view visibility
+            document.getElementById('viewSecretary').classList.toggle('hidden', currentRole !== 'secretary');
+            document.getElementById('viewChair').classList.toggle('hidden', currentRole === 'secretary');
+            document.getElementById('viewSuperAdmin').classList.toggle('hidden', currentRole !== 'super_admin');
+            
+            // Also show chair view content for super_admin so they can do everything
+            if (currentRole === 'super_admin') {
+                document.getElementById('viewSecretary').classList.remove('hidden');
+                document.getElementById('viewChair').classList.remove('hidden');
+            }
+        }
+
+        // ================= SUPER ADMIN MANAGEMENT =================
+        function populateAdminPasswordClubs() {
+            const sel = document.getElementById('adminPasswordClubSelect');
+            if(!sel) return;
+            sel.innerHTML = '<option value="">請選擇要查詢的社別...</option>';
+            divisionsData.forEach(div => {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = div.name;
+                div.clubs.forEach(club => {
+                    const opt = document.createElement('option');
+                    opt.value = club.name;
+                    opt.textContent = `[${club.code}] ${club.name}`;
+                    optgroup.appendChild(opt);
+                });
+                sel.appendChild(optgroup);
+            });
+        }
+
+        function renderAdminPasswordStatus() {
+            const club = document.getElementById('adminPasswordClubSelect').value;
+            const box = document.getElementById('adminPasswordStatusBox');
+            if (!club) {
+                box.classList.add('hidden');
+                return;
+            }
+            
+            box.classList.remove('hidden');
+            const statusText = document.getElementById('adminPasswordStatusText');
+            const revealText = document.getElementById('adminPasswordRevealText');
+            const resetBtn = document.getElementById('adminResetPasswordBtn');
+            
+            const pwd = (appAuthData.clubPasswords || {})[club];
+            if (pwd) {
+                statusText.innerHTML = '<span class="text-green-600">✅ 已設定密碼</span>';
+                revealText.textContent = pwd;
+                resetBtn.classList.remove('hidden');
+            } else {
+                statusText.innerHTML = '<span class="text-amber-600">⚠️ 尚未設定密碼</span>';
+                revealText.textContent = '（無）';
+                resetBtn.classList.add('hidden');
+            }
+        }
+
+        function resetClubPassword() {
+            const club = document.getElementById('adminPasswordClubSelect').value;
+            if (!club) return;
+            if (confirm(`確定要清除【${club}】的密碼紀錄嗎？
+清除後，該社執秘將需要重新設定密碼。`)) {
+                if (appAuthData.clubPasswords && appAuthData.clubPasswords[club]) {
+                    delete appAuthData.clubPasswords[club];
+                    saveToStorage();
+                    renderAdminPasswordStatus();
+                    alert(`✅ 已成功清除【${club}】的密碼！
+請通知該社執秘前往登入畫面的「首次進入(註冊)」重新設定密碼。`);
+                }
+            }
+        }
+
+        function populateAdminCategorySelect() {
+            const sel = document.getElementById('adminCategorySelect');
+            if(!sel) return;
+            let html = '';
+            categoriesData.forEach(c => {
+                html += `<option value="${c.id}">📂 ${c.name} (全類別主委)</option>`;
+                if (c.subEvents && c.subEvents.length > 0) {
+                    c.subEvents.forEach(sub => {
+                        html += `<option value="${c.id}::${sub}">&nbsp;&nbsp;↳ 📍 ${sub} (單一子活動主委)</option>`;
+                    });
+                }
+            });
+            sel.innerHTML = html;
+            renderAdminChairAssignment();
+        }
+
+        function renderAdminChairAssignment() {
+            const catId = document.getElementById('adminCategorySelect').value;
+            const container = document.getElementById('adminChairClubsContainer');
+            if(!appAuthData.eventChairs) appAuthData.eventChairs = {};
+            const assigned = appAuthData.eventChairs[catId] || [];
+            
+            let html = '';
+            divisionsData.forEach(div => {
+                div.clubs.forEach(club => {
+                    const isChecked = assigned.includes(club.name) ? 'checked' : '';
+                    html += `
+                        <label class="flex items-center space-x-2 text-sm p-1.5 hover:bg-slate-100 rounded cursor-pointer">
+                            <input type="checkbox" value="${club.name}" class="admin-chair-checkbox rounded border-slate-300 text-blue-600 focus:ring-blue-500" ${isChecked}>
+                            <span class="text-slate-700 font-medium truncate">[${club.code}] ${club.name}</span>
+                        </label>
+                    `;
+                });
+            });
+            container.innerHTML = html;
+        }
+
+        function saveAdminChairAssignment() {
+            const catId = document.getElementById('adminCategorySelect').value;
+            const checkboxes = document.querySelectorAll('.admin-chair-checkbox:checked');
+            const selectedClubs = Array.from(checkboxes).map(cb => cb.value);
+            
+            if(!appAuthData.eventChairs) appAuthData.eventChairs = {};
+            appAuthData.eventChairs[catId] = selectedClubs;
+            saveToStorage();
+            
+            showToast(`✅ 已更新 ${catId} 的主委權限設定！`);
+            applyPermissions(); // re-apply in case it affects current view
+        }
+</script>
 </body>
 </html>

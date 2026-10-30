@@ -185,6 +185,31 @@
     
         /* Hide role switchers for normal users */
         #roleSecBtn, #roleChairBtn, #roleArchBtn { display: none !important; }
+
+        /* Force hide sponsorship selection for seminar and apportionment modes */
+        body[data-mode="seminar"] #sponsorshipSelectionBox,
+        body[data-mode="apportionment"] #sponsorshipSelectionBox {
+            display: none !important;
+        }
+
+        /* Apportionment mode layout adjustments */
+        body[data-mode="apportionment"] #memberMasterCol {
+            display: none !important;
+        }
+        body[data-mode="apportionment"] #selectedParticipantsBox {
+            display: none !important;
+        }
+        body[data-mode="apportionment"] #secQuickActionsBar {
+            display: none !important;
+        }
+        body[data-mode="apportionment"] #clearSelectedMembersBtn {
+            display: none !important;
+        }
+        @media (min-width: 1024px) {
+            body[data-mode="apportionment"] #registrationFormCol {
+                grid-column: span 12 / span 12 !important;
+            }
+        }
 </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col pb-16 md:pb-0">
@@ -388,7 +413,7 @@
             </div>
 
             <!-- Quick Action Shortcuts for Secretary -->
-            <div class="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm text-xs">
+            <div id="secQuickActionsBar" class="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm text-xs">
                 <div class="flex items-center gap-2 flex-wrap">
                     <span class="font-bold text-slate-600">⚡ 行動快捷功能：</span>
                     <button onclick="copyLineText()" class="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold rounded-md transition flex items-center gap-1">
@@ -407,7 +432,7 @@
 
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
                 <!-- Left: Club Member Master Database (各社執秘社友資料庫) -->
-                <div class="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col">
+                <div id="memberMasterCol" class="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col">
                     <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-3">
                         <div>
                             <h3 class="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-1.5">
@@ -456,7 +481,7 @@
                 </div>
 
                 <!-- Right: Active Event Registration Form (報名填表處) -->
-                <div class="lg:col-span-7 bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col justify-between">
+                <div id="registrationFormCol" class="lg:col-span-7 bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col justify-between">
                     <div>
                         <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
                             <div>
@@ -512,7 +537,7 @@
                         </div>
 
                         <!-- Selected Participants Table -->
-                        <div class="mb-4">
+                        <div id="selectedParticipantsBox" class="mb-4">
                             <div class="flex flex-wrap justify-between items-center mb-2 gap-1.5">
                                 <h4 class="text-xs font-bold text-slate-700" id="selectedRosterTitle">本次出席社友名冊:</h4>
                                 <div class="text-[11px] flex items-center gap-1.5 flex-wrap">
@@ -561,7 +586,7 @@
                             <span id="regGrandTotalLabel" class="font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-[11px] xl:text-xs whitespace-nowrap hidden">總計：<b id="regGrandTotalDisplay" class="text-red-600 font-mono font-extrabold">$0元</b></span>
                         </div>
                         <div class="flex gap-1.5 sm:gap-2 shrink-0 justify-end w-full sm:w-auto">
-                            <button onclick="clearSelectedMembers()" class="px-2.5 sm:px-3 py-1.5 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold active:scale-95 transition whitespace-nowrap">
+                            <button id="clearSelectedMembersBtn" onclick="clearSelectedMembers()" class="px-2.5 sm:px-3 py-1.5 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold active:scale-95 transition whitespace-nowrap">
                                 清空重選
                             </button>
                             <button id="submitRegBtn" onclick="submitRegistration()" class="px-3.5 sm:px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow transition flex-1 sm:flex-none text-center active:scale-95 whitespace-nowrap">
@@ -2837,12 +2862,17 @@
             banner.className = `bg-white rounded-xl shadow-sm border p-4 sm:p-5 mb-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-8 theme-${cat.themeColor}`;
 
             // Sponsor capability flag
-            chairConfig.sponsorshipEnabled = cat.allowSponsors;
             let currentMode = 'seminar';
-            if (cat.allowSponsors) {
-                currentMode = 'sports';
-            } else if (cat.name && (cat.name.includes('地辦分攤金') || cat.name.includes('配合款'))) {
+            const hasApportionmentKeyword = (cat.name && (cat.name.includes('分攤金') || cat.name.includes('配合款'))) || (cat.subEvents && cat.subEvents.some(se => se.includes('分攤金') || se.includes('配合款')));
+            
+            if (hasApportionmentKeyword) {
                 currentMode = 'apportionment';
+                chairConfig.sponsorshipEnabled = false;
+            } else if (cat.allowSponsors) {
+                currentMode = 'sports';
+                chairConfig.sponsorshipEnabled = true;
+            } else {
+                chairConfig.sponsorshipEnabled = false;
             }
             document.getElementById('cfgSponsorToggle').value = currentMode;
             if (document.getElementById('cfgFeeApportionment')) document.getElementById('cfgFeeApportionment').value = chairConfig.feeApportionment !== undefined ? chairConfig.feeApportionment : 3000;
@@ -3013,12 +3043,19 @@
             const sponsorInfo = getCurrentSponsorshipInfo();
             
             const cat = categoriesData.find(c => c.id === currentCatId);
-            const isApportionment = cat && cat.name && (cat.name.includes('地辦分攤金') || cat.name.includes('配合款'));
+            const subEventName = (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : '';
+            const isApportionment = cat && ((cat.name && (cat.name.includes('分攤金') || cat.name.includes('配合款'))) || (subEventName.includes('分攤金') || subEventName.includes('配合款')));
             const isSeminar = cat && !cat.allowSponsors && !isApportionment;
             
             const appBox = document.getElementById('apportionmentInputBox');
             if (appBox) {
                 appBox.classList.toggle('hidden', !isApportionment);
+            }
+
+            const sponsorshipBox = document.getElementById('sponsorshipSelectionBox');
+            if (sponsorshipBox && isApportionment) {
+                sponsorshipBox.classList.add('hidden');
+                sponsorshipBox.style.display = 'none';
             }
             
             let apportionmentFee = 0;
@@ -3394,7 +3431,9 @@
             const cat = categoriesData.find(c => c.id === currentCatId);
             const subEventName = cat.subEvents[currentSubEventIndex];
 
-            if (currentFormSelectedMembers.length === 0) {
+            const isApportionment = cat && ((cat.name && (cat.name.includes('分攤金') || cat.name.includes('配合款'))) || (subEventName.includes('分攤金') || subEventName.includes('配合款')));
+
+            if (!isApportionment && currentFormSelectedMembers.length === 0) {
                 alert('請至少勾選一名社友出席！');
                 return;
             }
@@ -3413,7 +3452,7 @@
             const participantFee = isCurrentEventSports() ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             const existingIdx = registrationOrders[subEventName].findIndex(o => o.clubName === selectedClubName);
             
-            const isApportionment = cat && cat.name && (cat.name.includes('地辦分攤金') || cat.name.includes('配合款'));
+            // isApportionment already declared above
             const isSeminar = cat && !cat.allowSponsors && !isApportionment;
             
             let apportionmentFee = 0;
@@ -3794,11 +3833,15 @@
         // ================= CHAIR DASHBOARD & CHARTS =================
 
         function toggleSponsorConfig(val) {
+            document.body.setAttribute('data-mode', val);
             const enabled = (val === 'sports');
             chairConfig.sponsorshipEnabled = enabled;
             
             const selectionBox = document.getElementById('sponsorshipSelectionBox');
-            if(selectionBox) selectionBox.classList.toggle('hidden', !enabled);
+            if(selectionBox) {
+                selectionBox.classList.toggle('hidden', !enabled);
+                selectionBox.style.display = enabled ? '' : 'none';
+            }
             
             const sponsorFeeInputs = document.getElementById('chairSponsorFeeInputs');
             if(sponsorFeeInputs) sponsorFeeInputs.classList.remove('hidden');
@@ -5363,12 +5406,14 @@
 
             const colorHexMap = { blue: '#1A56DB', green: '#16A34A', orange: '#EA580C', red: '#DC2626', purple: '#9333EA' };
 
+            const isApportionment = name.includes('分攤金') || name.includes('配合款');
+
             const newCat = {
                 id: 'custom_' + Date.now(),
                 name: name,
                 themeColor: color,
                 hexColor: colorHexMap[color] || '#1A56DB',
-                allowSponsors: true,
+                allowSponsors: !isApportionment,
                 allowAddSubEvents: true,
                 desc: '後台自訂主選單模組，支援彈性增刪與名單彙整。',
                 subEvents: subEvents.length > 0 ? subEvents : [`${name} 主活動`]
