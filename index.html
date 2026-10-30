@@ -566,6 +566,7 @@
                                     <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">總人數: <b id="selectedTotalCount">0</b> 名</span>
                                     <span id="selectedCompeteCountBox" class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-bold hidden">🏃 參賽: <b id="selectedCompeteCount">0</b> 名</span>
                                     <span id="selectedMealOnlyCountBox" class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold hidden">🍽️ 只用餐: <b id="selectedMealOnlyCount">0</b> 名</span>
+                                    <span id="selectedPrizeMealCountBox" class="bg-orange-100 text-orange-800 px-2 py-0.5 rounded font-bold hidden" title="贊助獎用餐者列入用餐人數，免餐費">🎁 贊助獎用餐: <b id="selectedPrizeMealCount">0</b> 名</span>
                                     <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">素食: <b id="selectedVeganCount">0</b> 名</span>
                                     <span id="selectedAvgHandicapBox" class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">⛳ 平均差點: <b id="selectedAvgHandicap">--</b></span>
                                     <span id="selectedTotalFeeBox" class="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded font-bold hidden">💰 <span id="selectedTotalFeeLabel">出席費用</span>: <b id="selectedTotalFee">$0</b></span>
@@ -3396,6 +3397,13 @@
                 mealBox.classList.toggle('hidden', !isSports);
                 document.getElementById('selectedMealOnlyCount').innerText = mealOnlyCount;
             }
+            // 贊助獎用餐者（免餐費）列入用餐人數
+            const prizeGuests = isSports ? getPrizeMealGuests(currentFormPrizeSponsors, currentFormSelectedMembers) : [];
+            const prizeMealBox = document.getElementById('selectedPrizeMealCountBox');
+            if (prizeMealBox) {
+                prizeMealBox.classList.toggle('hidden', prizeGuests.length === 0);
+                document.getElementById('selectedPrizeMealCount').innerText = prizeGuests.length;
+            }
 
             // 總出席費用計算 (連動主委設定與參賽/只用餐選項)
             const totalFee = calculateTotalParticipantsFee(currentFormSelectedMembers);
@@ -3416,11 +3424,11 @@
             }
 
             const tbody = document.getElementById('selectedMembersTableBody');
-            const total = currentFormSelectedMembers.length;
+            const total = currentFormSelectedMembers.length + prizeGuests.length;
             document.getElementById('selectedTotalCount').innerText = total;
             document.getElementById('mobileCountBadge').innerText = total;
             
-            const veganCount = currentFormSelectedMembers.filter(m => m.diet === 'VEGAN').length;
+            const veganCount = currentFormSelectedMembers.filter(m => m.diet === 'VEGAN').length + prizeGuests.filter(p => p.diet === 'VEGAN').length;
             document.getElementById('selectedVeganCount').innerText = veganCount;
 
             const avgHcap = calculateAvgHandicap(currentFormSelectedMembers);
@@ -3585,13 +3593,13 @@
             if (isEventLockedToday) { alert('⚠️ 本活動今日已封存唯讀，無法新增贊助獎！'); return; }
             currentFormPrizeSponsors.push({ memberId: '', role: '', nickname: '', name: '', type: 'cash', amount: '', giftName: '', meal: true });
             renderPrizeSponsorList();
-            updateTotalFeeSummaryDisplay();
+            renderSelectedMembersTable();
             updateLinePreviewText();
         }
         function removePrizeSponsor(idx) {
             currentFormPrizeSponsors.splice(idx, 1);
             renderPrizeSponsorList();
-            updateTotalFeeSummaryDisplay();
+            renderSelectedMembersTable();
             updateLinePreviewText();
         }
         function updatePrizeSponsor(idx, field, value) {
@@ -3604,6 +3612,8 @@
                 p.role = m ? (m.role || '') : '';
                 p.nickname = m ? (m.nickname || '') : '';
                 p.name = m ? (m.name || '') : '';
+                p.diet = m ? (m.diet || 'MEAT') : 'MEAT';
+                p.veganNote = m ? (m.veganNote || '') : '';
             } else if (field === 'type') {
                 p.type = value === 'gift' ? 'gift' : 'cash';
                 renderPrizeSponsorList(); // 切換現金/禮品時換輸入欄
@@ -3614,7 +3624,7 @@
             } else if (field === 'meal') {
                 p.meal = !!value;
             }
-            updateTotalFeeSummaryDisplay();
+            renderSelectedMembersTable(); // 內含 updateTotalFeeSummaryDisplay，並重算含贊助獎用餐者的人數
             updateLinePreviewText();
         }
         function renderPrizeSponsorList() {
@@ -3657,6 +3667,19 @@
                         </div>
                     </div>`;
             }).join('');
+        }
+        // 贊助獎勾「用餐」且不在出席名冊內的人：列入用餐人數與葷素統計，免餐費、不計入應繳總計
+        function getPrizeMealGuests(prizes, items) {
+            const arr = Array.isArray(prizes) ? prizes : [];
+            const roster = Array.isArray(items) ? items : [];
+            return arr.filter(p => p.meal && p.memberId && !roster.some(it =>
+                (it.id !== undefined && String(it.id) === String(p.memberId)) ||
+                (it.name === p.name && (it.nickname || '') === (p.nickname || ''))
+            ));
+        }
+        // 把贊助獎用餐者轉成名冊列格式（參賽選項「贊助獎用餐」、費用 0），給 Excel 與文字名冊用
+        function prizeGuestAsRosterItem(p) {
+            return { id: p.memberId, role: p.role || '社友', nickname: p.nickname || '', name: p.name || '', diet: p.diet || 'MEAT', veganNote: p.veganNote || '', participation: '贊助獎用餐', fee: 0, isPrizeGuest: true };
         }
         // 統計贊助獎：筆數、現金合計、禮品數、用餐人數
         function getPrizeSponsorSummary(list) {
@@ -4275,6 +4298,8 @@
             let allParticipants = [];
             let allPrizes = [];
 
+            let totalPrizeGuests = 0;
+
             orders.forEach(o => {
                 totalSponsorship += (o.sponsorAmount || 0);
                 if (Array.isArray(o.prizeSponsors)) allPrizes = allPrizes.concat(o.prizeSponsors);
@@ -4289,10 +4314,17 @@
                     if (item.diet === 'VEGAN') veganCount++;
                     else meatCount++;
                 });
+                // 贊助獎用餐者列入用餐人數與葷素（免餐費）
+                getPrizeMealGuests(o.prizeSponsors, o.items).forEach(p => {
+                    totalPeople++;
+                    totalPrizeGuests++;
+                    if (p.diet === 'VEGAN') veganCount++;
+                    else meatCount++;
+                });
             });
 
             // Update KPI Cards
-            document.getElementById('kpiTotalParticipants').innerText = `${totalPeople} 人`;
+            document.getElementById('kpiTotalParticipants').innerText = `${totalPeople} 人` + (totalPrizeGuests ? ` (含🎁用餐 ${totalPrizeGuests})` : '');
             document.getElementById('kpiClubCount').innerText = orders.length;
             document.getElementById('kpiDietSummary').innerText = `${meatCount} 葷 / ${veganCount} 素`;
             document.getElementById('kpiTotalSponsorship').innerText = `$${totalSponsorship.toLocaleString()}`;
@@ -4377,10 +4409,11 @@
                     bannerMerged.innerHTML = `
                         <div class="flex items-center gap-2 flex-wrap">
                             <span class="font-extrabold text-purple-900 text-xs sm:text-sm">📊 【全體各社合併出席名冊 (Excel/CSV 試算表模式)】</span>
-                            <span class="px-2 py-0.5 bg-purple-100 text-purple-800 rounded font-bold">全體共 ${orders.length} 社 / ${allParticipants.length} 位參加者</span>
+                            <span class="px-2 py-0.5 bg-purple-100 text-purple-800 rounded font-bold">全體共 ${orders.length} 社 / ${allParticipants.length + totalPrizeGuests} 位參加者</span>
                             ${isSports ? `
                                 <span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold">🏃 參賽 ${competeCount} 人</span>
                                 <span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold">🍽️ 只用餐 ${mealOnlyCount} 人</span>
+                                ${totalPrizeGuests ? `<span class="px-2 py-0.5 bg-orange-100 text-orange-800 rounded font-bold">🎁 贊助獎用餐 ${totalPrizeGuests} 人 (免餐費)</span>` : ''}
                             ` : ''}
                             ${isGolf ? `
                                 <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold">⛳ 全體平均差點：${overallAvgHcap}</span>
@@ -4506,6 +4539,7 @@
                     const isExpanded = expandedChairOrderIndices.has(idx);
                     const competeCount = o.items.filter(i => i.participation !== '只用餐').length;
                     const mealOnlyCount = o.items.filter(i => i.participation === '只用餐').length;
+                    const prizeGuestCount = getPrizeMealGuests(o.prizeSponsors, o.items).length;
                     const totalOrderFee = isSports ? calculateTotalParticipantsFee(o.items) : 0;
                     const sponsorAmount = o.sponsorAmount || 0;
                     const grandTotal = totalOrderFee + sponsorAmount;
@@ -4533,7 +4567,7 @@
                                 }</span>
                             </td>
                             <td class="p-2.5 font-mono font-bold text-emerald-700">$${(o.sponsorAmount || 0).toLocaleString()}</td>
-                            <td class="p-2.5 font-bold text-slate-900">${o.items.length} 人</td>
+                            <td class="p-2.5 font-bold text-slate-900">${o.items.length + prizeGuestCount} 人${prizeGuestCount ? `<span class="text-[10px] text-orange-700 font-semibold ml-1">(含🎁${prizeGuestCount})</span>` : ''}</td>
                             <td class="p-2.5 text-amber-700 font-bold">${o.items.filter(i => i.diet === 'VEGAN').length} 人</td>
                             <td class="p-2.5 text-slate-400 font-mono text-[11px]">${o.submittedAt}</td>
                             <td class="p-2.5 text-center whitespace-nowrap">
@@ -4564,6 +4598,7 @@
                                             ${isSports ? `
                                                 <span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[11px]">🏃 參賽 ${competeCount} 人</span>
                                                 <span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold text-[11px]">🍽️ 只用餐 ${mealOnlyCount} 人</span>
+                                                ${prizeGuestCount ? `<span class="px-2 py-0.5 bg-orange-100 text-orange-800 rounded font-bold text-[11px]">🎁 贊助獎用餐 ${prizeGuestCount} 人 (免餐費)</span>` : ''}
                                             ` : ''}
                                             ${isGolf ? `
                                                 <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold text-[11px]">⛳ 平均差點：${avgHcap}</span>
@@ -4736,6 +4771,29 @@
                     rowObj["報名提交時間"] = order.submittedAt || '';
                     data.push(rowObj);
                 });
+                // 贊助獎用餐者列入名冊（免餐費）
+                if (isSports) {
+                    getPrizeMealGuests(order.prizeSponsors, order.items).forEach(p => {
+                        const g = prizeGuestAsRosterItem(p);
+                        const rowObj = {
+                            "序號": pIdx++,
+                            "扶輪社名稱": order.clubName,
+                            "贊助等級": tierLabel,
+                            "贊助金額": order.sponsorAmount || 0,
+                            "出席社友姓名": g.name,
+                            "今年職稱": g.role,
+                            "Nick Name": g.nickname,
+                            "參賽選項": "贊助獎用餐"
+                        };
+                        if (isGolf) rowObj["高爾夫差點"] = '-';
+                        rowObj["飲食需求"] = g.diet === 'VEGAN' ? '素食' : '葷食';
+                        rowObj["素食細項備註"] = g.veganNote || '';
+                        rowObj["出席費用"] = 0;
+                        rowObj["贊助獎"] = prizeSponsorLineText(p);
+                        rowObj["報名提交時間"] = order.submittedAt || '';
+                        data.push(rowObj);
+                    });
+                }
             });
 
             if (window.XLSX) {
@@ -4790,7 +4848,8 @@
                 if (order.prizeSponsors && order.prizeSponsors.length) {
                     order.prizeSponsors.forEach(p => lines.push(`   🎁 贊助獎：${prizeSponsorLineText(p)}`));
                 }
-                order.items.forEach(item => {
+                const mergedPrizeGuests = isSports ? getPrizeMealGuests(order.prizeSponsors, order.items).map(prizeGuestAsRosterItem) : [];
+                order.items.concat(mergedPrizeGuests).forEach(item => {
                     const partStr = isSports ? ` [${item.participation || '參賽'}]` : '';
                     const hcapStr = (isGolf && item.handicap !== undefined && item.handicap !== null && item.handicap !== '') ? ` | 差點: ${item.handicap}` : '';
                     const feeStr = showFee ? ` | 費用: $${getMemberFee(item).toLocaleString()}` : '';
@@ -4874,7 +4933,7 @@
             if (!chartClubsInstance || !chartDietInstance) return;
 
             chartClubsInstance.data.labels = orders.map(o => o.clubName.replace('扶輪社', ''));
-            chartClubsInstance.data.datasets[0].data = orders.map(o => o.items.length);
+            chartClubsInstance.data.datasets[0].data = orders.map(o => o.items.length + getPrizeMealGuests(o.prizeSponsors, o.items).length);
             chartClubsInstance.update();
 
             chartDietInstance.data.datasets[0].data = [meat, vegan];
@@ -4903,10 +4962,12 @@
 
             const competeCount = order.items.filter(i => i.participation !== '只用餐').length;
             const mealOnlyCount = order.items.filter(i => i.participation === '只用餐').length;
-            document.getElementById('detailModalTotalCount').innerText = isSports ? `${order.items.length} 人 (${competeCount} 參賽 / ${mealOnlyCount} 只用餐)` : `${order.items.length} 人`;
+            const prizeGuests = isSports ? getPrizeMealGuests(order.prizeSponsors, order.items) : [];
+            const prizeGuestStr = prizeGuests.length ? ` / ${prizeGuests.length} 贊助獎用餐` : '';
+            document.getElementById('detailModalTotalCount').innerText = isSports ? `${order.items.length + prizeGuests.length} 人 (${competeCount} 參賽 / ${mealOnlyCount} 只用餐${prizeGuestStr})` : `${order.items.length} 人`;
 
-            const veganCount = order.items.filter(i => i.diet === 'VEGAN').length;
-            const meatCount = order.items.length - veganCount;
+            const veganCount = order.items.filter(i => i.diet === 'VEGAN').length + prizeGuests.filter(p => p.diet === 'VEGAN').length;
+            const meatCount = order.items.length + prizeGuests.length - veganCount;
             document.getElementById('detailModalDietCount').innerText = `${meatCount} 葷 / ${veganCount} 素`;
 
             const totalOrderFee = calculateTotalParticipantsFee(order.items);
@@ -5024,10 +5085,14 @@
             const grandTotal = totalOrderFee + sponsorAmount;
             const competeCount = order.items.filter(i => i.participation !== '只用餐').length;
             const mealOnlyCount = order.items.filter(i => i.participation === '只用餐').length;
+            const prizeGuests = isSports ? getPrizeMealGuests(order.prizeSponsors, order.items) : [];
+            if (prizeGuests.length) {
+                lines.push(`🎁 贊助獎用餐（免餐費）${prizeGuests.length} 位：${prizeGuests.map(p => `[${p.role || '社友'}] ${p.name} (${p.nickname || ''}) - ${p.diet === 'VEGAN' ? '素食' : '葷食'}`).join('、')}`);
+            }
             if (isSports && sponsorAmount > 0) {
                 lines.push(`💰 應繳總計: NT$ ${grandTotal.toLocaleString()} 元 (出席費用 $${totalOrderFee.toLocaleString()} [參賽 ${competeCount}/用餐 ${mealOnlyCount}] + 贊助 $${sponsorAmount.toLocaleString()})`);
             } else if (isSports) {
-                lines.push(`💰 出席費用合計: NT$ ${totalOrderFee.toLocaleString()} (參賽 ${competeCount} 人 / 只用餐 ${mealOnlyCount} 人)`);
+                lines.push(`💰 出席費用合計: NT$ ${totalOrderFee.toLocaleString()} (參賽 ${competeCount} 人 / 只用餐 ${mealOnlyCount} 人${prizeGuests.length ? ` / 贊助獎用餐 ${prizeGuests.length} 人免費` : ''})`);
             } else if (sponsorAmount > 0) {
                 lines.push(`💰 贊助總計: NT$ ${sponsorAmount.toLocaleString()} 元`);
             }
@@ -5240,15 +5305,17 @@
                 lines.push(`🎁 贊助獎：${prizeSponsorSummaryText(currentFormPrizeSponsors)}`);
                 currentFormPrizeSponsors.forEach((p, i) => lines.push(`   ${i + 1}. ${prizeSponsorLineText(p)}`));
             }
-            const meatCount = currentFormSelectedMembers.filter(m => m.diet !== 'VEGAN').length;
-            const veganCount = currentFormSelectedMembers.filter(m => m.diet === 'VEGAN').length;
+            const prizeGuests = isSports ? getPrizeMealGuests(currentFormPrizeSponsors, currentFormSelectedMembers) : [];
+            const meatCount = currentFormSelectedMembers.filter(m => m.diet !== 'VEGAN').length + prizeGuests.filter(p => p.diet !== 'VEGAN').length;
+            const veganCount = currentFormSelectedMembers.filter(m => m.diet === 'VEGAN').length + prizeGuests.filter(p => p.diet === 'VEGAN').length;
             const competeCount = currentFormSelectedMembers.filter(m => m.participation !== '只用餐').length;
             const mealOnlyCount = currentFormSelectedMembers.filter(m => m.participation === '只用餐').length;
 
             const totalFee = showFee ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             if (isSports) {
-                lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length} 位 (🏃參賽 ${competeCount} / 🍽️只用餐 ${mealOnlyCount} | 葷食 ${meatCount} / 素食 ${veganCount})`);
-                lines.push(`💰 出席費用：NT$ ${totalFee.toLocaleString()}`);
+                const prizeGuestStr = prizeGuests.length ? ` / 🎁贊助獎用餐 ${prizeGuests.length}` : '';
+                lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length + prizeGuests.length} 位 (🏃參賽 ${competeCount} / 🍽️只用餐 ${mealOnlyCount}${prizeGuestStr} | 葷食 ${meatCount} / 素食 ${veganCount})`);
+                lines.push(`💰 出席費用：NT$ ${totalFee.toLocaleString()}${prizeGuests.length ? '（贊助獎用餐者免餐費）' : ''}`);
             } else if (showFee) {
                 lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length} 位 (葷食 ${meatCount} / 素食 ${veganCount})`);
                 lines.push(`🍽️ 餐費合計：NT$ ${totalFee.toLocaleString()} (每人 $${getMemberFee({}).toLocaleString()})`);

@@ -86,7 +86,7 @@ CREATE POLICY "Allow anon all operations" ON public.app_storage
 - `divisionsData`：13 分區、80 社的名冊，預設值 `DEFAULT_DIVISIONS_DATA` 來自 `3523地區現有社名排序.xlsx`。
 - `categoriesData`：活動大類陣列。每個大類有 `id`、`name`、`allowSponsors`、`allowAddSubEvents`，以及 `subEvents`（**純字串陣列**）。
 - `clubMemberDatabase`：`{ [社名]: Member[] }`，Member 含 `role`、`nickname`、`name`、`diet`、`veganNote`、`handicap`、`spouseOfId`。
-- `registrationOrders`：`{ [子活動名稱字串]: Order[] }`，每社每子活動一筆 Order。Order 內 `prizeSponsors[]` 為「贊助獎」（僅運動賽事，`{memberId, role, nickname, name, type:'cash'|'gift', amount, giftName, meal}`），由社友個人捐贈，**不計入**該社 `grandTotal`；顯示與文字一律走 `prizeSponsorLineText()` / `prizeSponsorSummaryText()`。
+- `registrationOrders`：`{ [子活動名稱字串]: Order[] }`，每社每子活動一筆 Order。Order 內 `prizeSponsors[]` 為「贊助獎」（僅運動賽事，`{memberId, role, nickname, name, type:'cash'|'gift', amount, giftName, meal}`），由社友個人捐贈，**不計入**該社 `grandTotal`；勾 `meal` 且不在 `items` 內者透過 `getPrizeMealGuests(prizes, items)` **列入用餐人數與葷素統計但費用為 0**；顯示與文字一律走 `prizeSponsorLineText()` / `prizeSponsorSummaryText()`。
 - `chairConfig`：各種費用金額與贊助開關。**所有費用都依子活動分別儲存**在 `chairConfig.subEventFees["大類id::子活動名稱"]`（參賽 `feeCompete`、只用餐 `feeMealOnly`、共同主辦社 `feeCoHost`、協辦社 `feeOrganizer`、贊助社 `feeSponsor`、研習會每社應繳 `feeApportionment`、社慶花款 `feeFlower`、社慶餐費 `feeAnnivMeal`），一律透過 `getCompeteFee()` / `getCoHostFee()` / `getFlowerFee()` 等 getter 讀取、`setSubEventFee()` 寫入，**不要直接讀 `chairConfig.feeXxx`**；`chairConfig.feeXxx` 頂層欄位只剩「該子活動尚未設定時的 fallback」用途。切換子活動後呼叫 `refreshSubEventFeeInputs()` 同步後台輸入欄與執秘端卡片金額。
 - `appAuthData`：`{ clubPasswords: {社名: 密碼}, eventChairs: {key: 社名[]} }`。
 
