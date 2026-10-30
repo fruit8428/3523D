@@ -3681,6 +3681,13 @@
         function prizeGuestAsRosterItem(p) {
             return { id: p.memberId, role: p.role || '社友', nickname: p.nickname || '', name: p.name || '', diet: p.diet || 'MEAT', veganNote: p.veganNote || '', participation: '贊助獎用餐', fee: 0, isPrizeGuest: true };
         }
+        // 把所有社的贊助獎攤平成一份清單（附社名與提交時間），供合併檢視 / 文字 / Excel 集中彙整用
+        function collectAllPrizeSponsors(orders) {
+            const out = [];
+            (orders || []).forEach(o => (o.prizeSponsors || []).forEach(p => out.push({ ...p, clubName: o.clubName, submittedAt: o.submittedAt || '' })));
+            // 現金在前（金額大到小），禮品在後
+            return out.sort((a, b) => (a.type === 'gift') - (b.type === 'gift') || (Number(b.amount) || 0) - (Number(a.amount) || 0));
+        }
         // 統計贊助獎：筆數、現金合計、禮品數、用餐人數
         function getPrizeSponsorSummary(list) {
             const arr = list || [];
@@ -4509,6 +4516,50 @@
                         `;
                     });
                 }).join('');
+
+                // ===== 全體贊助獎彙整（不分社，集中列在名冊最下方）=====
+                const allPrizeRows = isSports ? collectAllPrizeSponsors(orders) : [];
+                if (allPrizeRows.length > 0) {
+                    const colCount = 6 + (isSports ? 1 : 0) + (isGolf ? 1 : 0) + 1 + (showFee ? 1 : 0) + 2;
+                    const sm = getPrizeSponsorSummary(allPrizeRows);
+                    const headerRow = `
+                        <tr class="bg-orange-100/90 border-t-4 border-orange-300">
+                            <td colspan="${colCount}" class="p-2.5 font-extrabold text-orange-900 text-xs sm:text-sm">
+                                🎁 全體贊助獎彙整（不分社）：共 ${sm.count} 筆
+                                <span class="ml-2 font-bold text-[11px] text-orange-800">現金合計 $${sm.cashTotal.toLocaleString()} | 禮品 ${sm.giftCount} 項 | 用餐 ${sm.mealCount} 位（免餐費）</span>
+                            </td>
+                        </tr>
+                        <tr class="bg-orange-50 text-orange-950 font-bold border-b border-orange-200 text-[11px]">
+                            <th class="p-2 text-center w-10">#</th>
+                            <th class="p-2">扶輪社名稱</th>
+                            <th class="p-2">贊助方式</th>
+                            <th class="p-2">贊助社友姓名</th>
+                            <th class="p-2">今年職稱</th>
+                            <th class="p-2">Nick Name</th>
+                            <th class="p-2 text-center">用餐</th>
+                            ${isGolf ? '<th class="p-2"></th>' : ''}
+                            <th class="p-2">飲食需求</th>
+                            ${showFee ? '<th class="p-2 text-center">現金金額</th>' : ''}
+                            <th class="p-2">禮品名稱</th>
+                            <th class="p-2">提交時間</th>
+                        </tr>`;
+                    const prizeRowsHtml = allPrizeRows.map((p, i) => `
+                        <tr class="hover:bg-orange-50/40 transition border-b border-slate-100 bg-orange-50/20">
+                            <td class="p-2 text-center text-slate-400 font-mono font-bold">${i + 1}</td>
+                            <td class="p-2 font-bold text-slate-900 whitespace-nowrap">${p.clubName}</td>
+                            <td class="p-2 whitespace-nowrap"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${p.type === 'gift' ? 'bg-pink-100 text-pink-800' : 'bg-emerald-100 text-emerald-800'}">${p.type === 'gift' ? '🎁 禮品' : '💵 現金'}</span></td>
+                            <td class="p-2 font-bold text-slate-900 whitespace-nowrap">${p.name || ''}</td>
+                            <td class="p-2 font-medium text-slate-700 whitespace-nowrap">${p.role || '社友'}</td>
+                            <td class="p-2 font-mono text-slate-600 whitespace-nowrap">${p.nickname || ''}</td>
+                            <td class="p-2 text-center">${p.meal ? '<span class="px-2 py-0.5 bg-amber-100 text-amber-800 font-bold rounded text-[10px]">🍽️ 用餐</span>' : '<span class="text-slate-400 text-[10px]">不用餐</span>'}</td>
+                            ${isGolf ? '<td class="p-2"></td>' : ''}
+                            <td class="p-2 whitespace-nowrap">${p.diet === 'VEGAN' ? '<span class="text-amber-700 font-bold">🌱 素食</span>' : '<span class="text-slate-600">葷食</span>'}</td>
+                            ${showFee ? `<td class="p-2 text-center font-mono font-bold">${p.type === 'gift' ? '<span class="text-slate-300">-</span>' : `<span class="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px]">$${(Number(p.amount) || 0).toLocaleString()}</span>`}</td>` : ''}
+                            <td class="p-2 text-slate-700 text-[11px]">${p.type === 'gift' ? (p.giftName || '-') : '-'}</td>
+                            <td class="p-2 text-slate-400 font-mono text-[11px] whitespace-nowrap">${p.submittedAt}</td>
+                        </tr>`).join('');
+                    tbody.innerHTML += headerRow + prizeRowsHtml;
+                }
             } else {
                 // ================= GROUPED BY CLUB VIEW (各社彙整檢視，支援單社展開) =================
                 if (bannerMerged) bannerMerged.classList.add('hidden');
@@ -4815,6 +4866,28 @@
                 ];
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, "各社合併出席名冊");
+                // 第二張工作表：全體贊助獎彙整（不分社）
+                const allPrizes = isSports ? collectAllPrizeSponsors(orders) : [];
+                if (allPrizes.length) {
+                    const sm = getPrizeSponsorSummary(allPrizes);
+                    const prizeData = allPrizes.map((p, i) => ({
+                        "序號": i + 1,
+                        "扶輪社名稱": p.clubName,
+                        "贊助方式": p.type === 'gift' ? '禮品' : '現金',
+                        "贊助社友姓名": p.name || '',
+                        "今年職稱": p.role || '',
+                        "Nick Name": p.nickname || '',
+                        "現金金額": p.type === 'gift' ? '' : (Number(p.amount) || 0),
+                        "禮品名稱": p.type === 'gift' ? (p.giftName || '') : '',
+                        "用餐": p.meal ? '用餐（免餐費）' : '不用餐',
+                        "飲食需求": p.diet === 'VEGAN' ? '素食' : '葷食',
+                        "提交時間": p.submittedAt
+                    }));
+                    prizeData.push({ "序號": '', "扶輪社名稱": '合計', "贊助方式": `${sm.count} 筆`, "現金金額": sm.cashTotal, "禮品名稱": `禮品 ${sm.giftCount} 項`, "用餐": `用餐 ${sm.mealCount} 位` });
+                    const wsPrize = XLSX.utils.json_to_sheet(prizeData);
+                    wsPrize['!cols'] = [{ wch: 6 }, { wch: 20 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 24 }, { wch: 14 }, { wch: 10 }, { wch: 18 }];
+                    XLSX.utils.book_append_sheet(wb, wsPrize, "贊助獎彙整");
+                }
                 const dateStr = new Date().toISOString().slice(0, 10);
                 XLSX.writeFile(wb, `3523地區報名名冊_合併全覽_${subEventName.replace(/[/\\s:]/g, '_')}_${dateStr}.xlsx`);
                 showToast("📗 合併 Excel 檔 (.xlsx) 已成功匯出！");
@@ -4845,9 +4918,6 @@
                                 order.sponsorTier === 'ORGANIZER' ? '協辦社' :
                                 order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : (isAnniversaryMode() ? '未含花款' : '一般參賽社');
                 lines.push(`\n📌 【${order.clubName}】(${tierStr}${order.sponsorAmount ? ` 贊助 $${order.sponsorAmount.toLocaleString()}` : ''})：`);
-                if (order.prizeSponsors && order.prizeSponsors.length) {
-                    order.prizeSponsors.forEach(p => lines.push(`   🎁 贊助獎：${prizeSponsorLineText(p)}`));
-                }
                 const mergedPrizeGuests = isSports ? getPrizeMealGuests(order.prizeSponsors, order.items).map(prizeGuestAsRosterItem) : [];
                 order.items.concat(mergedPrizeGuests).forEach(item => {
                     const partStr = isSports ? ` [${item.participation || '參賽'}]` : '';
@@ -4857,6 +4927,14 @@
                     lines.push(`${idx++}. [${item.role||'社友'}] ${item.name} (${item.nickname||''})${partStr}${hcapStr} - ${dietStr}${feeStr}`);
                 });
             });
+
+            // 全體贊助獎集中彙整（不分社）
+            const allPrizes = isSports ? collectAllPrizeSponsors(orders) : [];
+            if (allPrizes.length) {
+                lines.push(`\n----------------------------------------`);
+                lines.push(`🎁 全體贊助獎彙整：${prizeSponsorSummaryText(allPrizes)}`);
+                allPrizes.forEach((p, i) => lines.push(`${i + 1}. 【${p.clubName}】${prizeSponsorLineText(p)}`));
+            }
 
             navigator.clipboard.writeText(lines.join("\n")).then(() => {
                 showToast("📋 已複製全體合併名冊文字！");
