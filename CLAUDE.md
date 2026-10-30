@@ -36,8 +36,10 @@ node test_supabase.js
 ## 部署
 
 - 遠端：`https://github.com/fruit8428/3523D.git`，分支 `main`。
-- **push 到 `main` 即自動部署**：`.github/workflows/deploy.yml` 把整個 repo 根目錄上傳到 GitHub Pages。
-  本專案**不是**用 Vercel，正式網址是 GitHub Pages 網址。
+- **push 到 `main` 即自動部署到兩個地方**，程式內容相同、共用同一個 Supabase 資料庫：
+  - GitHub Pages：`.github/workflows/deploy.yml` 把整個 repo 根目錄上傳，網址 `https://fruit8428.github.io/3523D/`。
+  - Vercel：專案 `3523d`（帳號 `fruit8428-3918`）已連結此 repo，網址 `https://3523d.vercel.app`，不需任何建置設定。
+  驗證上線時兩個網址都要 curl 比對 md5 是否與本機 `index.html` 一致。
 - 因為是靜態網站，Supabase 的 URL 與 anon key 直接寫在 `index.html` 第 21–22 行，這是刻意的設計；
   資料安全靠 Supabase 端的 Row Level Security 設定。
 
