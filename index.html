@@ -508,9 +508,10 @@
                             </h4>
                             <div id="sponsorTierGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 <label class="tier-flower flex flex-col p-2 bg-white rounded-lg border border-pink-200 cursor-pointer text-center hover:bg-pink-50 transition">
-                                    <input type="radio" name="sponsorTier" value="FLOWER" onchange="updateSponsorshipSelection()" class="mx-auto mb-1">
+                                    <input type="checkbox" id="flowerTierCheck" value="FLOWER" onchange="toggleFlowerTier(this.checked)" class="mx-auto mb-1 w-4 h-4 accent-pink-600">
                                     <span class="text-[11px] font-bold text-slate-800">友社花款統一辦理</span>
                                     <span class="text-xs font-extrabold text-pink-700" id="feeFlowerText">$3,000</span>
+                                    <span class="text-[10px] text-slate-500 mt-0.5">勾選後才計入應繳總計</span>
                                 </label>
                                 <label class="tier-standard flex flex-col p-2 bg-white rounded-lg border border-emerald-200 cursor-pointer text-center hover:bg-emerald-100 transition">
                                     <input type="radio" name="sponsorTier" value="CO_HOST" onchange="updateSponsorshipSelection()" class="mx-auto mb-1">
@@ -2976,7 +2977,7 @@
                 }
             } else {
                 currentFormSelectedMembers = [];
-                currentSelectedSponsorTier = (document.body.getAttribute('data-mode') === 'anniversary') ? "FLOWER" : "PARTICIPANT";
+                currentSelectedSponsorTier = "PARTICIPANT";
                 const secAppInput = document.getElementById('secApportionmentInput');
                 if (secAppInput) {
                     secAppInput.value = 3000;
@@ -2986,11 +2987,12 @@
             // Sync radio button
             const radios = document.getElementsByName('sponsorTier');
             radios.forEach(r => r.checked = (r.value === currentSelectedSponsorTier));
+            syncFlowerCheckbox();
 
             renderMemberMasterTable();
             renderSelectedMembersTable();
             updateLinePreviewText();
-            if (currentRole === 'chair') {
+            if (currentRole === 'chair' || currentRole === 'super_admin') {
                 updateChairDashboard();
                 renderDivisionPaymentSection();
             }
@@ -3041,7 +3043,7 @@
         function getCurrentSponsorshipInfo() {
             const cat = categoriesData.find(c => c.id === currentCatId);
             const allowSponsors = (cat ? cat.allowSponsors : true) && chairConfig.sponsorshipEnabled;
-            if (!allowSponsors) {
+            if (!allowSponsors || (isAnniversaryMode() && currentSelectedSponsorTier !== 'FLOWER')) {
                 return { tierName: '', amount: 0, enabled: false };
             }
             let tierName = '一般參賽社';
@@ -3437,6 +3439,22 @@
             renderSelectedMembersTable();
             updateLinePreviewText();
             showToast("已清空當前勾選人員");
+        }
+
+        // 社慶模式：花款為選項，勾選才計入；未勾選即為一般報名（金額 0）
+        function toggleFlowerTier(checked) {
+            currentSelectedSponsorTier = checked ? 'FLOWER' : 'PARTICIPANT';
+            updateTotalFeeSummaryDisplay();
+            updateLinePreviewText();
+        }
+
+        function syncFlowerCheckbox() {
+            const cb = document.getElementById('flowerTierCheck');
+            if (cb) cb.checked = (currentSelectedSponsorTier === 'FLOWER');
+        }
+
+        function isAnniversaryMode() {
+            return document.body.getAttribute('data-mode') === 'anniversary';
         }
 
         function updateSponsorshipSelection() {
@@ -3864,13 +3882,12 @@
             const enabled = (val === 'sports' || val === 'anniversary');
             chairConfig.sponsorshipEnabled = enabled;
 
-            // 切換模式時同步修正目前選取的贊助等級：社慶只能選花款，其他模式不可停留在花款
-            if (val === 'anniversary' && currentSelectedSponsorTier !== 'FLOWER') {
-                currentSelectedSponsorTier = 'FLOWER';
-            } else if (val !== 'anniversary' && currentSelectedSponsorTier === 'FLOWER') {
+            // 離開社慶模式時，不可停留在「花款」等級
+            if (val !== 'anniversary' && currentSelectedSponsorTier === 'FLOWER') {
                 currentSelectedSponsorTier = 'PARTICIPANT';
             }
             document.getElementsByName('sponsorTier').forEach(r => r.checked = (r.value === currentSelectedSponsorTier));
+            syncFlowerCheckbox();
             
             const selectionBox = document.getElementById('sponsorshipSelectionBox');
             if(selectionBox) {
@@ -4024,7 +4041,7 @@
             document.getElementById('kpiClubCount').innerText = orders.length;
             document.getElementById('kpiDietSummary').innerText = `${meatCount} 葷 / ${veganCount} 素`;
             document.getElementById('kpiTotalSponsorship').innerText = `$${totalSponsorship.toLocaleString()}`;
-            document.getElementById('kpiSponsorClubsDetail').innerText = countFlower > 0
+            document.getElementById('kpiSponsorClubsDetail').innerText = (countFlower > 0 || isAnniversaryMode())
                 ? `友社花款 ${countFlower} 社`
                 : `共同主辦 ${countCoHost} | 協辦 ${countOrganizer} | 贊助 ${countSponsor}`;
 
@@ -4153,7 +4170,7 @@
                 tbody.innerHTML = orders.flatMap((order, oIdx) => {
                     const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
                                      order.sponsorTier === 'ORGANIZER' ? '協辦社' :
-                                     order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社';
+                                     order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : (isAnniversaryMode() ? '未含花款' : '一般參賽社');
                     const tierClass = order.sponsorTier === 'CO_HOST' ? 'bg-amber-100 text-amber-800' :
                                       order.sponsorTier === 'ORGANIZER' ? 'bg-blue-100 text-blue-800' :
                                       order.sponsorTier === 'SPONSOR' ? 'bg-emerald-100 text-emerald-800' : order.sponsorTier === 'FLOWER' ? 'bg-pink-100 text-pink-800' : 'bg-slate-100 text-slate-600';
@@ -4255,7 +4272,7 @@
                                 }">${
                                     o.sponsorTier === 'CO_HOST' ? '共同主辦社' :
                                     o.sponsorTier === 'ORGANIZER' ? '協辦社' :
-                                    o.sponsorTier === 'SPONSOR' ? '贊助社' : o.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社'
+                                    o.sponsorTier === 'SPONSOR' ? '贊助社' : o.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : (isAnniversaryMode() ? '未含花款' : '一般參賽社')
                                 }</span>
                             </td>
                             <td class="p-2.5 font-mono font-bold text-emerald-700">$${(o.sponsorAmount || 0).toLocaleString()}</td>
@@ -4428,7 +4445,7 @@
             orders.forEach(order => {
                 const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
                                  order.sponsorTier === 'ORGANIZER' ? '協辦社' :
-                                 order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社';
+                                 order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : (isAnniversaryMode() ? '未含花款' : '一般參賽社');
                 order.items.forEach(item => {
                     const rowObj = {
                         "序號": pIdx++,
@@ -4501,7 +4518,7 @@
             orders.forEach(order => {
                 const tierStr = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
                                 order.sponsorTier === 'ORGANIZER' ? '協辦社' :
-                                order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社';
+                                order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : (isAnniversaryMode() ? '未含花款' : '一般參賽社');
                 lines.push(`\n📌 【${order.clubName}】(${tierStr}${order.sponsorAmount ? ` 贊助 $${order.sponsorAmount.toLocaleString()}` : ''})：`);
                 order.items.forEach(item => {
                     const partStr = isSports ? ` [${item.participation || '參賽'}]` : '';
@@ -4610,7 +4627,7 @@
             
             const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
                               order.sponsorTier === 'ORGANIZER' ? '協辦社' :
-                              order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社';
+                              order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : (isAnniversaryMode() ? '未含花款' : '一般參賽社');
             document.getElementById('detailModalSubTitle').innerText = `贊助等級：${tierLabel} ($${(order.sponsorAmount||0).toLocaleString()}) | 提交時間：${order.submittedAt}`;
 
             const competeCount = order.items.filter(i => i.participation !== '只用餐').length;
@@ -4764,7 +4781,7 @@
             orders.forEach(order => {
                 const tierLabel = order.sponsorTier === 'CO_HOST' ? '共同主辦社' :
                                  order.sponsorTier === 'ORGANIZER' ? '協辦社' :
-                                 order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社';
+                                 order.sponsorTier === 'SPONSOR' ? '贊助社' : order.sponsorTier === 'FLOWER' ? '友社花款統一辦理' : (isAnniversaryMode() ? '未含花款' : '一般參賽社');
                 order.items.forEach(item => {
                     const dietLabel = item.diet === 'VEGAN' ? '素食' : '葷食';
                     const hcap = (item.handicap !== undefined && item.handicap !== null && item.handicap !== '') ? item.handicap : '-';
@@ -4907,7 +4924,7 @@
             const subEventName = cat.subEvents[currentSubEventIndex];
             const tierName = currentSelectedSponsorTier === 'CO_HOST' ? '共同主辦社' :
                              currentSelectedSponsorTier === 'ORGANIZER' ? '協辦社' :
-                             currentSelectedSponsorTier === 'SPONSOR' ? '贊助社' : currentSelectedSponsorTier === 'FLOWER' ? '友社花款統一辦理' : '一般參賽社';
+                             currentSelectedSponsorTier === 'SPONSOR' ? '贊助社' : currentSelectedSponsorTier === 'FLOWER' ? '友社花款統一辦理' : (isAnniversaryMode() ? '未含花款' : '一般參賽社');
             let amount = 0;
             if (chairConfig.sponsorshipEnabled) {
                 if (currentSelectedSponsorTier === 'CO_HOST') amount = chairConfig.feeCoHost;
@@ -4924,7 +4941,11 @@
             lines.push(`【國際扶輪 3523 地區 活動報名通報】`);
             lines.push(`🏆 活動名稱：${subEventName}`);
             lines.push(`🏛️ 報名社別：${selectedClubName}`);
-            if (chairConfig.sponsorshipEnabled) {
+            if (isAnniversaryMode()) {
+                lines.push(currentSelectedSponsorTier === 'FLOWER'
+                    ? `💐 友社花款統一辦理：✅ 參加 (NT$ ${amount.toLocaleString()})`
+                    : `💐 友社花款統一辦理：未勾選`);
+            } else if (chairConfig.sponsorshipEnabled) {
                 lines.push(`🏅 贊助等級：${tierName} (NT$ ${amount.toLocaleString()})`);
             }
             const meatCount = currentFormSelectedMembers.filter(m => m.diet !== 'VEGAN').length;
