@@ -85,7 +85,7 @@ CREATE POLICY "Allow anon all operations" ON public.app_storage
 - `categoriesData`：活動大類陣列。每個大類有 `id`、`name`、`allowSponsors`、`allowAddSubEvents`，以及 `subEvents`（**純字串陣列**）。
 - `clubMemberDatabase`：`{ [社名]: Member[] }`，Member 含 `role`、`nickname`、`name`、`diet`、`veganNote`、`handicap`、`spouseOfId`。
 - `registrationOrders`：`{ [子活動名稱字串]: Order[] }`，每社每子活動一筆 Order。
-- `chairConfig`：各種費用金額與贊助開關。
+- `chairConfig`：各種費用金額與贊助開關。其中社慶的友社花款與每人餐費**依子活動分別儲存**在 `chairConfig.subEventFees["大類id::子活動名稱"]`，透過 `getFlowerFee()` / `getAnnivMealFee()` 讀取、`setSubEventFee()` 寫入；其餘費用（參賽、只用餐、共同主辦社等）仍是全域一份，所有子活動共用。
 - `appAuthData`：`{ clubPasswords: {社名: 密碼}, eventChairs: {key: 社名[]} }`。
 
 **重要：子活動以名稱字串當 key。** `registrationOrders` 與 `appAuthData.eventChairs` 都用子活動名稱當索引，
