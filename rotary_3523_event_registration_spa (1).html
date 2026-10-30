@@ -2912,7 +2912,6 @@
                 chairConfig.sponsorshipEnabled = false;
             }
             document.getElementById('cfgSponsorToggle').value = currentMode;
-            if (document.getElementById('cfgFeeApportionment')) document.getElementById('cfgFeeApportionment').value = chairConfig.feeApportionment !== undefined ? chairConfig.feeApportionment : 3000;
             refreshSubEventFeeInputs();
             toggleSponsorConfig(currentMode);
 
@@ -2920,8 +2919,6 @@
             const isSports = cat.id === 'sports' || (cat.name && (cat.name.includes('運動') || cat.name.includes('賽事') || cat.name.includes('體育')));
             const chairFeeInputs = document.getElementById('chairParticipantFeeInputs');
             if (chairFeeInputs) chairFeeInputs.classList.toggle('hidden', !isSports);
-            if (document.getElementById('cfgFeeCompete')) document.getElementById('cfgFeeCompete').value = chairConfig.feeCompete || 1200;
-            if (document.getElementById('cfgFeeMealOnly')) document.getElementById('cfgFeeMealOnly').value = chairConfig.feeMealOnly || 1000;
 
             // Sub-Event Dropdown
             const select = document.getElementById('subEventSelect');
@@ -3047,9 +3044,7 @@
                 return getAnnivMealFee();
             }
             if (m.fee !== undefined && m.fee !== null && !isNaN(Number(m.fee))) return Number(m.fee);
-            const feeMealOnly = (chairConfig && chairConfig.feeMealOnly !== undefined) ? Number(chairConfig.feeMealOnly) : 1000;
-            const feeCompete = (chairConfig && chairConfig.feeCompete !== undefined) ? Number(chairConfig.feeCompete) : 1200;
-            return (m.participation === '只用餐') ? feeMealOnly : feeCompete;
+            return (m.participation === '只用餐') ? getMealOnlyFee() : getCompeteFee();
         }
 
         // 計算出席人員費用總計
@@ -3069,13 +3064,13 @@
             let amount = 0;
             if (currentSelectedSponsorTier === 'CO_HOST') {
                 tierName = '共同主辦社';
-                amount = Number(chairConfig.feeCoHost) || 50000;
+                amount = getCoHostFee();
             } else if (currentSelectedSponsorTier === 'ORGANIZER') {
                 tierName = '協辦社';
-                amount = Number(chairConfig.feeOrganizer) || 20000;
+                amount = getOrganizerFee();
             } else if (currentSelectedSponsorTier === 'SPONSOR') {
                 tierName = '贊助社';
-                amount = Number(chairConfig.feeSponsor) || 10000;
+                amount = getSponsorFee();
             } else if (currentSelectedSponsorTier === 'FLOWER') {
                 tierName = '友社花款統一辦理';
                 amount = getFlowerFee();
@@ -3111,7 +3106,7 @@
                 const secAppInput = document.getElementById('secApportionmentInput');
                 if (secAppInput) apportionmentFee = parseFloat(secAppInput.value) || 0;
             } else if (isSeminar) {
-                apportionmentFee = chairConfig.feeApportionment || 0;
+                apportionmentFee = getApportionmentFee() || 0;
             }
 
             // 1. 出席費用合計
@@ -3156,10 +3151,10 @@
                 setSubEventFee('feeAnnivMeal', parseFloat(annivMealInput.value));
             }
             if (compInput && !isNaN(parseFloat(compInput.value))) {
-                chairConfig.feeCompete = parseFloat(compInput.value);
+                setSubEventFee('feeCompete', parseFloat(compInput.value));
             }
             if (mealInput && !isNaN(parseFloat(mealInput.value))) {
-                chairConfig.feeMealOnly = parseFloat(mealInput.value);
+                setSubEventFee('feeMealOnly', parseFloat(mealInput.value));
             }
             saveToStorage();
             renderSelectedMembersTable();
@@ -3512,14 +3507,36 @@
         }
         function getFlowerFee() { return getSubEventFee('feeFlower', 3000); }
         function getAnnivMealFee() { return getSubEventFee('feeAnnivMeal', 1000); }
+        // 運動賽事與研習會的費用也依子活動分別儲存（高爾夫、保齡球各自一組金額）
+        function getCompeteFee() { return getSubEventFee('feeCompete', 1200); }
+        function getMealOnlyFee() { return getSubEventFee('feeMealOnly', 1000); }
+        function getCoHostFee() { return getSubEventFee('feeCoHost', 50000); }
+        function getOrganizerFee() { return getSubEventFee('feeOrganizer', 20000); }
+        function getSponsorFee() { return getSubEventFee('feeSponsor', 10000); }
+        function getApportionmentFee() { return getSubEventFee('feeApportionment', 3000); }
         // 切換子活動時，把主委後台欄位與執秘端顯示金額換成該子活動的設定值
         function refreshSubEventFeeInputs() {
-            const flowerInput = document.getElementById('cfgFeeFlower');
-            if (flowerInput && document.activeElement !== flowerInput) flowerInput.value = getFlowerFee();
-            const mealInput = document.getElementById('cfgFeeAnnivMeal');
-            if (mealInput && document.activeElement !== mealInput) mealInput.value = getAnnivMealFee();
-            const flowerText = document.getElementById('feeFlowerText');
-            if (flowerText) flowerText.innerText = `$${getFlowerFee().toLocaleString()}`;
+            // 正在輸入中的欄位不覆寫，避免打字時被洗掉
+            const setInput = (id, val) => {
+                const el = document.getElementById(id);
+                if (el && document.activeElement !== el) el.value = val;
+            };
+            const setText = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.innerText = `$${Number(val).toLocaleString()}`;
+            };
+            setInput('cfgFeeFlower', getFlowerFee());
+            setInput('cfgFeeAnnivMeal', getAnnivMealFee());
+            setInput('cfgFeeCompete', getCompeteFee());
+            setInput('cfgFeeMealOnly', getMealOnlyFee());
+            setInput('cfgFeeCoHost', getCoHostFee());
+            setInput('cfgFeeOrganizer', getOrganizerFee());
+            setInput('cfgFeeSponsor', getSponsorFee());
+            setInput('cfgFeeApportionment', getApportionmentFee());
+            setText('feeFlowerText', getFlowerFee());
+            setText('feeCoHostText', getCoHostFee());
+            setText('feeOrganizerText', getOrganizerFee());
+            setText('feeSponsorText', getSponsorFee());
         }
 
         function updateSponsorshipSelection() {
@@ -3549,9 +3566,9 @@
 
             let amount = 0;
             if (chairConfig.sponsorshipEnabled) {
-                if (currentSelectedSponsorTier === 'CO_HOST') amount = chairConfig.feeCoHost;
-                else if (currentSelectedSponsorTier === 'ORGANIZER') amount = chairConfig.feeOrganizer;
-                else if (currentSelectedSponsorTier === 'SPONSOR') amount = chairConfig.feeSponsor;
+                if (currentSelectedSponsorTier === 'CO_HOST') amount = getCoHostFee();
+                else if (currentSelectedSponsorTier === 'ORGANIZER') amount = getOrganizerFee();
+                else if (currentSelectedSponsorTier === 'SPONSOR') amount = getSponsorFee();
                 else if (currentSelectedSponsorTier === 'FLOWER') amount = getFlowerFee();
             }
 
@@ -3570,7 +3587,7 @@
                 const secAppInput = document.getElementById('secApportionmentInput');
                 if (secAppInput) apportionmentFee = parseFloat(secAppInput.value) || 0;
             } else if (isSeminar) {
-                apportionmentFee = chairConfig.feeApportionment || 0;
+                apportionmentFee = getApportionmentFee() || 0;
             }
             
             const grandTotal = amount + participantFee + apportionmentFee;
@@ -4031,23 +4048,22 @@
                 }
             }
 
-            chairConfig.feeApportionment = parseFloat(document.getElementById('cfgFeeApportionment').value) || 0;
-            chairConfig.feeCoHost = parseFloat(document.getElementById('cfgFeeCoHost').value) || 0;
-            chairConfig.feeOrganizer = parseFloat(document.getElementById('cfgFeeOrganizer').value) || 0;
-            chairConfig.feeSponsor = parseFloat(document.getElementById('cfgFeeSponsor').value) || 0;
+            // 所有費用都依「目前子活動」分別儲存，不同子活動互不影響
+            setSubEventFee('feeApportionment', parseFloat(document.getElementById('cfgFeeApportionment').value) || 0);
+            setSubEventFee('feeCoHost', parseFloat(document.getElementById('cfgFeeCoHost').value) || 0);
+            setSubEventFee('feeOrganizer', parseFloat(document.getElementById('cfgFeeOrganizer').value) || 0);
+            setSubEventFee('feeSponsor', parseFloat(document.getElementById('cfgFeeSponsor').value) || 0);
             const flowerInput = document.getElementById('cfgFeeFlower');
             if (flowerInput && !isNaN(parseFloat(flowerInput.value))) setSubEventFee('feeFlower', parseFloat(flowerInput.value));
             const annivMealInputSave = document.getElementById('cfgFeeAnnivMeal');
             if (annivMealInputSave && !isNaN(parseFloat(annivMealInputSave.value))) setSubEventFee('feeAnnivMeal', parseFloat(annivMealInputSave.value));
             const compInput = document.getElementById('cfgFeeCompete');
             const mealInput = document.getElementById('cfgFeeMealOnly');
-            if (compInput && !isNaN(parseFloat(compInput.value))) chairConfig.feeCompete = parseFloat(compInput.value);
-            if (mealInput && !isNaN(parseFloat(mealInput.value))) chairConfig.feeMealOnly = parseFloat(mealInput.value);
+            if (compInput && !isNaN(parseFloat(compInput.value))) setSubEventFee('feeCompete', parseFloat(compInput.value));
+            if (mealInput && !isNaN(parseFloat(mealInput.value))) setSubEventFee('feeMealOnly', parseFloat(mealInput.value));
 
-            document.getElementById('feeCoHostText').innerText = `$${chairConfig.feeCoHost.toLocaleString()}`;
-            document.getElementById('feeOrganizerText').innerText = `$${chairConfig.feeOrganizer.toLocaleString()}`;
-            document.getElementById('feeSponsorText').innerText = `$${chairConfig.feeSponsor.toLocaleString()}`;
-            if (document.getElementById('feeFlowerText')) document.getElementById('feeFlowerText').innerText = `$${getFlowerFee().toLocaleString()}`;
+            // 更新執秘端贊助門檻卡片上的金額
+            refreshSubEventFeeInputs();
 
             saveToStorage();
             showToast('💾 主委設定已成功更新！');
@@ -5006,9 +5022,9 @@
                              currentSelectedSponsorTier === 'SPONSOR' ? '贊助社' : currentSelectedSponsorTier === 'FLOWER' ? '友社花款統一辦理' : (isAnniversaryMode() ? '未含花款' : '一般參賽社');
             let amount = 0;
             if (chairConfig.sponsorshipEnabled) {
-                if (currentSelectedSponsorTier === 'CO_HOST') amount = chairConfig.feeCoHost;
-                else if (currentSelectedSponsorTier === 'ORGANIZER') amount = chairConfig.feeOrganizer;
-                else if (currentSelectedSponsorTier === 'SPONSOR') amount = chairConfig.feeSponsor;
+                if (currentSelectedSponsorTier === 'CO_HOST') amount = getCoHostFee();
+                else if (currentSelectedSponsorTier === 'ORGANIZER') amount = getOrganizerFee();
+                else if (currentSelectedSponsorTier === 'SPONSOR') amount = getSponsorFee();
                 else if (currentSelectedSponsorTier === 'FLOWER') amount = getFlowerFee();
             }
 
