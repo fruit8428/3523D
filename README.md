@@ -23,6 +23,7 @@
    - **🏢 地區辦公室不列入繳費名單**：「地區辦公室」僅供指派為活動主委（地辦人員協助後台），繳費總表、催繳名單、投影模式與 Excel 匯出皆以 80 社計算，不含地區辦公室。
    - **💳 繳費狀況依子活動分開**：各分區各社繳費狀況即時總表以「子活動」為單位各自一張（GMS、DTLS、年會大會…互不影響），應繳金額自動帶入該子活動的「各社應繳金額」；執秘送出報名表不會自動標記為已繳費，由主委手動核訖或貼上銀行通知核對。
    - **🔒 主選單與子活動增刪僅限最高管理員**：「新增/刪除主選單」、「新增/刪除子活動」四個按鈕只有最高管理員登入後才會顯示，活動主委與各社執秘進入時完全看不到，也無法操作。
+   - **📎 活動DM（海報／簡章）上傳**：主委在「活動設定與費用金額」面板點開「活動DM」，可上傳 PDF、JPG、PPT／PPTX（每檔最大 20 MB，可多檔），各社執秘在報名頁標題下方會看到「📎 活動DM」連結可開啟或下載；每個子活動各自一組檔案，主委可刪除舊檔。檔案存放於 Supabase Storage（需先依下方「活動 DM 檔案空間設定」建立一次）。
    - **💰 各子活動獨立費用設定**：參賽選手費、只用餐費、共同主辦社/協辦社/贊助社金額、研習會每社應繳金額、社慶花款與餐費，皆依「子活動」分別儲存，高爾夫、保齡球、各社社慶可各自設定不同金額，互不覆蓋。
 
 3. **📲 跨作業系統與手機行動端連動中心**
@@ -46,3 +47,33 @@
 1. 開啟本儲存庫的 **Settings** > **Pages**。
 2. 在 **Branch** 選擇 `main`，路徑選擇 `/(root)`，點擊 **Save**。
 3. 稍候數秒即可透過網址 `https://<您的帳號>.github.io/<儲存庫名稱>/` 進行全球線上操作與手機連動！
+
+---
+
+## 活動 DM 檔案空間設定（最高管理員只需做一次）
+
+活動 DM 的檔案本體存放在 Supabase Storage 的 bucket `event-dm`。第一次使用前請在 Supabase 後台建立：
+
+1. 登入 https://supabase.com/dashboard ，進入本系統的專案。
+2. 左側選單點 **SQL Editor** → **New query**。
+3. 貼上下面整段 SQL，按 **Run**：
+
+```sql
+-- 建立公開讀取的 bucket「event-dm」，單檔上限 20 MB，只允許 PDF / JPG / PPT / PPTX
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('event-dm', 'event-dm', true, 20971520,
+        array['application/pdf', 'image/jpeg',
+              'application/vnd.ms-powerpoint',
+              'application/vnd.openxmlformats-officedocument.presentationml.presentation'])
+on conflict (id) do update set public = true, file_size_limit = 20971520,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+-- 前端用 anon key 直接上傳／讀取／刪除，所以要對 anon 開放 event-dm 這個 bucket
+create policy "anon read event-dm"   on storage.objects for select to anon using (bucket_id = 'event-dm');
+create policy "anon upload event-dm" on storage.objects for insert to anon with check (bucket_id = 'event-dm');
+create policy "anon update event-dm" on storage.objects for update to anon using (bucket_id = 'event-dm');
+create policy "anon delete event-dm" on storage.objects for delete to anon using (bucket_id = 'event-dm');
+```
+
+4. 看到 `Success` 即完成。回到系統，以主委身分在「活動設定與費用金額 → 活動DM」上傳一個檔案測試。
+5. 若上傳時出現「雲端尚未建立 event-dm 儲存空間」或「存取權限尚未開放」的提示，代表上面的 SQL 沒有成功執行，請重新執行一次。

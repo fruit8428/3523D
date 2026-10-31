@@ -494,6 +494,9 @@
                                     📝 <span id="regFormTitle">報名表單</span>
                                 </h3>
                                 <p class="text-[11px] text-slate-500">填表社別：<strong id="lockedClubNameBadge" class="text-blue-700 font-bold">臺北市南區扶輪社</strong> (防竄改保護已啟動)</p>
+                                <div id="secretaryDMBox" class="hidden mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                                    <span class="font-bold text-slate-700">📎 活動DM：</span><span id="secretaryDMLinks" class="flex flex-wrap items-center gap-1.5"></span>
+                                </div>
                             </div>
                             <span id="countdownDisplay" class="text-xs bg-amber-50 text-amber-800 font-mono font-bold px-2.5 py-1 rounded-md border border-amber-200 whitespace-nowrap">
                                 ⏱️ 報名開放中
@@ -941,6 +944,29 @@
                         </div>
                         <input type="number" id="cfgFeeAnnivMeal" value="1000" min="0" step="50" oninput="liveUpdateChairFee()" class="w-full bg-white border border-pink-300 rounded p-1.5 text-xs font-bold text-slate-800 focus:ring-1 focus:ring-pink-500">
                         <p class="text-[10px] text-pink-700 mt-1">每位出席社友帶入此金額，顯示於出席名冊「餐費」欄並計入應繳總計</p>
+                    </div>
+                </div>
+
+                <!-- 活動 DM（海報／簡章）上傳：檔案存 Supabase Storage bucket「event-dm」，各社執秘在報名頁可看到並下載 -->
+                <div class="mt-3 pt-3 border-t border-dashed border-slate-200">
+                    <button type="button" onclick="toggleEventDMBox()" class="w-full flex items-center justify-between gap-2 text-left bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg px-3 py-2 transition">
+                        <span class="flex items-start gap-2 min-w-0">
+                            <span class="text-base">📎</span>
+                            <span class="min-w-0">
+                                <span class="block text-xs sm:text-sm font-bold text-sky-900">活動DM（海報／簡章檔案）<span id="eventDMCountBadge" class="ml-1 text-[10px] font-bold bg-white text-sky-700 border border-sky-300 px-1.5 py-0.5 rounded-full">0 個檔案</span></span>
+                                <span class="block text-[11px] text-sky-800/80 mt-0.5">點開可以：上傳本活動的 DM（PDF、JPG、PPT／PPTX，每檔最大 20 MB），各社執秘在報名頁會看到並可下載；也可刪除舊檔。</span>
+                            </span>
+                        </span>
+                        <span id="eventDMChevron" class="text-xs font-bold text-sky-700 shrink-0 inline-block transition-transform">▼</span>
+                    </button>
+                    <div id="eventDMBox" class="hidden mt-2 space-y-2">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <input type="file" id="eventDMFileInput" class="hidden" multiple accept=".pdf,.jpg,.jpeg,.ppt,.pptx,application/pdf,image/jpeg,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" onchange="handleEventDMUpload(event)">
+                            <label for="eventDMFileInput" class="cursor-pointer px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition">📤 選擇檔案上傳</label>
+                            <span class="text-[11px] text-slate-500">可一次選多個檔案；上傳後立即同步到所有裝置。</span>
+                            <span id="eventDMUploadStatus" class="text-[11px] font-bold text-sky-700"></span>
+                        </div>
+                        <div id="eventDMList" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
                     </div>
                 </div>
 
@@ -2558,7 +2584,8 @@
             feeAnnivMeal: 1000,    // 社慶每人餐費預設 1000 元（主委後台可調整）
             feeCompete: 1200,      // 內定參賽 1200 元
             feeMealOnly: 1000,     // 只用餐 1000 元
-            startDate: '2026-09-01T09:00'
+            startDate: '2026-09-01T09:00',
+            eventDMs: {}           // 活動 DM 檔案清單，key 為「大類id::子活動名稱」
         };
 
         // Temporarily selected members in secretary form
@@ -2670,6 +2697,7 @@
                             feeAnnivMeal: 1000
                         }, parsed.chairConfig);
                     }
+                    if (!chairConfig.eventDMs || typeof chairConfig.eventDMs !== 'object') chairConfig.eventDMs = {};
                     if (parsed.appAuthData) {
                         appAuthData = parsed.appAuthData;
                     }
@@ -2710,7 +2738,8 @@
                     feeAnnivMeal: 1000,
                     feeCompete: 1200,
                     feeMealOnly: 1000,
-                    startDate: '2026-09-01T09:00'
+                    startDate: '2026-09-01T09:00',
+                    eventDMs: {}
                 };
                 // 繳費紀錄與對帳信件也一併清空（含獨立儲存的 key），不再塞回示範資料
                 savePaymentRecords();
@@ -2782,6 +2811,7 @@
         }
 
         function updateRolePermissionsUI() {
+            if (typeof renderEventDMList === 'function') renderEventDMList(); // 活動 DM 清單依子活動與角色重新渲染
             // 主選單與子活動的增刪只開放給最高管理員（活動主委、執秘都看不到）
             const isAdmin = (currentRole === 'super_admin');
             const cat = categoriesData.find(c => c.id === currentCatId);
@@ -7611,6 +7641,189 @@
             }
         }
 
+
+
+        // ================= 活動 DM（海報／簡章）檔案 =================
+        // 檔案本體存在 Supabase Storage 的 bucket「event-dm」（公開讀取），
+        // 檔案清單（名稱、網址、大小、上傳時間）存在 chairConfig.eventDMs[大類id::子活動名稱]，隨主資料一起儲存。
+        const EVENT_DM_BUCKET = 'event-dm';
+        const EVENT_DM_MAX_MB = 20;
+        const EVENT_DM_ALLOWED = {
+            pdf: 'application/pdf',
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+            ppt: 'application/vnd.ms-powerpoint',
+            pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        };
+        function getEventDMKey() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const sub = (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : '';
+            return `${currentCatId}::${sub}`;
+        }
+        function getEventDMs() {
+            if (!chairConfig.eventDMs || typeof chairConfig.eventDMs !== 'object') chairConfig.eventDMs = {};
+            return chairConfig.eventDMs[getEventDMKey()] || [];
+        }
+        function canManageEventDM() {
+            return currentRole === 'chair' || currentRole === 'super_admin';
+        }
+        function toggleEventDMBox(forceOpen) {
+            const box = document.getElementById('eventDMBox');
+            if (!box) return;
+            const open = (typeof forceOpen === 'boolean') ? forceOpen : box.classList.contains('hidden');
+            box.classList.toggle('hidden', !open);
+            const chev = document.getElementById('eventDMChevron');
+            if (chev) chev.style.transform = open ? 'rotate(180deg)' : '';
+        }
+        function eventDMIcon(ext) {
+            if (ext === 'pdf') return '📄';
+            if (ext === 'ppt' || ext === 'pptx') return '📊';
+            return '🖼️';
+        }
+        function formatFileSize(bytes) {
+            const n = Number(bytes) || 0;
+            if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+            if (n >= 1024) return Math.round(n / 1024) + ' KB';
+            return n + ' B';
+        }
+        function escapeHtmlText(str) {
+            return String(str || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+        }
+        function renderEventDMList() {
+            const list = getEventDMs();
+            const badge = document.getElementById('eventDMCountBadge');
+            if (badge) badge.innerText = `${list.length} 個檔案`;
+
+            // 主委後台清單
+            const box = document.getElementById('eventDMList');
+            if (box) {
+                if (list.length === 0) {
+                    box.innerHTML = `<div class="sm:col-span-2 text-[11px] text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-lg p-3 text-center">尚未上傳任何活動 DM。按上方「選擇檔案上傳」，支援 PDF、JPG、PPT／PPTX。</div>`;
+                } else {
+                    const manage = canManageEventDM();
+                    box.innerHTML = list.map((f, idx) => {
+                        const isImg = (f.ext === 'jpg' || f.ext === 'jpeg');
+                        const thumb = isImg
+                            ? `<img src="${escapeHtmlText(f.url)}" alt="" class="w-14 h-14 object-cover rounded-md border border-slate-200 shrink-0 bg-white">`
+                            : `<div class="w-14 h-14 rounded-md border border-slate-200 bg-white flex items-center justify-center text-2xl shrink-0">${eventDMIcon(f.ext)}</div>`;
+                        return `
+                        <div class="flex items-center gap-3 bg-white border border-slate-200 rounded-lg p-2.5">
+                            ${thumb}
+                            <div class="min-w-0 flex-1">
+                                <div class="text-xs font-bold text-slate-800 truncate" title="${escapeHtmlText(f.name)}">${escapeHtmlText(f.name)}</div>
+                                <div class="text-[10px] text-slate-500 mt-0.5">${String(f.ext || '').toUpperCase()} · ${formatFileSize(f.size)} · ${escapeHtmlText(f.uploadedAt || '')}${f.uploadedBy ? ' · ' + escapeHtmlText(f.uploadedBy) : ''}</div>
+                                <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                    <a href="${escapeHtmlText(f.url)}" target="_blank" rel="noopener" class="px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded text-[11px] font-bold">🔗 開啟</a>
+                                    <a href="${escapeHtmlText(f.url)}" download="${escapeHtmlText(f.name)}" class="px-2 py-0.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded text-[11px] font-bold">⬇️ 下載</a>
+                                    ${manage ? `<button type="button" onclick="removeEventDM(${idx})" class="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[11px] font-bold">🗑️ 刪除</button>` : ''}
+                                </div>
+                            </div>
+                        </div>`;
+                    }).join('');
+                }
+            }
+
+            // 執秘報名頁的連結列
+            const secBox = document.getElementById('secretaryDMBox');
+            const secLinks = document.getElementById('secretaryDMLinks');
+            if (secBox && secLinks) {
+                secBox.classList.toggle('hidden', list.length === 0);
+                secLinks.innerHTML = list.map(f =>
+                    `<a href="${escapeHtmlText(f.url)}" target="_blank" rel="noopener" class="px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded font-bold whitespace-nowrap" title="${escapeHtmlText(f.name)}">${eventDMIcon(f.ext)} ${escapeHtmlText(f.name.length > 28 ? f.name.slice(0, 26) + '…' : f.name)}</a>`
+                ).join('');
+            }
+        }
+        function describeEventDMError(error) {
+            const msg = (error && error.message) ? error.message : '未知錯誤';
+            if (/bucket/i.test(msg) && /not\s*found/i.test(msg)) {
+                return '雲端尚未建立「event-dm」檔案儲存空間。請最高管理員依 README「活動 DM 檔案空間設定」到 Supabase 建立後再試。';
+            }
+            if (/row-level security|policy|unauthorized|403/i.test(msg)) {
+                return '雲端檔案空間的存取權限尚未開放（RLS policy）。請最高管理員依 README「活動 DM 檔案空間設定」補上權限後再試。';
+            }
+            if (/exceeded|too large|413|size/i.test(msg)) {
+                return `檔案太大，超過雲端空間允許的大小（每檔最大 ${EVENT_DM_MAX_MB} MB）。`;
+            }
+            return msg;
+        }
+        async function handleEventDMUpload(e) {
+            const input = e && e.target ? e.target : document.getElementById('eventDMFileInput');
+            const files = Array.from((input && input.files) || []);
+            if (input) input.value = '';
+            if (!canManageEventDM()) {
+                alert('⚠️ 權限限制：只有本活動主委或最高管理員可以上傳活動 DM。');
+                return;
+            }
+            if (files.length === 0) return;
+            if (!supabaseClient) {
+                alert('❌ 目前無法連線雲端儲存空間，無法上傳活動 DM。請確認網路後再試。');
+                return;
+            }
+            const status = document.getElementById('eventDMUploadStatus');
+            const key = getEventDMKey();
+            let okCount = 0;
+            for (const file of files) {
+                const ext = (file.name.split('.').pop() || '').toLowerCase();
+                if (!EVENT_DM_ALLOWED[ext]) {
+                    alert(`❌ 「${file.name}」格式不支援，只能上傳 PDF、JPG、PPT／PPTX。`);
+                    continue;
+                }
+                if (file.size > EVENT_DM_MAX_MB * 1024 * 1024) {
+                    alert(`❌ 「${file.name}」超過 ${EVENT_DM_MAX_MB} MB 上限，請先壓縮或拆頁後再上傳。`);
+                    continue;
+                }
+                if (status) status.innerText = `⏳ 上傳中：${file.name}…`;
+                const safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
+                const path = `${safeKey}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+                try {
+                    const { error } = await supabaseClient.storage.from(EVENT_DM_BUCKET).upload(path, file, { contentType: EVENT_DM_ALLOWED[ext], upsert: false });
+                    if (error) {
+                        alert(`❌ 上傳失敗：${file.name}\n${describeEventDMError(error)}`);
+                        continue;
+                    }
+                    const { data: pub } = supabaseClient.storage.from(EVENT_DM_BUCKET).getPublicUrl(path);
+                    if (!chairConfig.eventDMs) chairConfig.eventDMs = {};
+                    if (!chairConfig.eventDMs[key]) chairConfig.eventDMs[key] = [];
+                    chairConfig.eventDMs[key].push({
+                        name: file.name,
+                        path,
+                        url: (pub && pub.publicUrl) || '',
+                        ext,
+                        size: file.size,
+                        uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                        uploadedBy: (loggedInUser && loggedInUser.club) || ''
+                    });
+                    await saveToStorage();
+                    renderEventDMList();
+                    okCount++;
+                } catch (err) {
+                    alert(`❌ 上傳失敗：${file.name}\n${describeEventDMError(err)}`);
+                }
+            }
+            if (status) status.innerText = '';
+            if (okCount > 0) showToast(`📎 已上傳 ${okCount} 個活動 DM，各社執秘在報名頁即可看到`);
+        }
+        async function removeEventDM(idx) {
+            if (!canManageEventDM()) {
+                alert('⚠️ 權限限制：只有本活動主委或最高管理員可以刪除活動 DM。');
+                return;
+            }
+            const key = getEventDMKey();
+            const list = (chairConfig.eventDMs && chairConfig.eventDMs[key]) || [];
+            const item = list[idx];
+            if (!item) return;
+            if (!confirm(`確定刪除活動 DM「${item.name}」？刪除後各社執秘將看不到此檔案。`)) return;
+            if (supabaseClient && item.path) {
+                try {
+                    const { error } = await supabaseClient.storage.from(EVENT_DM_BUCKET).remove([item.path]);
+                    if (error) console.warn('刪除雲端檔案失敗（清單仍會移除）', error);
+                } catch (err) { console.warn('刪除雲端檔案失敗（清單仍會移除）', err); }
+            }
+            list.splice(idx, 1);
+            await saveToStorage();
+            renderEventDMList();
+            showToast(`🗑️ 已刪除活動 DM「${item.name}」`);
+        }
 
         // ================= 可收合面板（主委後台 / 最高權限頁） =================
         // 每個面板預設收合；展開狀態記在這台裝置的 localStorage（只是個人方便，壞了也不影響資料）

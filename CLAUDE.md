@@ -60,6 +60,14 @@ CREATE POLICY "Allow anon all operations" ON public.app_storage
 
 換資料庫時要同步改 `index.html`、`test_supabase.js`、`test_supabase2.js` 三處的 URL 與 key。
 
+### Supabase Storage（活動 DM 檔案）
+
+活動 DM（PDF/JPG/PPT）的檔案本體存在 Storage bucket `event-dm`（公開讀取，anon 可 insert/select/update/delete），
+建立 SQL 見 README「活動 DM 檔案空間設定」。檔案清單存在 `chairConfig.eventDMs["大類id::子活動名稱"]`
+（`{name, path, url, ext, size, uploadedAt, uploadedBy}`），上傳/刪除走 `handleEventDMUpload` / `removeEventDM`，
+顯示走 `renderEventDMList()`（主委後台清單 `#eventDMList` 與執秘端連結列 `#secretaryDMBox`），在 `updateRolePermissionsUI` 內重繪。
+bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` 會轉成中文提示。
+
 ## 架構（讀懂這段才改得動程式）
 
 ### 檔案角色
