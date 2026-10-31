@@ -6315,7 +6315,13 @@
                     if (!isPaymentTrackingCategory(c.id)) return;
                     const isConfCat = c.id === 'conference' || (c.name && c.name.includes('年會'));
                     (c.subEvents || []).forEach(se => {
-                        chairPaymentRecords[`${c.id}::${se}`] = JSON.parse(JSON.stringify(isConfCat ? conferenceRecords : seminarRecords));
+                        const key = `${c.id}::${se}`;
+                        const copy = JSON.parse(JSON.stringify(isConfCat ? conferenceRecords : seminarRecords));
+                        // 示範的實收金額跟著該子活動的「各社應繳金額」走，避免與應繳欄位不一致
+                        const feeCfg = (chairConfig.subEventFees && chairConfig.subEventFees[key]) || {};
+                        const required = Number(feeCfg.feeApportionment ?? chairConfig.feeApportionment ?? 3000) || 3000;
+                        Object.values(copy).forEach(r => { if (r.status !== 'UNPAID') r.amount = required; });
+                        chairPaymentRecords[key] = copy;
                     });
                 });
 
