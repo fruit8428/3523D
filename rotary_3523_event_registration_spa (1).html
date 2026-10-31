@@ -2906,24 +2906,23 @@
             loadCategoryView();
         }
 
-        function loadCategoryView() {
+        // 依「目前大類 + 目前選到的子活動」決定畫面模式，並套用到 body data-mode 與後台設定區。
+        // 注意：分攤金只看「目前這一個子活動」的名稱，不能看整個大類裡有沒有分攤金子活動，
+        // 否則像「地區年會」底下只要有一個「地區年會分攤金」，大會與晚宴也會被誤判成分攤金而隱藏報名表。
+        function applyCurrentEventMode() {
             const cat = categoriesData.find(c => c.id === currentCatId);
             if (!cat) return;
+            const subEventName = (cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : '';
+            const hasKeyword = (txt, words) => !!txt && words.some(w => txt.includes(w));
 
-            // Banner Title & Border Styling
-            const banner = document.getElementById('categoryHeaderBanner');
-            banner.className = `bg-white rounded-xl shadow-sm border p-4 sm:p-5 mb-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-8 theme-${cat.themeColor}`;
-
-            // Sponsor capability flag
             let currentMode = 'seminar';
-            const hasApportionmentKeyword = (cat.name && (cat.name.includes('分攤金') || cat.name.includes('配合款'))) || (cat.subEvents && cat.subEvents.some(se => se.includes('分攤金') || se.includes('配合款')));
-            
-            const hasAnniversaryKeyword = (cat.name && cat.name.includes('社慶')) || (cat.subEvents && cat.subEvents.some(se => se.includes('社慶')));
+            const isApportionment = hasKeyword(cat.name, ['分攤金', '配合款']) || hasKeyword(subEventName, ['分攤金', '配合款']);
+            const isAnniversary = hasKeyword(cat.name, ['社慶']) || hasKeyword(subEventName, ['社慶']);
 
-            if (hasApportionmentKeyword) {
+            if (isApportionment) {
                 currentMode = 'apportionment';
                 chairConfig.sponsorshipEnabled = false;
-            } else if (hasAnniversaryKeyword) {
+            } else if (isAnniversary) {
                 currentMode = 'anniversary';
                 chairConfig.sponsorshipEnabled = true;
             } else if (cat.allowSponsors) {
@@ -2932,9 +2931,22 @@
             } else {
                 chairConfig.sponsorshipEnabled = false;
             }
-            document.getElementById('cfgSponsorToggle').value = currentMode;
+            const toggleSel = document.getElementById('cfgSponsorToggle');
+            if (toggleSel) toggleSel.value = currentMode;
             refreshSubEventFeeInputs();
             toggleSponsorConfig(currentMode);
+        }
+
+        function loadCategoryView() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            if (!cat) return;
+
+            // Banner Title & Border Styling
+            const banner = document.getElementById('categoryHeaderBanner');
+            banner.className = `bg-white rounded-xl shadow-sm border p-4 sm:p-5 mb-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-8 theme-${cat.themeColor}`;
+
+            // 依目前大類與子活動決定畫面模式（分攤金/社慶/運動/研討會）
+            applyCurrentEventMode();
 
             // Sports participant fee inputs for Chair
             const isSports = cat.id === 'sports' || (cat.name && (cat.name.includes('運動') || cat.name.includes('賽事') || cat.name.includes('體育')));
@@ -2959,6 +2971,7 @@
             currentSubEventIndex = parseInt(idx);
             // 點一次換一次：切換子活動立即輪流換色
             currentThemeColorIndex = (currentThemeColorIndex === 0 ? 1 : 0);
+            applyCurrentEventMode(); // 子活動不同模式可能不同（例如年會大會 vs 年會分攤金），切換時重新判斷
             updateSubEventContext();
             applyPermissions(); // Ensure role updates if sub-event chair permissions differ
             updateRolePermissionsUI(); // 角色重算後同步更新管理者專屬按鈕的顯示狀態
@@ -8166,7 +8179,8 @@
             }
             
             // 3. Update view visibility
-            document.getElementById('viewSecretary').classList.toggle('hidden', currentRole !== 'secretary');
+            // 報名表對所有登入身分都顯示：主委社本身也是參加社，仍需幫自己社報名；儀表板只給主委與最高管理員
+            document.getElementById('viewSecretary').classList.remove('hidden');
             document.getElementById('viewChair').classList.toggle('hidden', currentRole === 'secretary');
             document.getElementById('viewSuperAdmin').classList.toggle('hidden', currentRole !== 'super_admin');
             

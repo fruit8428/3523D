@@ -109,13 +109,14 @@ CREATE POLICY "Allow anon all operations" ON public.app_storage
 - **角色是依「目前所在的大類與子活動」動態算出來的**：`applyPermissions` 檢查
   `eventChairs[catId]`（整個大類的主委）或 `eventChairs["catId::子活動名稱"]`（單一子活動的主委）。
   切換大類或子活動後要重新呼叫 `applyPermissions()`，否則權限不會更新。
+- 報名表畫面 `viewSecretary` 對所有登入身分都顯示（主委社本身也要幫自己社報名）；`viewChair` 只在 chair/super_admin 顯示。
 - 權限判斷的慣用寫法是 `currentRole === 'chair' || currentRole === 'super_admin'`，新增主委功能時沿用。
 - 例外：主選單與子活動的新增/刪除（`chairCategoryActions`、`navAddSubEventBtn`、`navDeleteSubEventBtn` 與對應 `open*/handle*` 函式）只開放 `currentRole === 'super_admin'`，活動主委也看不到；顯示邏輯在 `updateRolePermissionsUI` 與 `renderNavTabs` 兩處，`changeSubEvent` 重算角色後會再呼叫 `updateRolePermissionsUI()`。
 
 ### 活動類型切換邏輯
 
 - `isCurrentEventSports()` / `isCurrentEventGolf()`：運動賽事顯示差點欄位與參賽/用餐費用，高爾夫另有平均差點計算。
-- 「地辦分攤金」類活動是以**名稱**判斷，不是用 id：大類名稱或子活動名稱包含 `分攤金` 或 `配合款` 即視為分攤金模式（同一段判斷式在 `loadCategoryView`、`updateTotalFeeSummaryDisplay`、`submitRegistration` 各出現一次，修改時要三處一起改）。
+- 「地辦分攤金」類活動是以**名稱**判斷，不是用 id：大類名稱或**目前選到的子活動**名稱包含 `分攤金` 或 `配合款` 即視為分攤金模式（判斷式在 `applyCurrentEventMode`、`updateTotalFeeSummaryDisplay`、`submitRegistration` 各出現一次，修改時要三處一起改）。只看「目前子活動」是刻意的：地區年會底下同時有「大會」「晚宴」與「年會分攤金」，若看整個大類會把大會、晚宴也誤判成分攤金而隱藏報名表。`applyCurrentEventMode()` 在 `loadCategoryView` 與 `changeSubEvent` 都會呼叫，切換子活動時模式會重算。
 - `cat.allowSponsors` 控制贊助社/協辦社區塊；`cat.allowAddSubEvents === false`（RYLA、End Polio）則隱藏子活動增刪按鈕。
 
 ### UI 慣例
