@@ -333,10 +333,10 @@
 
                 <!-- Right: Pinned Chair Category Actions (主委專屬增刪主選單，固定右側絕不覆蓋) -->
                 <div id="chairCategoryActions" class="flex items-center gap-1.5 shrink-0 hidden">
-                    <button onclick="openAddCategoryModal()" class="px-2.5 sm:px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-400/40 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 transition" title="主委專屬：新增主選單類別">
+                    <button onclick="openAddCategoryModal()" class="px-2.5 sm:px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-400/40 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 transition" title="管理者專屬：新增主選單類別">
                         <span>➕</span><span class="hidden xs:inline sm:inline">新增主選單</span>
                     </button>
-                    <button onclick="openDeleteCategoryModal()" class="px-2.5 sm:px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-rose-400 border border-rose-400/40 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 transition" title="主委專屬：刪除主選單類別">
+                    <button onclick="openDeleteCategoryModal()" class="px-2.5 sm:px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-rose-400 border border-rose-400/40 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 transition" title="管理者專屬：刪除主選單類別">
                         <span>🗑️</span><span class="hidden xs:inline sm:inline">刪除主選單</span>
                     </button>
                 </div>
@@ -361,10 +361,10 @@
 
                 <!-- Right: Chair Sub-Event Actions (➕ 新增子活動 / 🗑️ 刪除子活動) -->
                 <div id="chairSubEventActions" class="flex items-center gap-1.5 shrink-0">
-                    <button id="navAddSubEventBtn" onclick="openAddSubEventModal()" class="px-2.5 sm:px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 shadow-sm transition active:scale-95 hidden" title="主委專屬：新增子活動">
+                    <button id="navAddSubEventBtn" onclick="openAddSubEventModal()" class="px-2.5 sm:px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 shadow-sm transition active:scale-95 hidden" title="管理者專屬：新增子活動">
                         <span>➕</span><span class="hidden xs:inline sm:inline">新增子活動</span>
                     </button>
-                    <button id="navDeleteSubEventBtn" onclick="openDeleteSubEventModal()" class="px-2.5 sm:px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 shadow-sm transition active:scale-95 hidden" title="主委專屬：刪除子活動">
+                    <button id="navDeleteSubEventBtn" onclick="openDeleteSubEventModal()" class="px-2.5 sm:px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 shadow-sm transition active:scale-95 hidden" title="管理者專屬：刪除子活動">
                         <span>🗑️</span><span class="hidden xs:inline sm:inline">刪除子活動</span>
                     </button>
                 </div>
@@ -1507,7 +1507,7 @@
             <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
                 <div class="flex items-center gap-2">
                     <span class="text-base">➕</span>
-                    <h3 class="font-bold text-slate-900 text-base">主委專屬：新增主選單類別</h3>
+                    <h3 class="font-bold text-slate-900 text-base">管理者專屬：新增主選單類別</h3>
                 </div>
                 <button onclick="closeAddCategoryModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1">&times;</button>
             </div>
@@ -1553,7 +1553,7 @@
             <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
                 <div class="flex items-center gap-2">
                     <span class="text-base">📌</span>
-                    <h3 class="font-bold text-slate-900 text-base">主委專屬：新增子活動</h3>
+                    <h3 class="font-bold text-slate-900 text-base">管理者專屬：新增子活動</h3>
                 </div>
                 <button onclick="closeAddSubEventModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1">&times;</button>
             </div>
@@ -1590,7 +1590,7 @@
             <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
                 <div class="flex items-center gap-2 text-rose-600">
                     <span class="text-lg">🗑️</span>
-                    <h3 class="font-bold text-slate-900 text-base">主委專屬：刪除主選單類別</h3>
+                    <h3 class="font-bold text-slate-900 text-base">管理者專屬：刪除主選單類別</h3>
                 </div>
                 <button onclick="closeDeleteCategoryModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1">&times;</button>
             </div>
@@ -1626,7 +1626,7 @@
             <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
                 <div class="flex items-center gap-2 text-rose-600">
                     <span class="text-lg">🗑️</span>
-                    <h3 class="font-bold text-slate-900 text-base">主委專屬：刪除子活動</h3>
+                    <h3 class="font-bold text-slate-900 text-base">管理者專屬：刪除子活動</h3>
                 </div>
                 <button onclick="closeDeleteSubEventModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1">&times;</button>
             </div>
@@ -2816,24 +2816,25 @@
         }
 
         function updateRolePermissionsUI() {
-            const isChair = (currentRole === 'chair' || currentRole === 'super_admin');
+            // 主選單與子活動的增刪只開放給最高管理員（活動主委、執秘都看不到）
+            const isAdmin = (currentRole === 'super_admin');
             const cat = categoriesData.find(c => c.id === currentCatId);
             const allowsSubEvents = cat ? (cat.allowAddSubEvents !== false) : true;
 
-            // 主委專屬主選單增刪控制項（固定於右側，絕對不被遮蓋）
+            // 管理者專屬主選單增刪控制項（固定於右側，絕對不被遮蓋）
             const chairCatActions = document.getElementById('chairCategoryActions');
             if (chairCatActions) {
-                chairCatActions.classList.toggle('hidden', !isChair);
+                chairCatActions.classList.toggle('hidden', !isAdmin);
             }
 
-            // 導覽列子活動新增與刪除按鈕：僅限主委，且該主選單允許增刪子活動（RYLA 與 End Polio 排除）
+            // 導覽列子活動新增與刪除按鈕：僅限最高管理員，且該主選單允許增刪子活動（RYLA 與 End Polio 排除）
             const navAddSubBtn = document.getElementById('navAddSubEventBtn');
             if (navAddSubBtn) {
-                navAddSubBtn.classList.toggle('hidden', !(isChair && allowsSubEvents));
+                navAddSubBtn.classList.toggle('hidden', !(isAdmin && allowsSubEvents));
             }
             const navDeleteSubBtn = document.getElementById('navDeleteSubEventBtn');
             if (navDeleteSubBtn) {
-                navDeleteSubBtn.classList.toggle('hidden', !(isChair && allowsSubEvents));
+                navDeleteSubBtn.classList.toggle('hidden', !(isAdmin && allowsSubEvents));
             }
         }
 
@@ -2855,10 +2856,10 @@
 
             container.innerHTML = catButtons;
 
-            // 主委專屬主選單增刪控制項（固定於右側，絕對不被覆蓋）
+            // 管理者專屬主選單增刪控制項（固定於右側，絕對不被覆蓋）：只有最高管理員看得到
             const chairCatActions = document.getElementById('chairCategoryActions');
             if (chairCatActions) {
-                chairCatActions.classList.toggle('hidden', !isChair);
+                chairCatActions.classList.toggle('hidden', currentRole !== 'super_admin');
             }
         }
 
@@ -2960,6 +2961,7 @@
             currentThemeColorIndex = (currentThemeColorIndex === 0 ? 1 : 0);
             updateSubEventContext();
             applyPermissions(); // Ensure role updates if sub-event chair permissions differ
+            updateRolePermissionsUI(); // 角色重算後同步更新管理者專屬按鈕的顯示狀態
             if(currentRole === 'chair' || currentRole === 'super_admin') {
                 updateChairDashboard();
             }
@@ -5893,8 +5895,8 @@
 
         // Custom Category Modal (主委專屬新增主選單)
         function openAddCategoryModal() {
-            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
-                alert('⚠️ 權限限制：只有主委可以新增主選單！執秘報名端無法新增。\n如需新增，請先點擊右上角【📊 主委戰情】。');
+            if (currentRole !== 'super_admin') {
+                alert('⚠️ 權限限制：只有最高管理員可以新增主選單！活動主委與執秘皆無此權限。');
                 return;
             }
             document.getElementById('catNameInput').value = '';
@@ -5908,8 +5910,8 @@
 
         function handleSaveNewCategory(e) {
             e.preventDefault();
-            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
-                alert('⚠️ 權限限制：只有主委可以新增主選單！執秘無此權限。');
+            if (currentRole !== 'super_admin') {
+                alert('⚠️ 權限限制：只有最高管理員可以新增主選單！活動主委與執秘皆無此權限。');
                 return;
             }
             const name = document.getElementById('catNameInput').value.trim();
@@ -5946,8 +5948,8 @@
 
         // Delete Category Modal (主委專屬刪除主選單)
         function openDeleteCategoryModal() {
-            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
-                alert('⚠️ 權限限制：只有主委可以刪除主選單！執秘報名端無法操作。\n如需操作，請先點擊右上角【📊 主委戰情】。');
+            if (currentRole !== 'super_admin') {
+                alert('⚠️ 權限限制：只有最高管理員可以刪除主選單！活動主委與執秘皆無此權限。');
                 return;
             }
             if (categoriesData.length <= 1) {
@@ -6022,8 +6024,8 @@
 
         function handleConfirmDeleteCategory(e) {
             e.preventDefault();
-            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
-                alert('⚠️ 權限限制：只有主委可以刪除主選單！');
+            if (currentRole !== 'super_admin') {
+                alert('⚠️ 權限限制：只有最高管理員可以刪除主選單！');
                 return;
             }
             if (categoriesData.length <= 1) {
@@ -6070,8 +6072,8 @@
 
         // Sub-Event Modal (主委專屬新增子活動)
         function openAddSubEventModal() {
-            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
-                alert('⚠️ 權限限制：只有主委可以新增子活動！執秘報名端無法新增。\n如需新增，請先點擊右上角【📊 主委戰情】。');
+            if (currentRole !== 'super_admin') {
+                alert('⚠️ 權限限制：只有最高管理員可以新增子活動！活動主委與執秘皆無此權限。');
                 return;
             }
             // 排除 RYLA 與 End Polio（依附圖30：這二個不會有新增子活動的需求）
@@ -6097,8 +6099,8 @@
 
         function handleSaveNewSubEvent(e) {
             e.preventDefault();
-            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
-                alert('⚠️ 權限限制：只有主委可以新增子活動！執秘無此權限。');
+            if (currentRole !== 'super_admin') {
+                alert('⚠️ 權限限制：只有最高管理員可以新增子活動！活動主委與執秘皆無此權限。');
                 return;
             }
             const targetCatId = document.getElementById('subEventTargetCatSelect').value;
@@ -6138,8 +6140,8 @@
 
         // Delete Sub-Event Modal (主委專屬刪除子活動)
         function openDeleteSubEventModal() {
-            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
-                alert('⚠️ 權限限制：只有主委可以刪除子活動！執秘報名端無法操作。\n如需操作，請先點擊右上角【📊 主委戰情】。');
+            if (currentRole !== 'super_admin') {
+                alert('⚠️ 權限限制：只有最高管理員可以刪除子活動！活動主委與執秘皆無此權限。');
                 return;
             }
             // 排除單一專案活動（RYLA 與 End Polio，因不可增刪子活動）
@@ -6255,8 +6257,8 @@
 
         function handleConfirmDeleteSubEvent(e) {
             e.preventDefault();
-            if (currentRole !== 'chair' && currentRole !== 'super_admin') {
-                alert('⚠️ 權限限制：只有主委可以刪除子活動！');
+            if (currentRole !== 'super_admin') {
+                alert('⚠️ 權限限制：只有最高管理員可以刪除子活動！');
                 return;
             }
             const catSelect = document.getElementById('deleteSubEventTargetCatSelect');

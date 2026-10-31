@@ -110,6 +110,7 @@ CREATE POLICY "Allow anon all operations" ON public.app_storage
   `eventChairs[catId]`（整個大類的主委）或 `eventChairs["catId::子活動名稱"]`（單一子活動的主委）。
   切換大類或子活動後要重新呼叫 `applyPermissions()`，否則權限不會更新。
 - 權限判斷的慣用寫法是 `currentRole === 'chair' || currentRole === 'super_admin'`，新增主委功能時沿用。
+- 例外：主選單與子活動的新增/刪除（`chairCategoryActions`、`navAddSubEventBtn`、`navDeleteSubEventBtn` 與對應 `open*/handle*` 函式）只開放 `currentRole === 'super_admin'`，活動主委也看不到；顯示邏輯在 `updateRolePermissionsUI` 與 `renderNavTabs` 兩處，`changeSubEvent` 重算角色後會再呼叫 `updateRolePermissionsUI()`。
 
 ### 活動類型切換邏輯
 
