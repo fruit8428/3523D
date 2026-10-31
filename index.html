@@ -701,6 +701,33 @@
                     </div>
                 </div>
             </div>
+
+            <!-- 正式上線前資料歸零（僅最高管理員） -->
+            <div class="bg-white rounded-xl shadow-sm border-2 border-rose-200 p-4 sm:p-5 mt-5">
+                <div class="pb-4 border-b border-rose-100 mb-4">
+                    <span class="text-xs font-bold text-rose-600 uppercase tracking-wider">Go-Live Data Reset</span>
+                    <h3 class="text-base sm:text-lg font-bold text-slate-900">🧹 正式上線前資料歸零</h3>
+                    <p class="text-xs text-slate-500 mt-1">系統內建的示範資料（模擬繳費狀況、示範報名單、示範社友）請在正式啟用前清空。每顆按鈕都會再次確認，清空後所有裝置同步生效，<b class="text-rose-600">無法復原</b>，建議先到「跨裝置同步與備份」匯出 JSON 備份。</p>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button onclick="adminClearPaymentData()" class="text-left p-3 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 transition active:scale-[0.99]">
+                        <div class="font-bold text-sm text-rose-700">🧹 清空繳費紀錄與對帳信件</div>
+                        <div class="text-[11px] text-slate-600 mt-1">所有研討會、地區年會的「各分區各社繳費狀況即時總表」歸零為 0 社已繳，並清除 Email 對帳日誌。</div>
+                    </button>
+                    <button onclick="adminClearRegistrationOrders()" class="text-left p-3 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 transition active:scale-[0.99]">
+                        <div class="font-bold text-sm text-rose-700">🧹 清空全部報名單</div>
+                        <div class="text-[11px] text-slate-600 mt-1">刪除所有活動已送出的報名表、贊助選項與贊助獎。各社社友庫保留。</div>
+                    </button>
+                    <button onclick="adminClearMemberDatabase()" class="text-left p-3 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 transition active:scale-[0.99]">
+                        <div class="font-bold text-sm text-rose-700">🧹 清空全部社友庫</div>
+                        <div class="text-[11px] text-slate-600 mt-1">刪除 80 社全部社友名冊（含示範社友）。需輸入確認文字才會執行。</div>
+                    </button>
+                    <button onclick="adminLoadDemoData()" class="text-left p-3 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 transition active:scale-[0.99]">
+                        <div class="font-bold text-sm text-slate-700">🧪 載入示範資料（展示用）</div>
+                        <div class="text-[11px] text-slate-600 mt-1">補上示範社友、示範報名單，並為每個研討會/年會子活動生成模擬繳費狀況。已有資料不會被覆蓋。</div>
+                    </button>
+                </div>
+            </div>
         </section>
 
 
@@ -2724,6 +2751,10 @@
         }
 
                 async function resetSystemData() {
+            if (currentRole !== 'super_admin') {
+                alert('⚠️ 權限限制：只有最高管理員可以重置系統資料！');
+                return;
+            }
             if (confirm("⚠️ 確定將所有社友名冊與報名資料重置為初始預設值？本機修改將被清除。\n（📌 活動 Email 與密碼設定將保留不變）")) {
                 if (supabaseClient) {
                     await supabaseClient.from('app_storage').delete().eq('key', LOCAL_STORAGE_KEY);
@@ -2747,7 +2778,9 @@
                     feeMealOnly: 1000,
                     startDate: '2026-09-01T09:00'
                 };
-                initDefaultPaymentRecords(true);
+                // 繳費紀錄與對帳信件也一併清空（含獨立儲存的 key），不再塞回示範資料
+                savePaymentRecords();
+                saveEmailInboxLogs();
                 saveToStorage();
                 location.reload();
             }
@@ -2763,7 +2796,7 @@
             await loadChairEventEmails();
             await loadPaymentRecords();
             await loadEmailInboxLogs();
-                        initDefaultPaymentRecords();
+            // 注意：不再於啟動時自動生成示範繳費資料；要看示範請由最高管理員按「載入示範資料」
             populateLoginClubs();
             renderNavTabs();
             renderDivisionDirectory();
@@ -3252,12 +3285,9 @@
             document.getElementById('currentClubNameTitle').innerText = clubName;
             document.getElementById('lockedClubNameBadge').innerText = clubName;
             
-            // Ensure club array exists in DB
+            // 確保該社在社友庫有自己的陣列；沒有名冊就建立「空的」，不再自動塞示範用的假社長
             if (!clubMemberDatabase[clubName]) {
-                clubMemberDatabase[clubName] = [
-                    { id: Date.now(), role: "社長", nickname: "P " + clubName.substring(2, 4), name: `${clubName.substring(2, 4)}社長`, diet: "MEAT", veganNote: "", handicap: 18 }
-                ];
-                saveToStorage();
+                clubMemberDatabase[clubName] = [];
             }
 
             updateSubEventContext();
@@ -3819,37 +3849,8 @@
                 registrationOrders[subEventName].push(orderPayload);
             }
 
-            // 若該活動屬於研討會或地區年會，同步自動寄送匯款通知信至後台信箱
-            if (isPaymentTrackingCategory(currentCatId)) {
-                const payCatKey = (currentCatId === 'conference' || (cat.name && cat.name.includes('年會'))) ? 'conference' : 'seminars';
-                const last5 = Math.floor(10000 + Math.random() * 89999).toString();
-                const nowTime = new Date().toISOString().replace('T', ' ').substring(0, 16);
-                const amt = (payCatKey === 'conference') ? 20000 : 10000;
-                emailInboxLogs.unshift({
-                    id: 'mail_sub_' + Date.now(),
-                    time: nowTime,
-                    subject: `[執秘報名回條] ${selectedClubName} 送出《${subEventName}》報名與匯款通知`,
-                    from: `secretary@${selectedClubName}.rotary.tw`,
-                    clubName: selectedClubName,
-                    amount: amt,
-                    last5: last5,
-                    status: 'SUCCESS'
-                });
-                if (!chairPaymentRecords[payCatKey]) chairPaymentRecords[payCatKey] = {};
-                chairPaymentRecords[payCatKey][selectedClubName] = {
-                    status: 'PAID_EMAIL',
-                    amount: amt,
-                    last5: last5,
-                    method: '銀行匯款',
-                    date: new Date().toISOString().slice(0, 10),
-                    note: '執秘送出報名表同時自動發送匯款通知信',
-                    verifiedAt: nowTime,
-                    fromEmail: `secretary@${selectedClubName}.rotary.tw`,
-                    subject: `[執秘報名回條] ${selectedClubName} 送出《${subEventName}》報名與匯款通知`
-                };
-                savePaymentRecords();
-                saveEmailInboxLogs();
-            }
+            // 研討會/年會：送出報名表「不會」自動把該社標記為已繳費。
+            // 繳費狀態一律由主委在「各分區各社繳費狀況即時總表」手動核訖，或貼上真實銀行入帳通知後核對。
 
             saveToStorage();
             showToast(`✅ ${selectedClubName} 成功送出《${subEventName}》報名表！`);
@@ -5835,12 +5836,9 @@
                 // 增加新社
                 targetDiv.clubs.push({ code, name });
 
-                // 初始化社友資料庫預設社長名額
+                // 新社先建立空的社友名冊，由該社執秘自行新增或匯入 Excel
                 if (!clubMemberDatabase[name]) {
-                    const shortName = name.length >= 4 ? name.substring(2, 4) : name;
-                    clubMemberDatabase[name] = [
-                        { id: Date.now(), role: "社長", nickname: "P " + shortName, name: `${shortName}社長`, diet: "MEAT", veganNote: "", handicap: 18 }
-                    ];
+                    clubMemberDatabase[name] = [];
                 }
                 showToast(`✅ 已成功增加扶輪社【${name}】至 ${targetDiv.name}！`);
             }
@@ -6503,10 +6501,12 @@
 
         // ================= 3523 各分區各社繳費狀況初始種子資料 =================
 
-        function initDefaultPaymentRecords(forceReset = false) {
-            if (!chairPaymentRecords['seminars'] || forceReset || Object.keys(chairPaymentRecords['seminars'] || {}).length === 0) {
-                chairPaymentRecords['seminars'] = {};
-                chairPaymentRecords['conference'] = {};
+        // 示範用繳費資料：只有最高管理員按「載入示範資料」才會生成，正式上線時不會自動出現。
+        // 會為每一個研討會/年會子活動各產生一份（key 為「大類id::子活動名稱」）。
+        function loadDemoPaymentRecords() {
+            {
+                const seminarRecords = {};
+                const conferenceRecords = {};
 
                 // 預設常見繳費名單種子（模擬 3523 地區開會真實繳費實況：約 75% 已繳費，25% 待繳催繳）
                 const unpaidClubNames = new Set([
@@ -6529,7 +6529,7 @@
                         dayCounter = (dayCounter % 18) + 1;
 
                         if (isUnpaid) {
-                            chairPaymentRecords['seminars'][club.name] = {
+                            seminarRecords[club.name] = {
                                 status: 'UNPAID',
                                 amount: 0,
                                 method: '待匯款',
@@ -6537,7 +6537,7 @@
                                 date: '',
                                 note: '尚未收到各社匯款水單或 Email'
                             };
-                            chairPaymentRecords['conference'][club.name] = {
+                            conferenceRecords[club.name] = {
                                 status: 'UNPAID',
                                 amount: 0,
                                 method: '待匯款',
@@ -6551,7 +6551,7 @@
                             const amountConf = 20000;
                             const dateStr = `2026-09-${dayStr}`;
 
-                            chairPaymentRecords['seminars'][club.name] = {
+                            seminarRecords[club.name] = {
                                 status: isEmailVerified ? 'PAID_EMAIL' : 'PAID_MANUAL',
                                 amount: amountSeminars,
                                 method: '銀行匯款',
@@ -6563,7 +6563,7 @@
                                 subject: `[銀行入帳通知] ${club.name} 繳納 2026 GMS 研討會報名費 NT$ ${amountSeminars.toLocaleString()}`
                             };
 
-                            chairPaymentRecords['conference'][club.name] = {
+                            conferenceRecords[club.name] = {
                                 status: isEmailVerified ? 'PAID_EMAIL' : 'PAID_MANUAL',
                                 amount: amountConf,
                                 method: '銀行匯款',
@@ -6575,6 +6575,15 @@
                                 subject: `[入帳通知] ${club.name} 2027 地區年會註冊費 NT$ ${amountConf.toLocaleString()}`
                             };
                         }
+                    });
+                });
+
+                // 依子活動分別寫入（研討會類用研討會示範、年會類用年會示範）
+                categoriesData.forEach(c => {
+                    if (!isPaymentTrackingCategory(c.id)) return;
+                    const isConfCat = c.id === 'conference' || (c.name && c.name.includes('年會'));
+                    (c.subEvents || []).forEach(se => {
+                        chairPaymentRecords[`${c.id}::${se}`] = JSON.parse(JSON.stringify(isConfCat ? conferenceRecords : seminarRecords));
                     });
                 });
 
@@ -6627,6 +6636,90 @@
 
                 savePaymentRecords();
             }
+        }
+
+        // 目前子活動的繳費紀錄 key（格式「大類id::子活動名稱」）。每個研討會/年會子活動各自一張繳費表。
+        function getActivePaymentKey() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            if (!cat) return 'seminars';
+            const sub = (cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : '';
+            return `${cat.id}::${sub}`;
+        }
+
+        // ================= 最高管理員：正式上線前資料歸零 / 載入示範資料 =================
+        function adminResetGuard() {
+            if (currentRole !== 'super_admin') {
+                alert('⚠️ 權限限制：只有最高管理員可以執行資料歸零或載入示範資料！');
+                return false;
+            }
+            return true;
+        }
+
+        function refreshAllViewsAfterReset() {
+            if (typeof updateSubEventContext === 'function') updateSubEventContext();
+            if (typeof renderMemberMasterTable === 'function') renderMemberMasterTable();
+            if (typeof renderSelectedMembersTable === 'function') renderSelectedMembersTable();
+            if (typeof updateChairDashboard === 'function') updateChairDashboard();
+            if (typeof renderDivisionPaymentSection === 'function') renderDivisionPaymentSection();
+        }
+
+        // 清空「各分區各社繳費狀況」全部紀錄與對帳信件（所有研討會/年會子活動一起歸零）
+        async function adminClearPaymentData() {
+            if (!adminResetGuard()) return;
+            const recCount = Object.values(chairPaymentRecords || {}).reduce((a, r) => a + Object.keys(r || {}).length, 0);
+            if (!confirm(`⚠️ 確定清空「各分區各社繳費狀況即時總表」的全部紀錄（${recCount} 筆）與對帳信件日誌（${emailInboxLogs.length} 封）？\n\n所有研討會與地區年會的繳費表都會歸零為「0 社已繳」，此動作無法復原。`)) return;
+            chairPaymentRecords = {};
+            emailInboxLogs = [];
+            await savePaymentRecords();
+            await saveEmailInboxLogs();
+            await saveToStorage();
+            refreshAllViewsAfterReset();
+            showToast('🧹 繳費紀錄與對帳信件已全部清空歸零');
+        }
+
+        // 清空所有活動的報名單（社友庫不受影響）
+        async function adminClearRegistrationOrders() {
+            if (!adminResetGuard()) return;
+            const orderCount = Object.values(registrationOrders || {}).reduce((a, arr) => a + (arr || []).length, 0);
+            if (!confirm(`⚠️ 確定清空所有活動的報名單（共 ${orderCount} 筆）？\n\n各社執秘的社友庫不受影響，但所有已送出的報名表、贊助選項、贊助獎與出席名冊都會消失，此動作無法復原。`)) return;
+            if (!confirm('再次確認：真的要刪除「全部活動」的報名單嗎？')) return;
+            registrationOrders = {};
+            currentFormSelectedMembers = [];
+            currentFormPrizeSponsors = [];
+            await saveToStorage();
+            refreshAllViewsAfterReset();
+            showToast('🧹 全部報名單已清空');
+        }
+
+        // 清空全部社友庫（80 社的社友名冊全部刪除）
+        async function adminClearMemberDatabase() {
+            if (!adminResetGuard()) return;
+            const clubs = Object.keys(clubMemberDatabase || {}).filter(k => (clubMemberDatabase[k] || []).length > 0);
+            const memberCount = clubs.reduce((a, k) => a + clubMemberDatabase[k].length, 0);
+            if (!confirm(`⚠️ 確定清空全部社友庫（${clubs.length} 社、共 ${memberCount} 位社友）？\n\n各社執秘之後需重新建立或匯入 Excel 名冊，此動作無法復原。`)) return;
+            const typed = prompt('最後確認：請輸入「清空社友庫」五個字以繼續');
+            if (typed !== '清空社友庫') { showToast('已取消，社友庫未變動'); return; }
+            clubMemberDatabase = {};
+            currentFormSelectedMembers = [];
+            await saveToStorage();
+            refreshAllViewsAfterReset();
+            showToast('🧹 全部社友庫已清空');
+        }
+
+        // 載入示範資料（展示用）：只補空缺，不覆蓋已存在的真實資料
+        async function adminLoadDemoData() {
+            if (!adminResetGuard()) return;
+            if (!confirm('🧪 載入示範資料？\n\n會補上示範社友（臺北市南區、台北逸仙、台北市西南區）、示範報名單（GMS 等），並為所有研討會/年會子活動生成示範繳費狀況與對帳信件。\n已有資料的社或子活動不會被覆蓋。')) return;
+            Object.entries(DEFAULT_MEMBERS_DB).forEach(([club, members]) => {
+                if (!clubMemberDatabase[club] || clubMemberDatabase[club].length === 0) clubMemberDatabase[club] = JSON.parse(JSON.stringify(members));
+            });
+            Object.entries(DEFAULT_ORDERS).forEach(([se, orders]) => {
+                if (!registrationOrders[se] || registrationOrders[se].length === 0) registrationOrders[se] = JSON.parse(JSON.stringify(orders));
+            });
+            loadDemoPaymentRecords();
+            await saveToStorage();
+            refreshAllViewsAfterReset();
+            showToast('🧪 示範資料已載入');
         }
 
         function isPaymentTrackingCategory(catId) {
@@ -6692,7 +6785,7 @@
             const cat = categoriesData.find(c => c.id === currentCatId) || categoriesData[0];
             const isConf = (currentCatId === 'conference' || (cat.name && cat.name.includes('年會')));
             activePaymentCategory = isConf ? 'conference' : 'seminars';
-            const activeCatKey = activePaymentCategory;
+            const activeCatKey = getActivePaymentKey(); // 繳費紀錄依子活動分開存
 
             // 依附圖45指示：左邊不用顯示，依上面所指來顯示 (完全連動上方子活動下拉選單選取之名稱)
             const subEventName = (cat.subEvents && cat.subEvents[currentSubEventIndex]) 
@@ -6884,7 +6977,7 @@
                     const rec = records[club.name] || { status: 'UNPAID', amount: 0, method: '待匯款', last5: '', date: '' };
                     const isPaid = (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT');
                     const attendeesCount = getClubAttendeesCount(club.name);
-                    const standardRequired = isConf ? 20000 : 10000;
+                    const standardRequired = getApportionmentFee();
 
                     let statusBadgeHTML = '';
                     if (rec.status === 'PAID_EMAIL') {
@@ -7052,9 +7145,13 @@
         }
 
         // 取得該社目前報名人數輔助函數
+        // 繳費表的「報名人數」只算目前子活動（繳費紀錄已依子活動分開，人數也要對應同一個活動）
         function getClubAttendeesCount(clubName) {
             let count = 0;
-            Object.keys(registrationOrders).forEach(eventName => {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const currentSub = (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : null;
+            const eventNames = currentSub ? [currentSub] : Object.keys(registrationOrders);
+            eventNames.forEach(eventName => {
                 const orders = registrationOrders[eventName] || [];
                 const found = orders.find(o => o.clubName === clubName);
                 if (found && found.items) count += found.items.length;
@@ -7223,7 +7320,7 @@
         }
 
         function renderMeetingPresentationContent() {
-            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const activeCatKey = getActivePaymentKey();
             const records = chairPaymentRecords[activeCatKey] || {};
 
             let totalClubs = 0;
@@ -7437,7 +7534,7 @@
         function copyUnpaidClubsToClipboard() {
             const cat = categoriesData.find(c => c.id === currentCatId) || categoriesData[0];
             const isConf = (currentCatId === 'conference' || (cat.name && cat.name.includes('年會')));
-            const activeCatKey = isConf ? 'conference' : 'seminars';
+            const activeCatKey = getActivePaymentKey();
             const subEventName = (cat.subEvents && cat.subEvents[currentSubEventIndex]) 
                 ? cat.subEvents[currentSubEventIndex] 
                 : cat.name;
@@ -7489,7 +7586,7 @@
         }
 
         function copyDivisionUnpaidList(divId) {
-            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const activeCatKey = getActivePaymentKey();
             const isConf = (activeCatKey === 'conference');
             const eventTitle = isConf ? '地區年會' : '研討會及講習會';
             const records = chairPaymentRecords[activeCatKey] || {};
@@ -7518,7 +7615,7 @@
         // ================= 📗 匯出開會繳費狀況表 (EXCEL / CSV) =================
 
         function exportDivisionPaymentsExcel() {
-            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const activeCatKey = getActivePaymentKey();
             const isConf = (activeCatKey === 'conference');
             const eventTitle = isConf ? '地區年會' : '研討會及講習會';
             const records = chairPaymentRecords[activeCatKey] || {};
@@ -7544,7 +7641,7 @@
                     const rec = records[club.name] || { status: 'UNPAID', amount: 0, method: '待匯款', last5: '', date: '', note: '' };
                     const isPaid = (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT');
                     const attendeesCount = getClubAttendeesCount(club.name);
-                    const standardRequired = isConf ? 20000 : 10000;
+                    const standardRequired = getApportionmentFee();
 
                     let statusText = "待匯款 / 未繳費";
                     if (rec.status === 'PAID_EMAIL') statusText = "已繳費 (Email自動核對)";
@@ -7595,10 +7692,10 @@
             currentEditingClubName = clubName;
             currentEditingDivId = divId;
 
-            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const activeCatKey = getActivePaymentKey();
             const isConf = (activeCatKey === 'conference');
             const records = chairPaymentRecords[activeCatKey] || {};
-            const rec = records[clubName] || { status: 'UNPAID', amount: isConf ? 20000 : 10000, method: '銀行匯款', last5: '', date: new Date().toISOString().slice(0, 10), note: '' };
+            const rec = records[clubName] || { status: 'UNPAID', amount: getApportionmentFee(), method: '銀行匯款', last5: '', date: new Date().toISOString().slice(0, 10), note: '' };
 
             const div = divisionsData.find(d => d.id === divId);
 
@@ -7608,7 +7705,7 @@
             document.getElementById('editPayDivisionLabel').innerText = div ? div.name : '';
 
             document.getElementById('editPayStatusSelect').value = rec.status || 'UNPAID';
-            document.getElementById('editPayAmountInput').value = rec.amount !== undefined ? rec.amount : (isConf ? 20000 : 10000);
+            document.getElementById('editPayAmountInput').value = rec.amount !== undefined ? rec.amount : (getApportionmentFee());
             document.getElementById('editPayLast5Input').value = rec.last5 || '';
             document.getElementById('editPayMethodSelect').value = rec.method || '銀行匯款';
             document.getElementById('editPayDateInput').value = rec.date || new Date().toISOString().slice(0, 10);
@@ -7624,7 +7721,7 @@
         function handleSaveClubPayment(e) {
             e.preventDefault();
             const clubName = document.getElementById('editPayClubName').value;
-            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const activeCatKey = getActivePaymentKey();
 
             if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
 
@@ -7656,7 +7753,7 @@
         }
 
         function markClubUnpaidQuick(clubName) {
-            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const activeCatKey = getActivePaymentKey();
             if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
             chairPaymentRecords[activeCatKey][clubName] = {
                 status: 'UNPAID',
@@ -7672,7 +7769,7 @@
         }
 
         function markClubPaidQuick(clubName, amount) {
-            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const activeCatKey = getActivePaymentKey();
             if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
             chairPaymentRecords[activeCatKey][clubName] = {
                 status: 'PAID_MANUAL',
@@ -7735,9 +7832,9 @@
         }
 
         function runEmailSyncEngine(email) {
-            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const activeCatKey = getActivePaymentKey();
             const isConf = (activeCatKey === 'conference');
-            const standardAmt = isConf ? 20000 : 10000;
+            const standardAmt = getApportionmentFee();
             if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
 
             // 尋找未繳費之社進行自動抓取模擬
@@ -7858,7 +7955,7 @@
             }
 
             // 解析金額
-            let amount = (activePaymentCategory === 'conference') ? 20000 : 10000;
+            let amount = getApportionmentFee();
             const amountMatch = text.match(/(?:金額|NT\$|新台幣|入帳)[:：\s]*\$?([0-9,]+)\s*(?:元)?/i);
             if (amountMatch) {
                 amount = parseInt(amountMatch[1].replace(/,/g, ''), 10) || amount;
@@ -7873,7 +7970,7 @@
                 last5 = Math.floor(10000 + Math.random() * 89999).toString();
             }
 
-            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const activeCatKey = getActivePaymentKey();
             if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
 
             const dateStr = new Date().toISOString().slice(0, 10);
@@ -7914,7 +8011,7 @@
             const amount = parseFloat(document.getElementById('simQuickAmount').value) || 10000;
             const last5 = document.getElementById('simQuickLast5').value.trim() || '88888';
 
-            const activeCatKey = (activePaymentCategory === 'conference') ? 'conference' : 'seminars';
+            const activeCatKey = getActivePaymentKey();
             if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
 
             const dateStr = new Date().toISOString().slice(0, 10);

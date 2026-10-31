@@ -97,6 +97,9 @@ CREATE POLICY "Allow anon all operations" ON public.app_storage
 
 - 整個狀態打包成**一個 JSON**，以 key `rotary_3523_spa_data_v3` 存進 Supabase 資料表 `app_storage`（欄位 `key`、`value` jsonb），用 `upsert` 覆寫。
 - 另外三個獨立 key：`rotary_3523_event_emails_v1`、`rotary_3523_payment_records_v1`、`rotary_3523_email_inbox_logs_v1`，各有自己的 load/save 函式。
+- `chairPaymentRecords`（繳費紀錄）的 key 是 **`大類id::子活動名稱`**（由 `getActivePaymentKey()` 產生），每個研討會/年會子活動各自一張繳費表；舊的 `seminars` / `conference` 兩桶已不再讀取。
+- **示範資料不會自動生成**：`loadDemoPaymentRecords()`、`DEFAULT_MEMBERS_DB`、`DEFAULT_ORDERS` 只有最高管理員在「正式上線前資料歸零」卡片按「載入示範資料」才會寫入；`selectClub` 與新增社都只建立空名冊。清空功能 `adminClearPaymentData` / `adminClearRegistrationOrders` / `adminClearMemberDatabase` 皆限 `super_admin`，清空後要同時寫回主 key 與獨立 key。
+- 執秘送出研討會/年會報名表**不會**自動標記已繳費；繳費狀態只由主委在繳費表手動核訖或貼上銀行通知核對。繳費表的應繳金額一律用 `getApportionmentFee()`（各社應繳金額），不再寫死 10000/20000。
 - 整包覆寫代表「最後寫入者獲勝」，沒有合併邏輯。
 - 所有會寫入的操作必須 `await saveToStorage()` **之後**才關閉 modal 或重新渲染，否則使用者快速重整會遺失資料（commit 61ef719 修過這個問題）。
 - `loadFromStorage` 內有資料遷移邏輯（補齊新欄位預設值、強制加入「地區年會」大類等），新增狀態欄位時要在這裡補預設值，否則舊資料載入會 `undefined`。
