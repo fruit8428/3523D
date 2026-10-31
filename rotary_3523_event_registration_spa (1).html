@@ -6252,7 +6252,7 @@
                 let baseLast5 = 88200;
                 let dayCounter = 2;
 
-                divisionsData.forEach(div => {
+                getPaymentDivisions().forEach(div => {
                     div.clubs.forEach((club, cIdx) => {
                         const isUnpaid = unpaidClubNames.has(club.name);
                         baseLast5 += (cIdx * 7 + 13);
@@ -6414,6 +6414,17 @@
             showToast('🧪 示範資料已載入');
         }
 
+        // 「地區辦公室」（第 14 分區「地區團隊」）只為了能被指派為活動主委而存在，永遠不需繳費，
+        // 所以所有繳費統計、繳費表、催繳名單、投影模式與 Excel 匯出都要排除它。
+        function isDistrictOfficeDivision(div) {
+            if (!div) return false;
+            const clubs = div.clubs || [];
+            return div.name === '地區團隊' || (clubs.length > 0 && clubs.every(c => c.name === '地區辦公室'));
+        }
+        function getPaymentDivisions() {
+            return divisionsData.filter(d => !isDistrictOfficeDivision(d));
+        }
+
         function isPaymentTrackingCategory(catId) {
             const cat = categoriesData.find(c => c.id === catId);
             if (!cat) return false;
@@ -6496,7 +6507,7 @@
             const divSelect = document.getElementById('payDivisionFilterSelect');
             if (divSelect && divSelect.options.length <= 1) {
                 divSelect.innerHTML = `<option value="ALL">📍 全部 13 分區</option>` + 
-                    divisionsData.map(d => `<option value="${d.id}">第${d.id}分區 (${d.name})</option>`).join('');
+                    getPaymentDivisions().map(d => `<option value="${d.id}">第${d.id}分區 (${d.name})</option>`).join('');
             }
             if (divSelect) divSelect.value = paymentFilterDivision;
 
@@ -6513,7 +6524,7 @@
             let totalCollectedAmount = 0;
             let emailVerifiedClubsCount = 0;
 
-            divisionsData.forEach(div => {
+            getPaymentDivisions().forEach(div => {
                 div.clubs.forEach(club => {
                     totalClubsCount++;
                     const rec = records[club.name] || { status: 'UNPAID', amount: 0 };
@@ -6603,7 +6614,7 @@
 
             let hasAnyMatchingClub = false;
 
-            divisionsData.forEach(div => {
+            getPaymentDivisions().forEach(div => {
                 if (paymentFilterDivision !== 'ALL' && String(div.id) !== String(paymentFilterDivision)) {
                     return;
                 }
@@ -6768,7 +6779,7 @@
         function renderPaymentCardsViewHTML(records, isConf) {
             let html = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-3">`;
 
-            divisionsData.forEach(div => {
+            getPaymentDivisions().forEach(div => {
                 if (paymentFilterDivision !== 'ALL' && String(div.id) !== String(paymentFilterDivision)) {
                     return;
                 }
@@ -7018,7 +7029,7 @@
             let unpaidClubs = 0;
             let totalAmt = 0;
 
-            divisionsData.forEach(d => {
+            getPaymentDivisions().forEach(d => {
                 d.clubs.forEach(c => {
                     totalClubs++;
                     const rec = records[c.name] || { status: 'UNPAID' };
@@ -7046,7 +7057,7 @@
             // 生成快速跳轉 (1..13分區 + 在「第13分區」後面加「全部」按鈕)
             const navContainer = document.getElementById('presDivisionNavChips');
             if (navContainer) {
-                let chipsHtml = divisionsData.map(d => {
+                let chipsHtml = getPaymentDivisions().map(d => {
                     const isActive = (presActiveDivision === d.id);
                     return `
                         <button type="button" onclick="switchPresDivision(${d.id})" class="px-3 py-1 rounded-md text-xs whitespace-nowrap transition flex items-center gap-1 ${
@@ -7080,7 +7091,7 @@
 
             if (presActiveDivision !== 'all') {
                 // ================= 單一分區獨立一頁 (每一個分區獨立一頁) =================
-                const div = divisionsData.find(d => d.id === presActiveDivision) || divisionsData[0];
+                const div = getPaymentDivisions().find(d => d.id === presActiveDivision) || getPaymentDivisions()[0];
                 let divPaid = 0;
                 let divTotalAmt = 0;
                 div.clubs.forEach(c => {
@@ -7172,7 +7183,7 @@
                         </div>
                 `;
 
-                divisionsData.forEach(div => {
+                getPaymentDivisions().forEach(div => {
                     let divPaid = 0;
                     let divTotalAmt = 0;
                     div.clubs.forEach(c => {
@@ -7235,7 +7246,7 @@
             let totalUnpaidCount = 0;
             let totalClubsCount = 0;
 
-            divisionsData.forEach(div => {
+            getPaymentDivisions().forEach(div => {
                 const missingInDiv = [];
                 div.clubs.forEach(c => {
                     totalClubsCount++;
@@ -7324,7 +7335,7 @@
                 "實收金額 (NT$)", "繳費狀態", "繳費方式", "匯款帳號末五碼", "入帳/核帳日期", "Email自動核帳", "備註說明"
             ]);
 
-            divisionsData.forEach(div => {
+            getPaymentDivisions().forEach(div => {
                 div.clubs.forEach(club => {
                     const rec = records[club.name] || { status: 'UNPAID', amount: 0, method: '待匯款', last5: '', date: '', note: '' };
                     const isPaid = (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT');
