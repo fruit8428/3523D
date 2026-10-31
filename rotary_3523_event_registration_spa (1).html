@@ -711,8 +711,8 @@
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <button onclick="adminClearPaymentData()" class="text-left p-3 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 transition active:scale-[0.99]">
-                        <div class="font-bold text-sm text-rose-700">🧹 清空繳費紀錄與對帳信件</div>
-                        <div class="text-[11px] text-slate-600 mt-1">所有研討會、地區年會的「各分區各社繳費狀況即時總表」歸零為 0 社已繳，並清除 Email 對帳日誌。</div>
+                        <div class="font-bold text-sm text-rose-700">🧹 清空繳費紀錄</div>
+                        <div class="text-[11px] text-slate-600 mt-1">所有研討會、地區年會的「各分區各社繳費狀況即時總表」歸零為 0 社已繳。</div>
                     </button>
                     <button onclick="adminClearRegistrationOrders()" class="text-left p-3 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 transition active:scale-[0.99]">
                         <div class="font-bold text-sm text-rose-700">🧹 清空全部報名單</div>
@@ -832,78 +832,6 @@
                     </div>
                 </div>
 
-                <!-- Email Automation & Remittance Sync Settings (依附圖42要求新增) -->
-                <div class="mt-4 pt-4 border-t border-slate-200 bg-gradient-to-r from-blue-50/80 via-indigo-50/60 to-slate-50 rounded-xl p-3.5 sm:p-4 border border-blue-200/90 shadow-sm">
-                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-2.5 mb-3">
-                        <div class="flex items-start sm:items-center gap-2.5">
-                            <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
-                                📧
-                            </div>
-                            <div>
-                                <h4 class="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2 flex-wrap">
-                                    活動專屬對帳信箱與匯款 Email 主動抓取設定
-                                    <span id="emailSyncStatusBadge" class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                        已啟用自動對帳
-                                    </span>
-                                </h4>
-                                <p class="text-[11px] text-slate-500 mt-0.5">
-                                    每個活動的 email 可能會不同，主委自行填入後將<b>永久保存（即使換屆或新年度重置，亦不改變）</b>。系統將主動抓取各社匯款 email，自動核對並提供即時繳費狀況。
-                                </p>
-                            </div>
-                        </div>
-                        <div class="flex flex-wrap items-center gap-1.5">
-                            <button type="button" id="btnTriggerEmailSync" onclick="triggerEmailSync()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-lg text-xs font-bold shadow transition flex items-center gap-1.5 whitespace-nowrap">
-                                <span id="syncEmailSpinner" class="hidden animate-spin">🔄</span>
-                                <span id="syncEmailIcon">⚡</span>
-                                <span>立即連線抓取各社匯款 Email</span>
-                            </button>
-                            <button type="button" onclick="openEmailSyncLogsModal()" class="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold shadow-sm transition whitespace-nowrap flex items-center gap-1">
-                                <span>📬 信件日誌</span>
-                                <span id="emailFetchedCountBadge" class="px-1.5 py-0.2 text-[10px] bg-indigo-100 text-indigo-700 font-bold rounded-full">0</span>
-                            </button>
-                            <button type="button" onclick="openSimulateRemittanceModal()" class="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-xs font-semibold shadow-sm transition whitespace-nowrap" title="手動貼上銀行通知或模擬匯款信">
-                                ✍️ 貼上/模擬匯款信
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- 2 Input Fields: email address & 密碼 -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <div class="bg-white p-2.5 rounded-lg border border-slate-200">
-                            <label class="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
-                                <span class="flex items-center gap-1">✉️ 活動收款信箱 (email address)：</span>
-                                <span class="text-[10px] text-blue-600 font-semibold truncate max-w-[130px]" id="cfgEmailActivityLabel">當前活動專屬</span>
-                            </label>
-                            <input type="email" id="cfgEventEmail" onchange="saveCurrentEventEmailConfig()" placeholder="例如: gms3523@gmail.com 或 conf2027@rotary3523.org" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:ring-1 focus:ring-blue-500">
-                            <span class="text-[10px] text-slate-400 mt-1 block">主委自行填入，不同活動可設定不同信箱</span>
-                        </div>
-
-                        <div class="bg-white p-2.5 rounded-lg border border-slate-200">
-                            <label class="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
-                                <span class="flex items-center gap-1">🔑 郵件收信密碼 (密碼)：</span>
-                                <button type="button" onclick="togglePasswordVisibility('cfgEventEmailPassword')" class="text-[10px] text-blue-600 hover:underline">👁️ 顯示/隱藏</button>
-                            </label>
-                            <input type="password" id="cfgEventEmailPassword" onchange="saveCurrentEventEmailConfig()" placeholder="請輸入收信密碼 (如 Google 16位應用程式密碼)" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-medium text-slate-800 focus:bg-white focus:ring-1 focus:ring-blue-500">
-                            <span class="text-[10px] text-slate-400 mt-1 block">支援 Gmail App Password / IMAP 憑證</span>
-                        </div>
-
-                        <div class="flex flex-col justify-between gap-1.5 bg-white p-2.5 rounded-lg border border-slate-200">
-                            <span class="text-[11px] font-bold text-slate-700">持久儲存與套用規則</span>
-                            <div class="flex items-center gap-1.5">
-                                <button type="button" onclick="saveCurrentEventEmailConfig(true)" class="flex-1 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white py-1.5 px-2 text-xs font-bold rounded transition shadow text-center">
-                                    💾 永久保存此信箱
-                                </button>
-                                <button type="button" onclick="applyEmailToAllSubEvents()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 py-1.5 px-2 text-xs font-semibold rounded transition text-center whitespace-nowrap" title="將此 Email/密碼 套用到本主選單內所有子活動">
-                                    📋 套用至全項
-                                </button>
-                            </div>
-                            <span class="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
-                                🔒 永久固化保存：換屆銜接重置時絕不清除
-                            </span>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <!-- Real-time War Room Stats KPI Cards -->
@@ -946,7 +874,7 @@
                             </span>
                         </h3>
                         <p class="text-xs text-slate-500 mt-0.5">
-                            依全區 13 分區與 80 家扶輪社清楚編排，整合 Email 主動對帳，開會時一秒展示各社繳費與催繳進度。
+                            依全區 13 分區與 80 家扶輪社清楚編排，主委手動核訖各社匯款，開會時一秒展示各社繳費與催繳進度。
                         </p>
                     </div>
 
@@ -961,7 +889,7 @@
                 </div>
 
                 <!-- Meeting Live KPI Scoreboard Banner -->
-                <div class="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3">
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
                     <div class="bg-gradient-to-br from-indigo-50 to-blue-50/50 p-3 rounded-xl border border-indigo-100">
                         <span class="text-[11px] font-bold text-slate-600 block">全區總繳費社數</span>
                         <div class="text-xl sm:text-2xl font-black text-indigo-700 mt-0.5" id="kpiPayClubsCount">0 / 80 社</div>
@@ -980,12 +908,6 @@
                         <span class="text-[11px] font-bold text-emerald-700 block">實收總繳費金額</span>
                         <div class="text-xl sm:text-2xl font-black text-emerald-700 mt-0.5" id="kpiPayTotalAmount">NT$ 0</div>
                         <span class="text-[10px] text-emerald-600 font-semibold">依各社實際入帳核計</span>
-                    </div>
-
-                    <div class="bg-gradient-to-br from-sky-50 to-blue-50/50 p-3 rounded-xl border border-sky-100">
-                        <span class="text-[11px] font-bold text-sky-700 block">Email 智慧自動核對</span>
-                        <div class="text-xl sm:text-2xl font-black text-sky-700 mt-0.5" id="kpiPayEmailVerifiedCount">0 社</div>
-                        <span class="text-[10px] text-sky-600 font-semibold">系統主動抓取信件核帳</span>
                     </div>
 
                     <div class="col-span-2 lg:col-span-1 bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-between">
@@ -1824,7 +1746,6 @@
                 <div>
                     <label class="block font-semibold text-slate-700 mb-1">繳費狀態：</label>
                     <select id="editPayStatusSelect" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500">
-                        <option value="PAID_EMAIL">✅ 已繳費（Email 自動核對）</option>
                         <option value="PAID_MANUAL">✅ 已繳費（人工現場 / 支票 / 匯款核帳）</option>
                         <option value="UNPAID">⏳ 待匯款 / 未繳費</option>
                         <option value="EXEMPT">🆓 免收 / 贊助款折抵</option>
@@ -1873,113 +1794,6 @@
                     </div>
                 </div>
             </form>
-        </div>
-    </div>
-
-    <!-- ================= MODAL 11: SIMULATE & PASTE REMITTANCE EMAIL (貼上或模擬匯款信件) ================= -->
-    <div id="simulateRemittanceModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
-        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-5 sm:p-6 text-slate-800">
-            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-3">
-                <div class="flex items-center gap-2 text-emerald-700">
-                    <span class="text-xl">✍️</span>
-                    <div>
-                        <h3 class="font-bold text-slate-900 text-base">貼上或模擬各社匯款通知信</h3>
-                        <p class="text-[11px] text-slate-500">智慧辨識信件內之扶輪社名、匯款金額與帳號末五碼並自動核帳</p>
-                    </div>
-                </div>
-                <button onclick="closeSimulateRemittanceModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1 leading-none">&times;</button>
-            </div>
-
-            <!-- Tab Buttons -->
-            <div class="flex border-b border-slate-200 mb-3">
-                <button type="button" id="tabBtnPasteMail" onclick="switchSimulateTab('paste')" class="py-2 px-3 text-xs font-bold border-b-2 border-indigo-600 text-indigo-700">
-                    📋 直接貼上銀行/執秘匯款信文本
-                </button>
-                <button type="button" id="tabBtnQuickSim" onclick="switchSimulateTab('quick')" class="py-2 px-3 text-xs font-semibold text-slate-500 hover:text-slate-800">
-                    ⚡ 快速選擇扶輪社模擬匯款
-                </button>
-            </div>
-
-            <!-- Tab 1: Paste Email Content -->
-            <div id="simulateTabPaste" class="space-y-3 text-xs">
-                <p class="text-slate-600">
-                    請直接複製任何銀行轉帳通知信、網路銀行入帳通知或執秘寄出的確認信（例如包含「臺北市南區扶輪社」、「匯款金額 10000」、「末五碼 88219」），系統將自動智能提取並核帳：
-                </p>
-                <textarea id="pasteEmailContent" rows="5" placeholder="例如:&#10;【中國信託銀行入帳通知】&#10;受款帳戶: 國際扶輪3523地區&#10;匯款人: 台北逸仙扶輪社&#10;金額: NT$ 10,000&#10;轉出帳號末五碼: 39481&#10;時間: 2026-09-22 10:15:30&#10;備註: 2026-27 GMS 研討會報名費" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 font-mono text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500"></textarea>
-                <div class="flex justify-between items-center pt-2">
-                    <button type="button" onclick="fillSampleRemittanceEmail()" class="text-indigo-600 hover:underline text-[11px] font-semibold">
-                        💡 填入範例銀行匯款通知信
-                    </button>
-                    <button type="button" onclick="handleParsePastedEmail()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow active:scale-95 transition flex items-center gap-1.5">
-                        <span>⚡ 智能解析並自動核對</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Tab 2: Quick Simulate for Any Club -->
-            <div id="simulateTabQuick" class="space-y-3 text-xs hidden">
-                <div>
-                    <label class="block font-semibold text-slate-700 mb-1">選擇尚未繳費的扶輪社：</label>
-                    <select id="simQuickClubSelect" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500">
-                        <!-- Populated with clubs -->
-                    </select>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block font-semibold text-slate-700 mb-1">匯款金額 (NT$)：</label>
-                        <input type="number" id="simQuickAmount" value="10000" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800">
-                    </div>
-                    <div>
-                        <label class="block font-semibold text-slate-700 mb-1">帳號末五碼：</label>
-                        <input type="text" id="simQuickLast5" value="67890" maxlength="10" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-bold text-slate-800">
-                    </div>
-                </div>
-                <div class="pt-2 flex justify-end">
-                    <button type="button" onclick="handleQuickSimulateSubmit()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow active:scale-95 transition flex items-center gap-1.5">
-                        <span>📩 發送模擬匯款信並核對</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ================= MODAL 12: EMAIL INBOX LOGS (郵件抓取記錄與對帳日誌) ================= -->
-    <div id="emailLogsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
-        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl p-5 sm:p-6 text-slate-800 flex flex-col max-h-[85vh]">
-            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-3">
-                <div class="flex items-center gap-2 text-indigo-700">
-                    <span class="text-xl">📬</span>
-                    <div>
-                        <h3 class="font-bold text-slate-900 text-base">匯款通知信件抓取日誌</h3>
-                        <p class="text-[11px] text-slate-500">系統主動連線專屬信箱所抓取之各社匯款信件與解析成果</p>
-                    </div>
-                </div>
-                <button onclick="closeEmailSyncLogsModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1 leading-none">&times;</button>
-            </div>
-
-            <div class="flex-1 overflow-y-auto touch-scroll border border-slate-200 rounded-xl">
-                <table class="w-full text-left text-xs min-w-[500px]">
-                    <thead class="bg-slate-100 text-slate-700 font-bold sticky top-0">
-                        <tr>
-                            <th class="p-2.5">抓取時間</th>
-                            <th class="p-2.5">信件主旨 / 寄件者</th>
-                            <th class="p-2.5">核對扶輪社</th>
-                            <th class="p-2.5">金額 / 末五碼</th>
-                            <th class="p-2.5 text-center">狀態</th>
-                        </tr>
-                    </thead>
-                    <tbody id="emailLogsTableBody" class="divide-y divide-slate-100">
-                        <!-- Populated by JS -->
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
-                <span>共抓取 <span id="emailLogsTotalCount" class="font-bold text-indigo-600">0</span> 封信件</span>
-                <button type="button" onclick="closeEmailSyncLogsModal()" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold">
-                    關閉
-                </button>
-            </div>
         </div>
     </div>
 
@@ -2805,7 +2619,6 @@
             initCharts();
             initQRCode();
             updateRolePermissionsUI();
-            updateChairEmailUI();
             renderDivisionPaymentSection();
             const urlParams = new URLSearchParams(window.location.search);
             const roleParam = urlParams.get('role');
@@ -2839,7 +2652,6 @@
 
             if (role === 'chair') {
                 updateChairDashboard();
-                updateChairEmailUI();
                 renderDivisionPaymentSection();
             }
             if (role === 'arch') {
@@ -2993,7 +2805,6 @@
 
             updateSubEventContext();
             updateRolePermissionsUI();
-            updateChairEmailUI();
             if (isPaymentTrackingCategory(currentCatId)) {
                 activePaymentCategory = (currentCatId === 'conference' || (cat.name && cat.name.includes('年會'))) ? 'conference' : 'seminars';
             }
@@ -4753,7 +4564,6 @@
 
             // Update Chart.js Graphics
             updateChartsData(orders, meatCount, veganCount);
-            updateChairEmailUI();
             renderDivisionPaymentSection();
         }
 
@@ -5572,7 +5382,6 @@
                     populateClubSelector();
                     loadCategoryView();
                     renderDivisionDirectory();
-                    updateChairEmailUI();
                     renderDivisionPaymentSection();
                     showToast("✅ 跨裝置備份資料已成功還原！");
                     closeMobileSyncModal();
@@ -6422,83 +6231,6 @@
             }
         }
 
-        function updateChairEmailUI() {
-            const cat = categoriesData.find(c => c.id === currentCatId);
-            const eventKey = getEventEmailKey();
-            const config = chairEventEmails[eventKey] || chairEventEmails[currentCatId] || { email: '', password: '' };
-            
-            const emailInput = document.getElementById('cfgEventEmail');
-            const pwdInput = document.getElementById('cfgEventEmailPassword');
-            const labelEl = document.getElementById('cfgEmailActivityLabel');
-            
-            if (emailInput) emailInput.value = config.email || '';
-            if (pwdInput) pwdInput.value = config.password || '';
-            if (labelEl) {
-                const subName = (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : (cat ? cat.name : '');
-                labelEl.innerText = `【${subName}】專用信箱`;
-            }
-            updateEmailSyncStatusBadge();
-        }
-
-        function saveCurrentEventEmailConfig(showToastNotice = false) {
-            const eventKey = getEventEmailKey();
-            const emailInput = document.getElementById('cfgEventEmail');
-            const pwdInput = document.getElementById('cfgEventEmailPassword');
-            const email = emailInput ? emailInput.value.trim() : '';
-            const password = pwdInput ? pwdInput.value : '';
-
-            chairEventEmails[eventKey] = { email, password };
-            if (currentCatId) {
-                chairEventEmails[currentCatId] = { email, password };
-            }
-            saveChairEventEmails();
-            updateEmailSyncStatusBadge();
-            if (showToastNotice) {
-                showToast('💾 本活動專屬 Email 及密碼已永久保存！新年度重置時亦不清除。');
-            }
-        }
-
-        function applyEmailToAllSubEvents() {
-            const email = document.getElementById('cfgEventEmail')?.value.trim();
-            const password = document.getElementById('cfgEventEmailPassword')?.value;
-            if (!email) {
-                alert('⚠️ 請先在輸入框填寫收款/對帳信箱！');
-                return;
-            }
-            const cat = categoriesData.find(c => c.id === currentCatId);
-            if (!cat) return;
-            chairEventEmails[cat.id] = { email, password };
-            if (cat.subEvents) {
-                cat.subEvents.forEach((_, idx) => {
-                    chairEventEmails[`${cat.id}_sub_${idx}`] = { email, password };
-                });
-            }
-            saveChairEventEmails();
-            showToast(`📋 已將對帳信箱【${email}】成功套用至《${cat.name}》所有子活動！`);
-            updateEmailSyncStatusBadge();
-        }
-
-        function togglePasswordVisibility(inputId) {
-            const input = document.getElementById(inputId);
-            if (!input) return;
-            input.type = (input.type === 'password') ? 'text' : 'password';
-        }
-
-        function updateEmailSyncStatusBadge() {
-            const badge = document.getElementById('emailSyncStatusBadge');
-            const email = document.getElementById('cfgEventEmail')?.value.trim();
-            if (!badge) return;
-            if (email) {
-                badge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1';
-                badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>已啟用自動對帳';
-            } else {
-                badge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center gap-1';
-                badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>等待設定信箱';
-            }
-            const countBadge = document.getElementById('emailFetchedCountBadge');
-            if (countBadge) countBadge.innerText = emailInboxLogs.length;
-        }
-
         // ================= 3523 各分區各社繳費狀況初始種子資料 =================
 
         // 示範用繳費資料：只有最高管理員按「載入示範資料」才會生成，正式上線時不會自動出現。
@@ -6546,7 +6278,7 @@
                                 note: '尚未繳納年會註冊費'
                             };
                         } else {
-                            const isEmailVerified = (cIdx % 3 !== 0);
+                            const isEmailVerified = false; // 已移除 Email 自動核對功能，示範資料一律為手動核訖
                             const amountSeminars = 10000;
                             const amountConf = 20000;
                             const dateStr = `2026-09-${dayStr}`;
@@ -6587,52 +6319,6 @@
                     });
                 });
 
-                // 初始郵件日誌種子
-                if (emailInboxLogs.length === 0) {
-                    emailInboxLogs = [
-                        {
-                            id: "mail_init_1",
-                            time: "2026-09-02 10:20",
-                            subject: "[中國信託商業銀行] 入帳通知：臺北市南區扶輪社 匯入款項 NT$ 10,000",
-                            from: "notice@ctbcbank.com (中國信託)",
-                            clubName: "臺北市南區扶輪社",
-                            amount: 10000,
-                            last5: "88219",
-                            status: "SUCCESS"
-                        },
-                        {
-                            id: "mail_init_2",
-                            time: "2026-09-05 14:15",
-                            subject: "[匯款通知] 台北逸天扶輪社-2026 GMS研討會報名費已匯款",
-                            from: "sec.yitian@rotary3523.org",
-                            clubName: "台北逸天扶輪社",
-                            amount: 10000,
-                            last5: "76203",
-                            status: "SUCCESS"
-                        },
-                        {
-                            id: "mail_init_3",
-                            time: "2026-09-08 09:30",
-                            subject: "[台灣銀行入帳通知] 台北逸澤扶輪社 轉入 NT$10,000 (末5碼: 39481)",
-                            from: "service@bot.com.tw",
-                            clubName: "台北逸澤扶輪社",
-                            amount: 10000,
-                            last5: "39481",
-                            status: "SUCCESS"
-                        },
-                        {
-                            id: "mail_init_4",
-                            time: "2026-09-12 16:40",
-                            subject: "[國泰世華銀行] 跨行轉帳入帳通知: 台北蘭亭鐵馬扶輪社 金額 10,000",
-                            from: "ebank@cathaybk.com.tw",
-                            clubName: "台北蘭亭鐵馬扶輪社",
-                            amount: 10000,
-                            last5: "19834",
-                            status: "SUCCESS"
-                        }
-                    ];
-                    saveEmailInboxLogs();
-                }
 
                 savePaymentRecords();
             }
@@ -6667,14 +6353,14 @@
         async function adminClearPaymentData() {
             if (!adminResetGuard()) return;
             const recCount = Object.values(chairPaymentRecords || {}).reduce((a, r) => a + Object.keys(r || {}).length, 0);
-            if (!confirm(`⚠️ 確定清空「各分區各社繳費狀況即時總表」的全部紀錄（${recCount} 筆）與對帳信件日誌（${emailInboxLogs.length} 封）？\n\n所有研討會與地區年會的繳費表都會歸零為「0 社已繳」，此動作無法復原。`)) return;
+            if (!confirm(`⚠️ 確定清空「各分區各社繳費狀況即時總表」的全部紀錄（${recCount} 筆）？\n\n所有研討會與地區年會的繳費表都會歸零為「0 社已繳」，此動作無法復原。`)) return;
             chairPaymentRecords = {};
             emailInboxLogs = [];
             await savePaymentRecords();
             await saveEmailInboxLogs();
             await saveToStorage();
             refreshAllViewsAfterReset();
-            showToast('🧹 繳費紀錄與對帳信件已全部清空歸零');
+            showToast('🧹 繳費紀錄已全部清空歸零');
         }
 
         // 清空所有活動的報名單（社友庫不受影響）
@@ -6709,7 +6395,7 @@
         // 載入示範資料（展示用）：只補空缺，不覆蓋已存在的真實資料
         async function adminLoadDemoData() {
             if (!adminResetGuard()) return;
-            if (!confirm('🧪 載入示範資料？\n\n會補上示範社友（臺北市南區、台北逸仙、台北市西南區）、示範報名單（GMS 等），並為所有研討會/年會子活動生成示範繳費狀況與對帳信件。\n已有資料的社或子活動不會被覆蓋。')) return;
+            if (!confirm('🧪 載入示範資料？\n\n會補上示範社友（臺北市南區、台北逸仙、台北市西南區）、示範報名單（GMS 等），並為所有研討會/年會子活動生成示範繳費狀況。\n已有資料的社或子活動不會被覆蓋。')) return;
             Object.entries(DEFAULT_MEMBERS_DB).forEach(([club, members]) => {
                 if (!clubMemberDatabase[club] || clubMemberDatabase[club].length === 0) clubMemberDatabase[club] = JSON.parse(JSON.stringify(members));
             });
@@ -6844,14 +6530,12 @@
             const kpiUnpaid = document.getElementById('kpiPayUnpaidCount');
             const kpiUnpaidRatio = document.getElementById('kpiPayUnpaidRatio');
             const kpiTotalAmt = document.getElementById('kpiPayTotalAmount');
-            const kpiEmailVer = document.getElementById('kpiPayEmailVerifiedCount');
 
             if (kpiClubs) kpiClubs.innerText = `${paidClubsCount} / ${totalClubsCount} 社 (${paidRatio}%)`;
             if (kpiBar) kpiBar.style.width = `${paidRatio}%`;
             if (kpiUnpaid) kpiUnpaid.innerText = `${unpaidClubsCount} 社`;
             if (kpiUnpaidRatio) kpiUnpaidRatio.innerText = `未繳率 ${(100 - parseFloat(paidRatio)).toFixed(1)}%`;
             if (kpiTotalAmt) kpiTotalAmt.innerText = `NT$ ${totalCollectedAmount.toLocaleString()}`;
-            if (kpiEmailVer) kpiEmailVer.innerText = `${emailVerifiedClubsCount} 社`;
 
             // 更新篩選器徽章
             const bAll = document.getElementById('payCountBadgeAll');
@@ -7561,7 +7245,6 @@
                 }
             });
 
-            const emailConfig = chairEventEmails[activeCatKey] || chairEventEmails['seminars'] || { email: 'gms3523@gmail.com' };
             const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
 
             const lineMessage = [
@@ -7573,8 +7256,7 @@
                 `【尚未繳費扶輪社明細 (依分區排序)】`,
                 unpaidListByDiv.join('\n'),
                 ``,
-                `敬請尚未繳費之扶輪社社長與執秘儘速辦理匯款，並將帳號末五碼或匯款憑證回傳至大會專屬對帳信箱：`,
-                `📧 ${emailConfig.email || 'gms3523@gmail.com'}`,
+                `敬請尚未繳費之扶輪社社長與執秘儘速辦理匯款，並將匯款帳號末五碼或匯款憑證回報活動主委。`,
                 `感謝各位扶輪領導人與執秘對地區活動的全力支持！`
             ].join('\n');
 
@@ -7587,7 +7269,7 @@
 
         function copyDivisionUnpaidList(divId) {
             const activeCatKey = getActivePaymentKey();
-            const isConf = (activeCatKey === 'conference');
+            const isConf = (activeCatKey.startsWith('conference'));
             const eventTitle = isConf ? '地區年會' : '研討會及講習會';
             const records = chairPaymentRecords[activeCatKey] || {};
             const div = divisionsData.find(d => d.id === divId);
@@ -7616,7 +7298,7 @@
 
         function exportDivisionPaymentsExcel() {
             const activeCatKey = getActivePaymentKey();
-            const isConf = (activeCatKey === 'conference');
+            const isConf = (activeCatKey.startsWith('conference'));
             const eventTitle = isConf ? '地區年會' : '研討會及講習會';
             const records = chairPaymentRecords[activeCatKey] || {};
 
@@ -7693,7 +7375,7 @@
             currentEditingDivId = divId;
 
             const activeCatKey = getActivePaymentKey();
-            const isConf = (activeCatKey === 'conference');
+            const isConf = (activeCatKey.startsWith('conference'));
             const records = chairPaymentRecords[activeCatKey] || {};
             const rec = records[clubName] || { status: 'UNPAID', amount: getApportionmentFee(), method: '銀行匯款', last5: '', date: new Date().toISOString().slice(0, 10), note: '' };
 
@@ -7790,303 +7472,6 @@
                 closeEditPaymentModal();
             }
         }
-
-        // ================= ⚡ EMAIL 匯款主動抓取引擎 (AUTO-SYNC ENGINE) =================
-
-        function triggerEmailSync() {
-            const emailInput = document.getElementById('cfgEventEmail');
-            const email = emailInput ? emailInput.value.trim() : '';
-
-            if (!email) {
-                alert('⚠️ 請先填入活動收款/對帳信箱 (email address)！');
-                emailInput.focus();
-                return;
-            }
-
-            const btn = document.getElementById('btnTriggerEmailSync');
-            const spinner = document.getElementById('syncEmailSpinner');
-            const icon = document.getElementById('syncEmailIcon');
-
-            if (spinner) spinner.classList.remove('hidden');
-            if (icon) icon.classList.add('hidden');
-            if (btn) btn.classList.add('opacity-75', 'pointer-events-none');
-
-            showToast(`🔄 正在連線郵件伺服器 [${email}] 抓取各社匯款信件...`);
-
-            setTimeout(() => {
-                const syncedCount = runEmailSyncEngine(email);
-
-                if (spinner) spinner.classList.add('hidden');
-                if (icon) icon.classList.remove('hidden');
-                if (btn) btn.classList.remove('opacity-75', 'pointer-events-none');
-
-                updateEmailSyncStatusBadge();
-                renderDivisionPaymentSection();
-
-                if (syncedCount > 0) {
-                    showToast(`🎉 郵件自動對帳完成！抓取到 ${syncedCount} 封匯款信件，已自動核對扶輪社繳費狀態！`);
-                } else {
-                    showToast(`✅ 信箱連線檢查完成！所有各社匯款通知信件皆已核帳完畢。`);
-                }
-            }, 800);
-        }
-
-        function runEmailSyncEngine(email) {
-            const activeCatKey = getActivePaymentKey();
-            const isConf = (activeCatKey === 'conference');
-            const standardAmt = getApportionmentFee();
-            if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
-
-            // 尋找未繳費之社進行自動抓取模擬
-            const unpaidClubs = [];
-            divisionsData.forEach(d => {
-                d.clubs.forEach(c => {
-                    const r = chairPaymentRecords[activeCatKey][c.name] || { status: 'UNPAID' };
-                    if (r.status !== 'PAID_EMAIL' && r.status !== 'PAID_MANUAL' && r.status !== 'EXEMPT') {
-                        unpaidClubs.push(c);
-                    }
-                });
-            });
-
-            let syncedCount = 0;
-            const takeCount = Math.min(unpaidClubs.length, 3); // 每次自動抓取 2-3 封新匯款信
-
-            for (let i = 0; i < takeCount; i++) {
-                const club = unpaidClubs[i];
-                const last5 = Math.floor(10000 + Math.random() * 89999).toString();
-                const now = new Date();
-                const timeStr = now.toISOString().replace('T', ' ').substring(0, 16);
-                const dateStr = now.toISOString().substring(0, 10);
-
-                chairPaymentRecords[activeCatKey][club.name] = {
-                    status: 'PAID_EMAIL',
-                    amount: standardAmt,
-                    last5: last5,
-                    method: '銀行匯款',
-                    date: dateStr,
-                    note: 'Email 自動核對相符 (系統抓取)',
-                    verifiedAt: timeStr,
-                    fromEmail: `sec.${club.name.replace(/[^a-zA-Z0-9]/g, '') || 'club'}@rotary3523.org`,
-                    subject: `[轉帳入帳通知] ${club.name} 匯入款項 NT$ ${standardAmt.toLocaleString()} (末5碼: ${last5})`
-                };
-
-                emailInboxLogs.unshift({
-                    id: 'mail_' + Date.now() + '_' + i,
-                    time: timeStr,
-                    subject: `[轉帳入帳通知] ${club.name} 匯入款項 NT$ ${standardAmt.toLocaleString()} (末5碼: ${last5})`,
-                    from: `service@bot.com.tw (台灣銀行通知)`,
-                    clubName: club.name,
-                    amount: standardAmt,
-                    last5: last5,
-                    status: 'SUCCESS'
-                });
-
-                syncedCount++;
-            }
-
-            savePaymentRecords();
-            saveEmailInboxLogs();
-            return syncedCount;
-        }
-
-        // ================= ✍️ 貼上/模擬匯款信件對帳 (SIMULATE & PASTE) =================
-
-        function openSimulateRemittanceModal() {
-            const select = document.getElementById('simQuickClubSelect');
-            if (select) {
-                select.innerHTML = divisionsData.map(d => `
-                    <optgroup label="${d.name}">
-                        ${d.clubs.map(c => `<option value="${c.name}">${c.code || ''} ${c.name}</option>`).join('')}
-                    </optgroup>
-                `).join('');
-            }
-            switchSimulateTab('paste');
-            document.getElementById('simulateRemittanceModal').classList.remove('hidden');
-        }
-
-        function closeSimulateRemittanceModal() {
-            document.getElementById('simulateRemittanceModal').classList.add('hidden');
-        }
-
-        function switchSimulateTab(tab) {
-            const tabPaste = document.getElementById('simulateTabPaste');
-            const tabQuick = document.getElementById('simulateTabQuick');
-            const btnPaste = document.getElementById('tabBtnPasteMail');
-            const btnQuick = document.getElementById('tabBtnQuickSim');
-
-            if (tab === 'paste') {
-                tabPaste.classList.remove('hidden');
-                tabQuick.classList.add('hidden');
-                btnPaste.className = 'py-2 px-3 text-xs font-bold border-b-2 border-indigo-600 text-indigo-700';
-                btnQuick.className = 'py-2 px-3 text-xs font-semibold text-slate-500 hover:text-slate-800';
-            } else {
-                tabPaste.classList.add('hidden');
-                tabQuick.classList.remove('hidden');
-                btnQuick.className = 'py-2 px-3 text-xs font-bold border-b-2 border-indigo-600 text-indigo-700';
-                btnPaste.className = 'py-2 px-3 text-xs font-semibold text-slate-500 hover:text-slate-800';
-            }
-        }
-
-        function fillSampleRemittanceEmail() {
-            const sample = `【中國信託商業銀行】轉帳入帳通知\n受款帳戶：國際扶輪 3523 地區\n匯款單位：台北市雲聯網扶輪社\n入帳金額：新台幣 10,000 元\n轉出帳號末五碼：59281\n交易時間：${new Date().toISOString().replace('T', ' ').substring(0, 16)}\n備註：2026-27 GMS研討會報名費`;
-            document.getElementById('pasteEmailContent').value = sample;
-        }
-
-        function handleParsePastedEmail() {
-            const text = document.getElementById('pasteEmailContent').value.trim();
-            if (!text) {
-                alert('請先貼上匯款信件或銀行通知內容！');
-                return;
-            }
-
-            // 比對 80 家扶輪社名
-            let matchedClub = null;
-            divisionsData.forEach(d => {
-                d.clubs.forEach(c => {
-                    if (text.includes(c.name) || (c.name.replace('扶輪社', '') && text.includes(c.name.replace('扶輪社', '')))) {
-                        matchedClub = c;
-                    }
-                });
-            });
-
-            if (!matchedClub) {
-                alert('⚠️ 信件內未辨識到 3523 地區任何扶輪社名！請確認信件包含正確社名。');
-                return;
-            }
-
-            // 解析金額
-            let amount = getApportionmentFee();
-            const amountMatch = text.match(/(?:金額|NT\$|新台幣|入帳)[:：\s]*\$?([0-9,]+)\s*(?:元)?/i);
-            if (amountMatch) {
-                amount = parseInt(amountMatch[1].replace(/,/g, ''), 10) || amount;
-            }
-
-            // 解析末五碼
-            let last5 = '';
-            const last5Match = text.match(/(?:末[五5]碼|後[五5]碼|[五5]碼|帳號|轉出)[:：\s]*([0-9]{4,6})/);
-            if (last5Match) {
-                last5 = last5Match[1].slice(-5);
-            } else {
-                last5 = Math.floor(10000 + Math.random() * 89999).toString();
-            }
-
-            const activeCatKey = getActivePaymentKey();
-            if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
-
-            const dateStr = new Date().toISOString().slice(0, 10);
-            const timeStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
-
-            chairPaymentRecords[activeCatKey][matchedClub.name] = {
-                status: 'PAID_EMAIL',
-                amount: amount,
-                last5: last5,
-                method: '銀行匯款',
-                date: dateStr,
-                note: '貼上信件智能解析核對成功',
-                verifiedAt: timeStr,
-                fromEmail: `sec.${matchedClub.name}@rotary3523.org`,
-                subject: `[解析匯款信] ${matchedClub.name} 匯入 NT$ ${amount.toLocaleString()}`
-            };
-
-            emailInboxLogs.unshift({
-                id: 'mail_paste_' + Date.now(),
-                time: timeStr,
-                subject: `[解析匯款信] ${matchedClub.name} 匯入 NT$ ${amount.toLocaleString()}`,
-                from: '轉寄/貼上信件',
-                clubName: matchedClub.name,
-                amount: amount,
-                last5: last5,
-                status: 'SUCCESS'
-            });
-
-            savePaymentRecords();
-            saveEmailInboxLogs();
-            closeSimulateRemittanceModal();
-            renderDivisionPaymentSection();
-            showToast(`🎉 成功解析信件！【${matchedClub.name}】已自動核對為已繳費（末5碼: ${last5}，NT$ ${amount.toLocaleString()}）！`);
-        }
-
-        function handleQuickSimulateSubmit() {
-            const clubName = document.getElementById('simQuickClubSelect').value;
-            const amount = parseFloat(document.getElementById('simQuickAmount').value) || 10000;
-            const last5 = document.getElementById('simQuickLast5').value.trim() || '88888';
-
-            const activeCatKey = getActivePaymentKey();
-            if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
-
-            const dateStr = new Date().toISOString().slice(0, 10);
-            const timeStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
-
-            chairPaymentRecords[activeCatKey][clubName] = {
-                status: 'PAID_EMAIL',
-                amount: amount,
-                last5: last5,
-                method: '銀行匯款',
-                date: dateStr,
-                note: '主委快速發送模擬匯款信核訖',
-                verifiedAt: timeStr,
-                fromEmail: `sec.${clubName}@rotary3523.org`,
-                subject: `[模擬匯款通知] ${clubName} 匯款 NT$ ${amount.toLocaleString()}`
-            };
-
-            emailInboxLogs.unshift({
-                id: 'mail_sim_' + Date.now(),
-                time: timeStr,
-                subject: `[模擬匯款信] ${clubName} 匯款通知 NT$ ${amount.toLocaleString()}`,
-                from: `sec.${clubName}@rotary3523.org`,
-                clubName: clubName,
-                amount: amount,
-                last5: last5,
-                status: 'SUCCESS'
-            });
-
-            savePaymentRecords();
-            saveEmailInboxLogs();
-            closeSimulateRemittanceModal();
-            renderDivisionPaymentSection();
-            showToast(`🎉 模擬匯款信發送成功！【${clubName}】繳費狀態已自動核對！`);
-        }
-
-        // ================= 📬 郵件抓取日誌彈窗 (EMAIL LOGS MODAL) =================
-
-        function openEmailSyncLogsModal() {
-            const tbody = document.getElementById('emailLogsTableBody');
-            const totalEl = document.getElementById('emailLogsTotalCount');
-            if (totalEl) totalEl.innerText = emailInboxLogs.length;
-
-            if (tbody) {
-                if (emailInboxLogs.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-400">目前尚無任何抓取到的信件日誌</td></tr>`;
-                } else {
-                    tbody.innerHTML = emailInboxLogs.map(m => `
-                        <tr class="hover:bg-slate-50 transition">
-                            <td class="p-2.5 font-mono text-slate-500 text-[11px]">${m.time || '-'}</td>
-                            <td class="p-2.5">
-                                <div class="font-bold text-slate-900 text-xs">${m.subject || '無主旨'}</div>
-                                <span class="text-[10px] text-slate-400 font-mono">${m.from || '-'}</span>
-                            </td>
-                            <td class="p-2.5 font-bold text-indigo-700">${m.clubName || '-'}</td>
-                            <td class="p-2.5 font-mono">
-                                <div>NT$ ${(Number(m.amount) || 0).toLocaleString()}</div>
-                                <span class="text-[10px] text-slate-400 font-semibold">末5碼: ${m.last5 || '-'}</span>
-                            </td>
-                            <td class="p-2.5 text-center">
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
-                                    ✅ 核對相符
-                                </span>
-                            </td>
-                        </tr>
-                    `).join('');
-                }
-            }
-
-            document.getElementById('emailLogsModal').classList.remove('hidden');
-        }
-
-        function closeEmailSyncLogsModal() {
-            document.getElementById('emailLogsModal').classList.add('hidden');
-        }
-
 
         // ================= TOAST NOTIFICATION HELPER =================
 
