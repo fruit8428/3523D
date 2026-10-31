@@ -624,7 +624,28 @@
 
         <!-- ================= VIEW 3: SUPER ADMIN DASHBOARD ================= -->
         <section id="viewSuperAdmin" class="space-y-5 hidden">
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 px-1">
+                <span>💡 最高權限管理：每個區塊預設收合，看標題下方的說明，需要時再點「展開」。</span>
+                <span class="flex items-center gap-1.5">
+                    <button type="button" onclick="setAllPanels('viewSuperAdmin', true)" class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-md font-bold text-slate-700">📂 全部展開</button>
+                    <button type="button" onclick="setAllPanels('viewSuperAdmin', false)" class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-md font-bold text-slate-700">📁 全部收合</button>
+                </span>
+            </div>
+            <div data-panel="adminChairAssign" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
+                <!-- 面板標題列（永遠顯示）：白話說明點開能做什麼，方便每年換屆的新主委 -->
+                <button type="button" onclick="togglePanel('adminChairAssign')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_adminChairAssign">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-lg bg-slate-800 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">👑</div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">指派各活動的主委社別</div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>為每個活動（或單一子活動）勾選負責的主委社別。被指派的社登入後進入該活動，就會自動看到主委後台（費用設定、繳費總表、名冊匯出）。地區辦公室也可被指派。</p>
+                        </div>
+                    </div>
+                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
+                        <span id="panelToggleText_adminChairAssign">展開</span><span id="panelChevron_adminChairAssign" class="inline-block transition-transform duration-200">▼</span>
+                    </span>
+                </button>
+                <div id="panelBody_adminChairAssign" class="hidden mt-4 pt-4 border-t border-slate-100">
                 <div class="pb-4 border-b border-slate-100 mb-4">
                     <span class="text-xs font-bold text-amber-600 uppercase tracking-wider">Super Administrator</span>
                     <h3 class="text-base sm:text-lg font-bold text-slate-900">👑 系統最高權限管理中心</h3>
@@ -651,10 +672,25 @@
                         💾 儲存權限設定
                     </button>
                 </div>
+                </div><!-- /panelBody -->
             </div>
 
             <!-- Division & Club Standard Appendix Directory (支援增加、修改、刪除) -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sm:p-6 mt-5">
+            <div data-panel="adminDirectory" class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sm:p-6 mt-5">
+                <!-- 面板標題列（永遠顯示）：白話說明點開能做什麼，方便每年換屆的新主委 -->
+                <button type="button" onclick="togglePanel('adminDirectory')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_adminDirectory">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">🏛️</div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">分區與扶輪社名錄管理</div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>檢視 13 分區與所屬扶輪社的標準名錄，新增、修改、刪除扶輪社或調整所屬分區，也可一鍵重置回標準 80 社名錄。</p>
+                        </div>
+                    </div>
+                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
+                        <span id="panelToggleText_adminDirectory">展開</span><span id="panelChevron_adminDirectory" class="inline-block transition-transform duration-200">▼</span>
+                    </span>
+                </button>
+                <div id="panelBody_adminDirectory" class="hidden mt-4 pt-4 border-t border-slate-100">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
                     <div>
                         <h3 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2 flex-wrap" id="divisionDirectoryHeaderTitle">
@@ -677,9 +713,24 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 text-xs" id="divisionDirectoryContainer">
                     <!-- Dynamic rendering of Divisions with Add, Edit, Delete -->
                 </div>
+                </div><!-- /panelBody -->
             </div>
             <!-- Password Management Card -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 mt-5">
+            <div data-panel="adminPassword" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 mt-5">
+                <!-- 面板標題列（永遠顯示）：白話說明點開能做什麼，方便每年換屆的新主委 -->
+                <button type="button" onclick="togglePanel('adminPassword')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_adminPassword">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-lg bg-amber-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">🔑</div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">各社登入密碼查詢與重置</div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>查詢某一社目前的登入密碼，或清除該社密碼，讓執秘回到登入畫面點「首次進入（註冊）」重新設定。</p>
+                        </div>
+                    </div>
+                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
+                        <span id="panelToggleText_adminPassword">展開</span><span id="panelChevron_adminPassword" class="inline-block transition-transform duration-200">▼</span>
+                    </span>
+                </button>
+                <div id="panelBody_adminPassword" class="hidden mt-4 pt-4 border-t border-slate-100">
                 <div class="pb-4 border-b border-slate-100 mb-4">
                     <span class="text-xs font-bold text-rose-600 uppercase tracking-wider">Password Management</span>
                     <h3 class="text-base sm:text-lg font-bold text-slate-900">🔑 密碼查詢與重置</h3>
@@ -700,10 +751,25 @@
                         </button>
                     </div>
                 </div>
+                </div><!-- /panelBody -->
             </div>
 
             <!-- 正式上線前資料歸零（僅最高管理員） -->
-            <div class="bg-white rounded-xl shadow-sm border-2 border-rose-200 p-4 sm:p-5 mt-5">
+            <div data-panel="adminReset" class="bg-white rounded-xl shadow-sm border-2 border-rose-200 p-4 sm:p-5 mt-5">
+                <!-- 面板標題列（永遠顯示）：白話說明點開能做什麼，方便每年換屆的新主委 -->
+                <button type="button" onclick="togglePanel('adminReset')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_adminReset">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-lg bg-rose-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">🧹</div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">正式上線前資料歸零</div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>清空示範用的繳費紀錄、全部報名單或全部社友庫，或重新載入示範資料做展示。每顆按鈕都會再次確認，清空後所有裝置同步生效且無法復原。</p>
+                        </div>
+                    </div>
+                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
+                        <span id="panelToggleText_adminReset">展開</span><span id="panelChevron_adminReset" class="inline-block transition-transform duration-200">▼</span>
+                    </span>
+                </button>
+                <div id="panelBody_adminReset" class="hidden mt-4 pt-4 border-t border-slate-100">
                 <div class="pb-4 border-b border-rose-100 mb-4">
                     <span class="text-xs font-bold text-rose-600 uppercase tracking-wider">Go-Live Data Reset</span>
                     <h3 class="text-base sm:text-lg font-bold text-slate-900">🧹 正式上線前資料歸零</h3>
@@ -727,14 +793,60 @@
                         <div class="text-[11px] text-slate-600 mt-1">補上示範社友、示範報名單，並為每個研討會/年會子活動生成模擬繳費狀況。已有資料不會被覆蓋。</div>
                     </button>
                 </div>
+                </div><!-- /panelBody -->
             </div>
         </section>
 
 
         <!-- ================= VIEW 2: CHAIR DASHBOARD (主委後台) ================= -->
         <section id="viewChair" class="space-y-5 hidden">
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 px-1">
+                <span>💡 主委後台：每個區塊預設收合，看標題下方的說明，需要時再點「展開」。</span>
+                <span class="flex items-center gap-1.5">
+                    <button type="button" onclick="setAllPanels('viewChair', true)" class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-md font-bold text-slate-700">📂 全部展開</button>
+                    <button type="button" onclick="setAllPanels('viewChair', false)" class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-md font-bold text-slate-700">📁 全部收合</button>
+                </span>
+            </div>
+            <!-- Real-time War Room Stats KPI Cards -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <span class="text-xs font-semibold text-slate-500">總報名出席人數</span>
+                    <div class="text-xl sm:text-2xl font-black text-slate-900 mt-1" id="kpiTotalParticipants">0 人</div>
+                    <span class="text-[10px] text-emerald-600 font-bold">來自 <span id="kpiClubCount">0</span> 個扶輪社</span>
+                </div>
+                <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <span class="text-xs font-semibold text-slate-500">飲食偏好統計</span>
+                    <div class="text-xl sm:text-2xl font-black text-amber-600 mt-1" id="kpiDietSummary">0 / 0</div>
+                    <span class="text-[10px] text-slate-400">葷食 / 素食總數</span>
+                </div>
+                <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <span class="text-xs font-semibold text-slate-500">贊助累計金額</span>
+                    <div class="text-xl sm:text-2xl font-black text-emerald-600 mt-1" id="kpiTotalSponsorship">$0</div>
+                    <span class="text-[10px] text-slate-500" id="kpiSponsorClubsDetail">共同主辦 0 | 協辦 0 | 贊助 0</span>
+                </div>
+                <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <span class="text-xs font-semibold text-slate-500" id="kpiFourthCardTitle">全場高爾夫差點</span>
+                    <div class="text-lg sm:text-xl font-bold text-blue-600 mt-1" id="kpiGolfSummary">--</div>
+                    <span class="text-[10px] text-slate-400" id="kpiGolfSub">選手差點即時計算</span>
+                </div>
+            </div>
+
             <!-- Top Chair Controls & Event Configurator -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
+            <div data-panel="chairConfig" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
+                <!-- 面板標題列（永遠顯示）：白話說明點開能做什麼，方便每年換屆的新主委 -->
+                <button type="button" onclick="togglePanel('chairConfig')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_chairConfig">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">⚙️</div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">活動設定與費用金額</div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>修改本活動名稱、報名開放時間與活動屬性；設定各項費用金額（參賽費、只用餐費、共同主辦／協辦／贊助社金額、各社應繳金額、社慶花款與餐費）；另可模擬活動當日封存、匯出 CSV、列印簽到表。</p>
+                        </div>
+                    </div>
+                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
+                        <span id="panelToggleText_chairConfig">展開</span><span id="panelChevron_chairConfig" class="inline-block transition-transform duration-200">▼</span>
+                    </span>
+                </button>
+                <div id="panelBody_chairConfig" class="hidden mt-4 pt-4 border-t border-slate-100">
                 <div class="flex flex-col md:flex-row justify-between md:items-center gap-3 pb-4 border-b border-slate-100">
                     <div>
                         <span class="text-xs font-bold text-blue-600 uppercase tracking-wider">Committee Chair Control Center</span>
@@ -832,34 +944,26 @@
                     </div>
                 </div>
 
+                </div><!-- /panelBody -->
             </div>
 
-            <!-- Real-time War Room Stats KPI Cards -->
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <span class="text-xs font-semibold text-slate-500">總報名出席人數</span>
-                    <div class="text-xl sm:text-2xl font-black text-slate-900 mt-1" id="kpiTotalParticipants">0 人</div>
-                    <span class="text-[10px] text-emerald-600 font-bold">來自 <span id="kpiClubCount">0</span> 個扶輪社</span>
-                </div>
-                <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <span class="text-xs font-semibold text-slate-500">飲食偏好統計</span>
-                    <div class="text-xl sm:text-2xl font-black text-amber-600 mt-1" id="kpiDietSummary">0 / 0</div>
-                    <span class="text-[10px] text-slate-400">葷食 / 素食總數</span>
-                </div>
-                <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <span class="text-xs font-semibold text-slate-500">贊助累計金額</span>
-                    <div class="text-xl sm:text-2xl font-black text-emerald-600 mt-1" id="kpiTotalSponsorship">$0</div>
-                    <span class="text-[10px] text-slate-500" id="kpiSponsorClubsDetail">共同主辦 0 | 協辦 0 | 贊助 0</span>
-                </div>
-                <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <span class="text-xs font-semibold text-slate-500" id="kpiFourthCardTitle">全場高爾夫差點</span>
-                    <div class="text-lg sm:text-xl font-bold text-blue-600 mt-1" id="kpiGolfSummary">--</div>
-                    <span class="text-[10px] text-slate-400" id="kpiGolfSub">選手差點即時計算</span>
-                </div>
-            </div>
 
             <!-- ================= 各分區各社繳費狀況清楚列表 (依附圖42要求新增：專為開會秀出打造) ================= -->
-            <div id="chairDivisionPaymentSection" class="bg-white rounded-xl shadow-sm border-2 border-indigo-200/90 p-4 sm:p-5 space-y-4">
+            <div data-panel="chairPayment" id="chairDivisionPaymentSection" class="bg-white rounded-xl shadow-sm border-2 border-indigo-200/90 p-4 sm:p-5 space-y-4">
+                <!-- 面板標題列（永遠顯示）：白話說明點開能做什麼，方便每年換屆的新主委 -->
+                <button type="button" onclick="togglePanel('chairPayment')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_chairPayment">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">💳</div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">各分區各社繳費狀況即時總表</div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>查看 13 分區 80 社的繳費進度，逐社「核訖已繳」或「標記未繳」，一鍵複製催繳名單到 LINE 群組，匯出 Excel、列印清單，開會時可切換全螢幕投影展示模式。</p>
+                        </div>
+                    </div>
+                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
+                        <span id="panelToggleText_chairPayment">展開</span><span id="panelChevron_chairPayment" class="inline-block transition-transform duration-200">▼</span>
+                    </span>
+                </button>
+                <div id="panelBody_chairPayment" class="hidden mt-4 pt-4 border-t border-slate-100">
                 <!-- Section Header & Meeting Banner -->
                 <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                     <div>
@@ -971,10 +1075,25 @@
                 <div id="chairDivisionPaymentContent" class="touch-scroll">
                     <!-- Populated dynamically by JS -->
                 </div>
+                </div><!-- /panelBody -->
             </div>
 
             <!-- Detailed Club Registration Table in Chair View -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
+            <div data-panel="chairRoster" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
+                <!-- 面板標題列（永遠顯示）：白話說明點開能做什麼，方便每年換屆的新主委 -->
+                <button type="button" onclick="togglePanel('chairRoster')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_chairRoster">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-lg bg-purple-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">📋</div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">各社已提交報名明細與出席名冊</div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>查看每一社送出的報名表、出席名冊、贊助選項與贊助獎；可逐社展開，或按「全部展開」合併成全區總表，再匯出 Excel／CSV 或複製全體名冊文字貼到 LINE。</p>
+                        </div>
+                    </div>
+                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
+                        <span id="panelToggleText_chairRoster">展開</span><span id="panelChevron_chairRoster" class="inline-block transition-transform duration-200">▼</span>
+                    </span>
+                </button>
+                <div id="panelBody_chairRoster" class="hidden mt-4 pt-4 border-t border-slate-100">
                 <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
                     <div class="flex items-center gap-2.5 flex-wrap">
                         <h4 class="text-sm font-bold text-slate-800" id="chairRosterListTitle">📋 各社已提交報名明細與名冊清單</h4>
@@ -1009,6 +1128,7 @@
                         </tbody>
                     </table>
                 </div>
+                </div><!-- /panelBody -->
             </div>
         </section>
 
@@ -2617,6 +2737,7 @@
             populateClubSelector();
             loadCategoryView();
             initCharts();
+            initCollapsiblePanels();
             initQRCode();
             updateRolePermissionsUI();
             renderDivisionPaymentSection();
@@ -7488,6 +7609,35 @@
                 markClubUnpaidQuick(currentEditingClubName);
                 closeEditPaymentModal();
             }
+        }
+
+
+        // ================= 可收合面板（主委後台 / 最高權限頁） =================
+        // 每個面板預設收合；展開狀態記在這台裝置的 localStorage（只是個人方便，壞了也不影響資料）
+        const PANEL_STATE_PREFIX = 'rotary_3523_panel_open_';
+        function togglePanel(pid, forceOpen) {
+            const body = document.getElementById(`panelBody_${pid}`);
+            if (!body) return;
+            const open = (typeof forceOpen === 'boolean') ? forceOpen : body.classList.contains('hidden');
+            body.classList.toggle('hidden', !open);
+            const txt = document.getElementById(`panelToggleText_${pid}`);
+            if (txt) txt.innerText = open ? '收合' : '展開';
+            const chev = document.getElementById(`panelChevron_${pid}`);
+            if (chev) chev.style.transform = open ? 'rotate(180deg)' : '';
+            const header = document.getElementById(`panelHeader_${pid}`);
+            if (header) header.setAttribute('aria-expanded', open ? 'true' : 'false');
+            try { localStorage.setItem(PANEL_STATE_PREFIX + pid, open ? '1' : '0'); } catch (e) { /* 無痕模式等情況忽略 */ }
+        }
+        function setAllPanels(sectionId, open) {
+            const root = document.getElementById(sectionId) || document;
+            root.querySelectorAll('[data-panel]').forEach(el => togglePanel(el.dataset.panel, open));
+        }
+        function initCollapsiblePanels() {
+            document.querySelectorAll('[data-panel]').forEach(el => {
+                let saved = null;
+                try { saved = localStorage.getItem(PANEL_STATE_PREFIX + el.dataset.panel); } catch (e) { saved = null; }
+                togglePanel(el.dataset.panel, saved === '1');
+            });
         }
 
         // ================= TOAST NOTIFICATION HELPER =================
