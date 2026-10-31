@@ -607,7 +607,7 @@
                             <span id="regFeeTotalLabel" class="text-slate-700 font-bold whitespace-nowrap hidden">| <span id="regFeeTotalText">出席費用合計</span>：<b id="regFeeTotalDisplay" class="text-emerald-700 font-mono">$0</b></span>
                             <span id="regSponsorFeeLabel" class="text-slate-700 font-bold whitespace-nowrap hidden">| <span id="regSponsorTierName">共同主辦社</span>：<b id="regSponsorFeeDisplay" class="text-emerald-700 font-mono">$0</b></span>
                             <span id="regPrizeSummaryLabel" class="text-amber-800 font-bold whitespace-nowrap hidden">| 🎁 贊助獎：<b id="regPrizeSummaryDisplay" class="font-mono"></b></span>
-                            <span id="regGrandTotalLabel" class="font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-[11px] xl:text-xs whitespace-nowrap hidden">總計：<b id="regGrandTotalDisplay" class="text-red-600 font-mono font-extrabold">$0元</b></span>
+                            <span id="regGrandTotalLabel" class="font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-[11px] xl:text-xs whitespace-nowrap hidden"><span id="regGrandTotalText">總計：</span><b id="regGrandTotalDisplay" class="text-red-600 font-mono font-extrabold">$0元</b></span>
                         </div>
                         <div class="flex gap-1.5 sm:gap-2 shrink-0 justify-end w-full sm:w-auto">
                             <button id="clearSelectedMembersBtn" onclick="clearSelectedMembers()" class="px-2.5 sm:px-3 py-1.5 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold active:scale-95 transition whitespace-nowrap">
@@ -3190,6 +3190,9 @@
                 const grandTotal = totalParticipantFee + (sponsorInfo.enabled ? sponsorInfo.amount : 0) + apportionmentFee;
                 const showGrandTotal = showFee || (sponsorInfo.enabled && sponsorInfo.amount > 0) || (apportionmentFee > 0);
                 regGrandTotalLabel.classList.toggle('hidden', !showGrandTotal);
+                // 研討會/年會類：金額是「每社固定應繳」而非人頭加總，標籤改為「各社應繳金額」
+                const grandText = document.getElementById('regGrandTotalText');
+                if (grandText) grandText.innerText = isSeminar ? '各社應繳金額：' : '總計：';
                 const grandDisp = document.getElementById('regGrandTotalDisplay');
                 if (grandDisp) grandDisp.innerText = `$${grandTotal.toLocaleString()}元`;
             }
