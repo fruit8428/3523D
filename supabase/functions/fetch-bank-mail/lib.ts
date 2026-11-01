@@ -31,6 +31,8 @@ export interface FetchOptions {
   senderFilter: string;     // 寄件者或主旨含此字樣才視為銀行信（預設 scsb）
   sinceDays: number;        // 只看最近幾天
   seen: Set<string>;        // 已匯入過的 mail_uid，跳過
+  maxNew?: number;          // 每次最多處理幾封新信（Supabase 每次請求 CPU 只有 2 秒，一封 PDF 約 0.2 秒）
+  onNotice?: (n: FetchedNotice) => Promise<void>; // 每解析出一筆就立刻回呼（馬上寫入資料庫，被中止也不會白做）
   log?: (msg: string) => void;
 }
 
@@ -40,6 +42,7 @@ export interface FetchResult {
   notices: FetchedNotice[]; // 成功解析出的新入帳
   pdfErrors: number;        // PDF 解密／讀取失敗的封數
   lastPdfError: string | null;
+  pending: number;          // 這次沒處理到、留給下次的新信數
 }
 
 // 民國年 115/08/27 → 2026-08-27
@@ -105,15 +108,18 @@ export async function extractPdfText(bytes: Uint8Array, password: string): Promi
   throw new Error("PDF 開啟密碼錯誤（請填戶名的身分證號或統一編號末六碼）");
 }
 
-// 寄件者或主旨是否像銀行入帳通知
+// 是否為銀行「入帳通知」：寄件者或主旨像銀行（含 sender_filter 或「上海」），且主旨含「入帳」
+// 銀行的登入通知、廣告信主旨沒有「入帳」，直接略過，才不會每次都佔掉處理名額
 export function looksLikeBankMail(from: string, subject: string, filter: string): boolean {
   const f = from.toLowerCase(), s = subject.toLowerCase(), k = (filter || "scsb").toLowerCase();
-  return f.includes(k) || s.includes(k) || s.includes("入帳") || s.includes("上海");
+  const fromBank = f.includes(k) || s.includes(k) || s.includes("上海");
+  return fromBank && s.includes("入帳");
 }
 
 export async function fetchBankNotices(opt: FetchOptions): Promise<FetchResult> {
   const log = opt.log || (() => {});
-  const result: FetchResult = { scanned: 0, bankMails: 0, notices: [], pdfErrors: 0, lastPdfError: null };
+  const result: FetchResult = { scanned: 0, bankMails: 0, notices: [], pdfErrors: 0, lastPdfError: null, pending: 0 };
+  const maxNew = Math.max(1, opt.maxNew || 4);
   // 把 imapflow 的通訊紀錄留最後 12 行，出錯時一起回報，才看得出是哪個指令被伺服器拒絕
   const trail: string[] = [];
   const keep = (level: string) => (o: any) => {
@@ -172,8 +178,11 @@ export async function fetchBankNotices(opt: FetchOptions): Promise<FetchResult> 
       }
       log(`銀行信 ${result.bankMails} 封，其中 ${candidates.length} 封尚未匯入`);
 
-      // 第二輪：只對新的銀行信下載完整內容
-      for (const c of candidates) {
+      // 第二輪：只對新的銀行信下載完整內容；最多「解 maxNew 個 PDF」，其餘留給下次
+      let heavy = 0, index = 0;
+      for (; index < candidates.length; index++) {
+        if (heavy >= maxNew) break;
+        const c = candidates[index];
         const msg = await client.fetchOne(String(c.uid), { source: true }, { uid: true });
         if (!msg || !msg.source) continue;
         const parsed = await simpleParser(msg.source);
@@ -185,6 +194,7 @@ export async function fetchBankNotices(opt: FetchOptions): Promise<FetchResult> 
           return name.endsWith(".pdf") || head === "%PDF";
         });
         if (pdfAtt) {
+          heavy++; // 解 PDF 才算吃重的工作（約 0.2 秒 CPU）
           try {
             text = await extractPdfText(new Uint8Array(pdfAtt.content), opt.pdfPassword);
           } catch (e) {
@@ -199,13 +209,17 @@ export async function fetchBankNotices(opt: FetchOptions): Promise<FetchResult> 
         }
         const fields = parseNotice(text);
         if (!fields) { log(`不是入帳通知，跳過（${c.key}）`); continue; }
-        result.notices.push({
+        if (!pdfAtt) heavy++;
+        const notice: FetchedNotice = {
           mail_uid: c.key,
           mail_date: parsed.date ? parsed.date.toISOString() : null,
           ...fields,
           raw_text: normalizeText(text).slice(0, 4000),
-        });
+        };
+        result.notices.push(notice);
+        if (opt.onNotice) await opt.onNotice(notice);
       }
+      result.pending = Math.max(0, candidates.length - index);
     } finally {
       lock.release();
     }

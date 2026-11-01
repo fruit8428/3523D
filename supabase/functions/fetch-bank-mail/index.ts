@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   const now = Date.now();
-  if (now - lastRunAt < 20_000) return json({ ok: true, skipped: true, reason: "20 秒內已抓取過" });
+  if (now - lastRunAt < 5_000) return json({ ok: true, skipped: true, reason: "5 秒內已抓取過" });
   lastRunAt = now;
 
   // 1. 讀信箱設定（只有 service role 讀得到）
@@ -57,7 +57,9 @@ Deno.serve(async (req) => {
     const { data: existing } = await admin.from("bank_transactions").select("mail_uid");
     const seen = new Set<string>((existing || []).map((r: any) => String(r.mail_uid)));
 
-    // 3. 登入信箱抓取並解析
+    // 3. 登入信箱抓取並解析（每解析出一筆就立刻寫入，避免超過 CPU 上限被中止時前功盡棄）
+    await writeStatus({ email_masked: maskEmail(settings.email), has_password: true, last_result: "⏳ 處理中：正在登入信箱…" });
+    let inserted = 0;
     const r = await fetchBankNotices({
       host: settings.imap_host || "imap.gmail.com",
       port: settings.imap_port || 993,
@@ -67,26 +69,25 @@ Deno.serve(async (req) => {
       senderFilter: settings.sender_filter || "scsb",
       sinceDays: 60,
       seen,
+      maxNew: 4,
+      onNotice: async (n) => {
+        const { error: iErr } = await admin.from("bank_transactions").insert(n);
+        if (!iErr) inserted++;
+      },
     });
-
-    // 4. 寫入資料表
-    let inserted = 0;
-    for (const n of r.notices) {
-      const { error: iErr } = await admin.from("bank_transactions").insert(n);
-      if (!iErr) inserted++;
-    }
 
     const { count } = await admin.from("bank_transactions").select("id", { count: "exact", head: true });
     const pdfNote = r.pdfErrors ? `；有 ${r.pdfErrors} 封 PDF 無法開啟（${r.lastPdfError}）` : "";
+    const pendingNote = r.pending > 0 ? `；尚有 ${r.pending} 封待處理（系統每 10 分鐘自動續抓，或再按一次「立即抓取」）` : "";
     await writeStatus({
       email_masked: maskEmail(settings.email),
       has_password: true,
       last_fetch_at: new Date().toISOString(),
-      last_result: `掃描 ${r.scanned} 封，其中銀行通知 ${r.bankMails} 封，新增入帳 ${inserted} 筆${pdfNote}`,
+      last_result: `掃描 ${r.scanned} 封，其中銀行通知 ${r.bankMails} 封，新增入帳 ${inserted} 筆${pdfNote}${pendingNote}`,
       last_error: r.pdfErrors && inserted === 0 && r.notices.length === 0 ? friendlyError(r.lastPdfError || "PDF 讀取失敗") : null,
       total_transactions: count || 0,
     });
-    return json({ ok: true, scanned: r.scanned, bankMails: r.bankMails, inserted, pdfErrors: r.pdfErrors });
+    return json({ ok: true, scanned: r.scanned, bankMails: r.bankMails, inserted, pdfErrors: r.pdfErrors, pending: r.pending });
   } catch (e) {
     const msg = (e && (e as Error).message) ? (e as Error).message : String(e);
     const friendly = friendlyError(msg);

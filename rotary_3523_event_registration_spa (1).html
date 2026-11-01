@@ -8101,8 +8101,23 @@
                     body: JSON.stringify({ source: manual ? 'manual' : 'secretary' })
                 });
                 result = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+                // 雲端每次最多處理 4 封（CPU 上限），若還有待處理的信，主委按「立即抓取」時自動連續呼叫到做完（最多 12 輪）
+                let rounds = 0, totalInserted = Number(result.inserted) || 0;
+                while (manual && result && result.ok && !result.skipped && (Number(result.pending) || 0) > 0 && rounds < 12) {
+                    rounds++;
+                    if (btn) btn.innerText = `⏳ 已新增 ${totalInserted} 筆，還有 ${result.pending} 封處理中…`;
+                    await loadBankData();
+                    await new Promise(r => setTimeout(r, 6000)); // 雲端 5 秒內重複呼叫會被略過
+                    const again = await fetch(BANK_MAIL_FUNCTION_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+                        body: JSON.stringify({ source: 'manual-continue' })
+                    });
+                    result = await again.json().catch(() => ({ ok: false, error: `HTTP ${again.status}` }));
+                    totalInserted += Number(result.inserted) || 0;
+                }
                 if (manual) {
-                    if (result.ok && !result.skipped) showToast(`📬 抓取完成：掃描 ${result.scanned} 封，新增 ${result.inserted} 筆入帳`);
+                    if (result.ok && !result.skipped) showToast(`📬 抓取完成：掃描 ${result.scanned} 封，新增 ${totalInserted} 筆入帳${(Number(result.pending) || 0) > 0 ? `，尚有 ${result.pending} 封將由排程續抓` : ''}`);
                     else if (result.skipped) showToast('📬 剛剛才抓取過，請稍候再試');
                     else alert(`❌ 抓取失敗：${result.error || '未知錯誤'}`);
                 }
