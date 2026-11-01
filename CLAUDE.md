@@ -68,6 +68,12 @@ CREATE POLICY "Allow anon all operations" ON public.app_storage
 顯示走 `renderEventDMList()`（主委後台清單 `#eventDMList` 與執秘端連結列 `#secretaryDMBox`），在 `updateRolePermissionsUI` 內重繪。
 bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` 會轉成中文提示。
 
+### 入帳通知自動對帳（上海商銀）
+
+- 後端：`supabase/functions/fetch-bank-mail/index.ts`（Deno，IMAP 用 `npm:imapflow`、解析用 `npm:mailparser`），讀 `bank_mail_settings`（service role 才能讀），解析「入帳交易日期／入帳金額／存摺備註」寫入 `bank_transactions`，狀態寫 `bank_mail_status`。以 `--no-verify-jwt` 部署，pg_cron 每 10 分鐘 POST 一次；SQL 在 `supabase/sql/bank_mail_setup.sql`。
+- 前端：`chairConfig.bankAccount`（全活動共用匯款帳號）；繳費紀錄新增狀態 `NOTIFIED`（執秘已回報，含 `remitNote/remitAmount/remitDate/notifiedAt`）。`submitRemitNotice()` 寫入 NOTIFIED 並呼叫 `triggerBankMailFetch()`；`loadBankData()` 讀入帳紀錄與狀態後 `reconcileBankTransactions()` 比對（規則見 `findTransactionForRecord`：備註完全相同／純數字包含／最長唯一社名關鍵字，金額一致、日期 3 天內），成功則 `applyTransactionToRecord()` 標 `PAID_EMAIL` 並把配對寫回 `bank_transactions.matched_*`。主委可 `assignBankTransactionToClub()` 手動指定。顯示：執秘端 `#remitInfoBox`（`renderRemitInfoBox`，只在 `isRemitApplicable()` 且帳號已填時顯示）、主委端 `#bankMailBox`（`renderChairBankMailSection`）。
+- `isPaid` 的判斷式（`PAID_EMAIL || PAID_MANUAL || EXEMPT`）在檔案中出現十多次，NOTIFIED 視為未繳；新增狀態時要全部一起看。
+
 ## 架構（讀懂這段才改得動程式）
 
 ### 檔案角色

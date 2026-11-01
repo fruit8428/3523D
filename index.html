@@ -550,6 +550,37 @@
                         </div>
 
                         <!-- Apportionment Input Box (Conditional display) -->
+                        <!-- 匯款資訊（研討會／年會／分攤金等需匯款的活動才顯示；帳號由主委後台設定） -->
+                        <div id="remitInfoBox" class="mb-4 p-3 sm:p-3.5 bg-sky-50 border border-sky-200 rounded-xl hidden">
+                            <h4 class="text-xs font-bold text-sky-900 mb-2 flex items-center gap-1.5">💳 匯款資訊與匯款回報</h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div class="bg-white border border-sky-200 rounded-lg p-2.5 text-xs text-slate-700 space-y-1">
+                                    <div>銀行：<b id="remitBankName" class="text-slate-900"></b></div>
+                                    <div>戶名：<b id="remitAccountName" class="text-slate-900"></b></div>
+                                    <div class="flex items-center gap-1.5 flex-wrap">帳號：<b id="remitAccountNo" class="text-slate-900 font-mono text-sm"></b>
+                                        <button type="button" onclick="copyRemitAccount()" class="px-2 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-800 border border-sky-300 rounded text-[11px] font-bold">📋 複製帳號</button></div>
+                                    <div>本活動應繳：<b id="remitRequiredAmount" class="text-rose-700 font-mono"></b></div>
+                                    <div class="mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 leading-relaxed">
+                                        ⚠️ <b>匯款備註請填寫貴社全名</b>（例如：<b>南區扶輪社</b>），系統才能自動核對入帳。若銀行 App 沒有備註欄，請在下方填入您轉出帳號的末五碼或實際填寫的內容。
+                                    </div>
+                                </div>
+                                <div class="bg-white border border-sky-200 rounded-lg p-2.5 text-xs space-y-2">
+                                    <div id="remitStatusLine" class="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded p-2">尚未回報匯款</div>
+                                    <label class="block"><span class="text-[11px] text-slate-500">我在匯款備註填寫的內容</span>
+                                        <input type="text" id="remitNoteInput" placeholder="例如：南區扶輪社" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <label class="block"><span class="text-[11px] text-slate-500">匯款金額 (NT$)</span><input type="number" id="remitAmountInput" min="0" step="1" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
+                                        <label class="block"><span class="text-[11px] text-slate-500">匯款日期</span><input type="date" id="remitDateInput" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
+                                    </div>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <button type="button" onclick="submitRemitNotice()" id="btnSubmitRemit" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition">✅ 我已匯款，送出通知</button>
+                                        <button type="button" onclick="recheckRemitStatus()" class="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold">🔄 重新檢查入帳</button>
+                                    </div>
+                                    <p class="text-[10px] text-slate-500">送出後系統會自動讀取銀行入帳通知進行比對，通常 10 分鐘內會顯示「已收到您的匯款」。</p>
+                                </div>
+                            </div>
+                        </div>
+
                         <div id="apportionmentInputBox" class="mb-4 p-3 sm:p-3.5 bg-amber-50 border border-amber-200 rounded-xl hidden">
                             <h4 class="text-xs font-bold text-amber-900 mb-2 flex items-center gap-1.5">
                                 💰 本社應繳總額 (依照 RI Invoice 人數計算)
@@ -967,6 +998,65 @@
                             <span id="eventDMUploadStatus" class="text-[11px] font-bold text-sky-700"></span>
                         </div>
                         <div id="eventDMList" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+                    </div>
+                </div>
+
+                <!-- 匯款帳號與入帳通知信箱（自動對帳）：帳號給執秘看；信箱由雲端小程式每 10 分鐘讀取上海商銀入帳通知 -->
+                <div class="mt-3 pt-3 border-t border-dashed border-slate-200">
+                    <button type="button" onclick="toggleBankMailBox()" class="w-full flex items-center justify-between gap-2 text-left bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg px-3 py-2 transition">
+                        <span class="flex items-start gap-2 min-w-0">
+                            <span class="text-base">💳</span>
+                            <span class="min-w-0">
+                                <span class="block text-xs sm:text-sm font-bold text-emerald-900">匯款帳號與入帳通知信箱（自動對帳）<span id="bankMailSummaryBadge" class="ml-1 text-[10px] font-bold bg-white text-emerald-700 border border-emerald-300 px-1.5 py-0.5 rounded-full">尚未設定</span></span>
+                                <span class="block text-[11px] text-emerald-800/80 mt-0.5">點開可以：填寫上海商銀匯款帳號（各社執秘在報名頁會看到並可複製）、設定銀行「入帳通知」寄達的信箱與密碼，系統每 10 分鐘自動讀信比對匯款並標記已繳，也可按「立即抓取」；下方列出所有入帳紀錄與配對狀況，未配對的可手動指定給某社。</span>
+                            </span>
+                        </span>
+                        <span id="bankMailChevron" class="text-xs font-bold text-emerald-700 shrink-0 inline-block transition-transform">▼</span>
+                    </button>
+                    <div id="bankMailBox" class="hidden mt-2 space-y-3">
+                        <!-- (1) 匯款帳號 -->
+                        <div class="bg-white border border-slate-200 rounded-lg p-3">
+                            <div class="text-xs font-bold text-slate-800 mb-2">① 匯款帳號（全部活動共用，執秘報名頁會顯示）</div>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                <label class="block"><span class="text-[11px] text-slate-500">銀行名稱</span><input type="text" id="cfgBankName" placeholder="上海商業儲蓄銀行" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
+                                <label class="block"><span class="text-[11px] text-slate-500">銀行代碼</span><input type="text" id="cfgBankCode" placeholder="011" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
+                                <label class="block"><span class="text-[11px] text-slate-500">分行</span><input type="text" id="cfgBankBranch" placeholder="例如：敦北分行" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
+                                <label class="block"><span class="text-[11px] text-slate-500">戶名</span><input type="text" id="cfgBankAccountName" placeholder="例如：國際扶輪3523地區" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
+                                <label class="block col-span-2 sm:col-span-3"><span class="text-[11px] text-slate-500">帳號</span><input type="text" id="cfgBankAccountNo" placeholder="例如：40102-0000000-70" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
+                                <div class="flex items-end"><button type="button" onclick="saveBankAccount()" class="w-full px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition">💾 儲存匯款帳號</button></div>
+                            </div>
+                        </div>
+                        <!-- (2) 入帳通知信箱 -->
+                        <div class="bg-white border border-slate-200 rounded-lg p-3">
+                            <div class="text-xs font-bold text-slate-800 mb-1">② 入帳通知信箱（上海商銀會把「入帳通知單」寄到這個信箱）</div>
+                            <p class="text-[11px] text-slate-500 mb-2">密碼請用信箱的「應用程式密碼」（Gmail 需先開啟兩步驟驗證再產生 16 碼密碼），不要用平常登入的密碼。密碼儲存後任何人都無法再讀出，只有雲端小程式能使用。</p>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                <label class="block"><span class="text-[11px] text-slate-500">信箱服務</span>
+                                    <select id="cfgMailProvider" onchange="onMailProviderChange()" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs">
+                                        <option value="imap.gmail.com">Gmail</option>
+                                        <option value="outlook.office365.com">Outlook / Hotmail</option>
+                                        <option value="imap.mail.yahoo.com">Yahoo</option>
+                                        <option value="custom">其他（自填主機）</option>
+                                    </select></label>
+                                <label class="block" id="cfgMailHostWrap"><span class="text-[11px] text-slate-500">IMAP 主機</span><input type="text" id="cfgMailHost" placeholder="imap.example.com" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
+                                <label class="block"><span class="text-[11px] text-slate-500">Email address</span><input type="email" id="cfgMailEmail" placeholder="例如：rotary3523@gmail.com" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
+                                <label class="block"><span class="text-[11px] text-slate-500">Email 密碼（應用程式密碼）</span><input type="password" id="cfgMailPassword" placeholder="留空＝不變更" autocomplete="new-password" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2 mt-2">
+                                <button type="button" onclick="saveBankMailSettings()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition">💾 儲存信箱並測試連線</button>
+                                <button type="button" onclick="triggerBankMailFetch(true)" id="btnFetchBankMail" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition">⚡ 立即抓取匯款通知</button>
+                                <button type="button" onclick="manualReconcile()" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold">🔄 重新比對</button>
+                            </div>
+                            <div id="bankMailStatusLine" class="mt-2 text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-2">尚未讀取狀態</div>
+                        </div>
+                        <!-- (3) 入帳紀錄 -->
+                        <div class="bg-white border border-slate-200 rounded-lg p-3">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                <div class="text-xs font-bold text-slate-800">③ 銀行入帳紀錄（最近 60 天）<span id="bankTxCountBadge" class="ml-1 text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300 px-1.5 py-0.5 rounded-full">0 筆</span></div>
+                                <span class="text-[11px] text-slate-500">未配對的入帳可在右側選擇社別，指定為「目前這個活動」的繳費。</span>
+                            </div>
+                            <div id="bankTxList" class="overflow-x-auto"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -1894,6 +1984,7 @@
                     <select id="editPayStatusSelect" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500">
                         <option value="PAID_MANUAL">✅ 已繳費（人工現場 / 支票 / 匯款核帳）</option>
                         <option value="UNPAID">⏳ 待匯款 / 未繳費</option>
+                        <option value="NOTIFIED">📨 執秘已回報匯款（待核對）</option>
                         <option value="EXEMPT">🆓 免收 / 贊助款折抵</option>
                     </select>
                 </div>
@@ -2585,7 +2676,8 @@
             feeCompete: 1200,      // 內定參賽 1200 元
             feeMealOnly: 1000,     // 只用餐 1000 元
             startDate: '2026-09-01T09:00',
-            eventDMs: {}           // 活動 DM 檔案清單，key 為「大類id::子活動名稱」
+            eventDMs: {},          // 活動 DM 檔案清單，key 為「大類id::子活動名稱」
+            bankAccount: { bankName: '上海商業儲蓄銀行', bankCode: '011', branch: '', accountName: '', accountNo: '' } // 匯款帳號（全部活動共用）
         };
 
         // Temporarily selected members in secretary form
@@ -2698,6 +2790,7 @@
                         }, parsed.chairConfig);
                     }
                     if (!chairConfig.eventDMs || typeof chairConfig.eventDMs !== 'object') chairConfig.eventDMs = {};
+                    chairConfig.bankAccount = Object.assign({ bankName: '上海商業儲蓄銀行', bankCode: '011', branch: '', accountName: '', accountNo: '' }, chairConfig.bankAccount || {});
                     if (parsed.appAuthData) {
                         appAuthData = parsed.appAuthData;
                     }
@@ -2739,7 +2832,8 @@
                     feeCompete: 1200,
                     feeMealOnly: 1000,
                     startDate: '2026-09-01T09:00',
-                    eventDMs: {}
+                    eventDMs: {},
+                    bankAccount: { bankName: '上海商業儲蓄銀行', bankCode: '011', branch: '', accountName: '', accountNo: '' }
                 };
                 // 繳費紀錄與對帳信件也一併清空（含獨立儲存的 key），不再塞回示範資料
                 savePaymentRecords();
@@ -2758,6 +2852,7 @@
             await loadFromStorage();
             await loadChairEventEmails();
             await loadPaymentRecords();
+            await loadBankData(); // 入帳紀錄與抓取狀態，並自動比對執秘已回報的匯款
             await loadEmailInboxLogs();
             // 注意：不再於啟動時自動生成示範繳費資料；要看示範請由最高管理員按「載入示範資料」
             populateLoginClubs();
@@ -2812,6 +2907,8 @@
 
         function updateRolePermissionsUI() {
             if (typeof renderEventDMList === 'function') renderEventDMList(); // 活動 DM 清單依子活動與角色重新渲染
+            if (typeof renderRemitInfoBox === 'function') renderRemitInfoBox(); // 執秘端匯款資訊
+            if (typeof renderChairBankMailSection === 'function') renderChairBankMailSection(); // 主委端帳號／信箱／入帳紀錄
             // 主選單與子活動的增刪只開放給最高管理員（活動主委、執秘都看不到）
             const isAdmin = (currentRole === 'super_admin');
             const cat = categoriesData.find(c => c.id === currentCatId);
@@ -3253,6 +3350,7 @@
             }
 
             updateSubEventContext();
+            if (typeof renderRemitInfoBox === 'function') renderRemitInfoBox(); // 換社後匯款回報狀態也要換
         }
 
         function renderMemberMasterTable() {
@@ -6853,6 +6951,13 @@
                                 <span>免收 / 贊助折抵</span>
                             </span>
                         `;
+                    } else if (rec.status === 'NOTIFIED') {
+                        statusBadgeHTML = `
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-sm" title="執秘已回報匯款，等待銀行入帳通知核對">
+                                <span>📨</span>
+                                <span>執秘已回報匯款，待核對</span>
+                            </span>
+                        `;
                     } else {
                         statusBadgeHTML = `
                             <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300 shadow-sm animate-pulse">
@@ -6972,7 +7077,9 @@
                             <div class="flex-shrink-0">
                                 ${isPaid 
                                     ? `<span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-200 text-emerald-900">✅ ${rec.last5 ? '#' + rec.last5 : '已繳'}</span>`
-                                    : `<span class="px-1.5 py-0.2 rounded text-[10px] font-black bg-rose-200 text-rose-900 animate-pulse">⏳ 待繳</span>`}
+                                    : (rec.status === 'NOTIFIED'
+                                        ? `<span class="px-1.5 py-0.2 rounded text-[10px] font-black bg-amber-200 text-amber-900">📨 已回報</span>`
+                                        : `<span class="px-1.5 py-0.2 rounded text-[10px] font-black bg-rose-200 text-rose-900 animate-pulse">⏳ 待繳</span>`)}
                             </div>
                         </div>
                     `;
@@ -7497,6 +7604,7 @@
                     if (rec.status === 'PAID_EMAIL') statusText = "已繳費 (Email自動核對)";
                     else if (rec.status === 'PAID_MANUAL') statusText = "已繳費 (人工核對)";
                     else if (rec.status === 'EXEMPT') statusText = "免收 / 贊助折抵";
+                    else if (rec.status === 'NOTIFIED') statusText = "執秘已回報匯款 (待核對)";
 
                     rows.push([
                         div.name,
@@ -7823,6 +7931,420 @@
             await saveToStorage();
             renderEventDMList();
             showToast(`🗑️ 已刪除活動 DM「${item.name}」`);
+        }
+
+
+        // ================= 匯款帳號 + 上海商銀入帳通知自動對帳 =================
+        // 流程：主委填匯款帳號與通知信箱 → 執秘匯款後填「匯款備註／金額／日期」送出通知（狀態 NOTIFIED）
+        //      → 雲端小程式讀信寫入 bank_transactions → 前端 reconcileBankTransactions() 比對 → 標記 PAID_EMAIL → 執秘看到「已收到您的匯款」
+        const BANK_MAIL_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/fetch-bank-mail`;
+        let bankTransactions = [];      // 來自 bank_transactions 資料表
+        let bankMailStatus = null;      // 來自 bank_mail_status 資料表
+        let bankMailBoxOpen = false;
+
+        function getBankAccount() {
+            if (!chairConfig.bankAccount) chairConfig.bankAccount = { bankName: '上海商業儲蓄銀行', bankCode: '011', branch: '', accountName: '', accountNo: '' };
+            return chairConfig.bankAccount;
+        }
+        function isRemitApplicable() {
+            // 研討會／年會（各社應繳）或分攤金模式才需要匯款
+            return isPaymentTrackingCategory(currentCatId) || document.body.getAttribute('data-mode') === 'apportionment';
+        }
+        function getRequiredRemitAmount() {
+            if (document.body.getAttribute('data-mode') === 'apportionment') {
+                const inp = document.getElementById('secApportionmentInput');
+                return inp ? (parseFloat(inp.value) || 0) : 0;
+            }
+            return getApportionmentFee() || 0;
+        }
+        // 備註正規化：全形轉半形、去空白與符號、臺→台、小寫
+        function normalizeRemitNote(str) {
+            return String(str || '')
+                .replace(/[！-～]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+                .replace(/臺/g, '台')
+                .replace(/[\s\-_/.,。、，．·‧()（）]/g, '')
+                .toLowerCase();
+        }
+        // 社名關鍵字：去掉「台北市／臺北／台北」前綴與「扶輪社」後綴，例如 臺北市南區扶輪社 → 南區
+        function clubNameKeyword(clubName) {
+            let base = String(clubName || '').replace(/臺/g, '台').replace(/^(台北市|台北)/, '').replace(/扶輪社$/, '').trim();
+            return normalizeRemitNote(base);
+        }
+        function suggestRemitNote(clubName) {
+            return String(clubName || '').replace(/臺/g, '台').replace(/^(台北市|台北)/, '');
+        }
+        // 在備註文字中找出「最長且唯一」符合的社名關鍵字（避免「西南區」誤配成「南區」）
+        function findClubByNoteKeyword(noteNorm) {
+            if (!noteNorm) return null;
+            let best = null;
+            getPaymentDivisions().forEach(div => div.clubs.forEach(c => {
+                const kw = clubNameKeyword(c.name);
+                if (kw.length >= 2 && noteNorm.includes(kw)) {
+                    if (!best || kw.length > best.kw.length) best = { club: c.name, kw };
+                }
+            }));
+            return best ? best.club : null;
+        }
+        function isRecordPaid(rec) {
+            return !!rec && (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT');
+        }
+
+        // ---------- 讀取雲端資料 ----------
+        async function loadBankTransactions() {
+            if (!supabaseClient) return;
+            try {
+                const since = new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+                const { data, error } = await supabaseClient.from('bank_transactions').select('*').or(`tx_date.gte.${since},tx_date.is.null`).order('tx_date', { ascending: false }).order('id', { ascending: false }).limit(300);
+                if (!error && Array.isArray(data)) bankTransactions = data;
+            } catch (e) { console.warn('讀取入帳紀錄失敗', e); }
+        }
+        async function loadBankMailStatus() {
+            if (!supabaseClient) return;
+            try {
+                const { data, error } = await supabaseClient.from('bank_mail_status').select('*').eq('id', 1).maybeSingle();
+                if (!error) bankMailStatus = data || null;
+            } catch (e) { console.warn('讀取抓取狀態失敗', e); }
+        }
+        async function loadBankData() {
+            await Promise.all([loadBankTransactions(), loadBankMailStatus()]);
+            await reconcileBankTransactions();
+        }
+
+        // ---------- 自動比對 ----------
+        function findTransactionForRecord(txs, clubName, rec) {
+            const noteNorm = normalizeRemitNote(rec.remitNote || '');
+            const amt = Number(rec.remitAmount) || 0;
+            const remitDate = rec.remitDate ? new Date(rec.remitDate) : null;
+            return txs.find(t => {
+                const tn = normalizeRemitNote(t.note || '');
+                const txDate = t.tx_date ? new Date(t.tx_date) : null;
+                const dateOk = !remitDate || !txDate || Math.abs(txDate - remitDate) <= 3 * 86400000;
+                if (!dateOk) return false;
+                const amountOk = !amt || Math.abs(Number(t.amount) - amt) < 0.5;
+                if (!amountOk || !tn) return false;
+                // 1) 執秘填的備註與銀行備註「完全相同」
+                if (noteNorm && tn === noteNorm) return true;
+                // 2) 純數字備註（例如匯款人帳號 108-0013465）：執秘填的數字（至少 5 碼）出現在銀行備註裡即可
+                const digitsOnly = /^\d{5,}$/.test(noteNorm);
+                if (digitsOnly && tn.includes(noteNorm)) return true;
+                // 3) 銀行備註含有社名關鍵字：取「最長且唯一」的社，必須正好是本社（避免「西南區」被「南區」搶走）
+                if (findClubByNoteKeyword(tn) === clubName) return true;
+                return false;
+            });
+        }
+        function applyTransactionToRecord(key, clubName, tx, how) {
+            if (!chairPaymentRecords[key]) chairPaymentRecords[key] = {};
+            const prev = chairPaymentRecords[key][clubName] || {};
+            chairPaymentRecords[key][clubName] = {
+                ...prev,
+                status: 'PAID_EMAIL',
+                amount: Number(tx.amount) || prev.remitAmount || 0,
+                date: tx.tx_date || new Date().toISOString().slice(0, 10),
+                last5: tx.note || '',
+                method: '銀行匯款',
+                note: how || '上海商銀入帳通知自動核對相符',
+                verifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                txId: tx.id,
+                bankNote: tx.note || ''
+            };
+            tx.matched_key = key;
+            tx.matched_club = clubName;
+            tx.matched_at = new Date().toISOString();
+        }
+        async function persistTransactionMatch(tx) {
+            if (!supabaseClient || !tx || !tx.id) return;
+            try {
+                await supabaseClient.from('bank_transactions').update({ matched_key: tx.matched_key, matched_club: tx.matched_club, matched_at: tx.matched_at }).eq('id', tx.id);
+            } catch (e) { console.warn('寫回配對結果失敗', e); }
+        }
+        async function reconcileBankTransactions() {
+            const unmatched = bankTransactions.filter(t => !t.matched_key);
+            if (unmatched.length === 0) { renderRemitInfoBox(); renderChairBankMailSection(); return 0; }
+            let changed = 0;
+            for (const [key, recs] of Object.entries(chairPaymentRecords || {})) {
+                for (const [clubName, rec] of Object.entries(recs || {})) {
+                    if (isRecordPaid(rec)) continue;
+                    if (rec.status !== 'NOTIFIED' && !rec.remitNote) continue; // 只比對執秘有回報的
+                    const tx = findTransactionForRecord(unmatched, clubName, rec);
+                    if (!tx) continue;
+                    applyTransactionToRecord(key, clubName, tx);
+                    await persistTransactionMatch(tx);
+                    unmatched.splice(unmatched.indexOf(tx), 1);
+                    changed++;
+                }
+            }
+            if (changed > 0) {
+                await savePaymentRecords();
+                if (typeof renderDivisionPaymentSection === 'function') renderDivisionPaymentSection();
+            }
+            renderRemitInfoBox();
+            renderChairBankMailSection();
+            return changed;
+        }
+        async function manualReconcile() {
+            await loadBankTransactions();
+            const n = await reconcileBankTransactions();
+            showToast(n > 0 ? `🔄 重新比對完成，新核對 ${n} 筆匯款` : '🔄 重新比對完成，沒有新的可配對入帳');
+        }
+
+        // ---------- 呼叫雲端小程式抓信 ----------
+        async function triggerBankMailFetch(manual) {
+            const btn = document.getElementById('btnFetchBankMail');
+            if (manual && btn) { btn.disabled = true; btn.innerText = '⏳ 抓取中…'; }
+            let result = null;
+            try {
+                const res = await fetch(BANK_MAIL_FUNCTION_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+                    body: JSON.stringify({ source: manual ? 'manual' : 'secretary' })
+                });
+                result = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+                if (manual) {
+                    if (result.ok && !result.skipped) showToast(`📬 抓取完成：掃描 ${result.scanned} 封，新增 ${result.inserted} 筆入帳`);
+                    else if (result.skipped) showToast('📬 剛剛才抓取過，請稍候再試');
+                    else alert(`❌ 抓取失敗：${result.error || '未知錯誤'}`);
+                }
+            } catch (e) {
+                if (manual) alert('❌ 無法連線雲端小程式。可能尚未部署 fetch-bank-mail，請最高管理員依 README「入帳通知自動對帳設定」完成部署。');
+            } finally {
+                if (manual && btn) { btn.disabled = false; btn.innerText = '⚡ 立即抓取匯款通知'; }
+            }
+            await loadBankData();
+            return result;
+        }
+
+        // ---------- 主委端：帳號／信箱設定與入帳紀錄 ----------
+        // 帳號欄位只在「展開時」與「儲存後」帶入，避免背景載入完成時把使用者正在打的字洗掉
+        function fillBankAccountInputs() {
+            const acct = getBankAccount();
+            const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+            set('cfgBankName', acct.bankName); set('cfgBankCode', acct.bankCode); set('cfgBankBranch', acct.branch);
+            set('cfgBankAccountName', acct.accountName); set('cfgBankAccountNo', acct.accountNo);
+        }
+        function toggleBankMailBox(forceOpen) {
+            const box = document.getElementById('bankMailBox');
+            if (!box) return;
+            const open = (typeof forceOpen === 'boolean') ? forceOpen : box.classList.contains('hidden');
+            bankMailBoxOpen = open;
+            box.classList.toggle('hidden', !open);
+            const chev = document.getElementById('bankMailChevron');
+            if (chev) chev.style.transform = open ? 'rotate(180deg)' : '';
+            if (open) { fillBankAccountInputs(); loadBankData(); }
+        }
+        function onMailProviderChange() {
+            const sel = document.getElementById('cfgMailProvider');
+            const wrap = document.getElementById('cfgMailHostWrap');
+            const host = document.getElementById('cfgMailHost');
+            if (!sel || !wrap || !host) return;
+            const custom = sel.value === 'custom';
+            wrap.classList.toggle('hidden', !custom);
+            if (!custom) host.value = sel.value;
+        }
+        async function saveBankAccount() {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') { alert('⚠️ 權限限制：只有主委或最高管理員可以設定匯款帳號。'); return; }
+            const acct = getBankAccount();
+            acct.bankName = (document.getElementById('cfgBankName')?.value || '').trim() || '上海商業儲蓄銀行';
+            acct.bankCode = (document.getElementById('cfgBankCode')?.value || '').trim() || '011';
+            acct.branch = (document.getElementById('cfgBankBranch')?.value || '').trim();
+            acct.accountName = (document.getElementById('cfgBankAccountName')?.value || '').trim();
+            acct.accountNo = (document.getElementById('cfgBankAccountNo')?.value || '').trim();
+            await saveToStorage();
+            fillBankAccountInputs();
+            renderRemitInfoBox();
+            renderChairBankMailSection();
+            showToast(acct.accountNo ? '💾 匯款帳號已儲存，執秘報名頁即可看到' : '💾 已清除匯款帳號，執秘端將不顯示匯款資訊');
+        }
+        async function saveBankMailSettings() {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') { alert('⚠️ 權限限制：只有主委或最高管理員可以設定入帳通知信箱。'); return; }
+            if (!supabaseClient) { alert('❌ 目前無法連線雲端，無法儲存信箱設定。'); return; }
+            const email = (document.getElementById('cfgMailEmail')?.value || '').trim();
+            const pwd = document.getElementById('cfgMailPassword')?.value || '';
+            const host = (document.getElementById('cfgMailHost')?.value || '').trim() || 'imap.gmail.com';
+            if (!email) { alert('請先填寫 Email address。'); return; }
+            const payload = { id: 1, email, imap_host: host, imap_port: 993, updated_at: new Date().toISOString() };
+            if (pwd) payload.app_password = pwd.replace(/\s+/g, ''); // Gmail 應用程式密碼常帶空格，去掉
+            try {
+                const { error } = await supabaseClient.from('bank_mail_settings').upsert(payload, { onConflict: 'id' });
+                if (error) {
+                    const msg = /relation .* does not exist|schema cache/i.test(error.message || '') ? '雲端尚未建立設定資料表，請最高管理員依 README「入帳通知自動對帳設定」執行 SQL。' : error.message;
+                    alert(`❌ 儲存失敗：${msg}`); return;
+                }
+                if (document.getElementById('cfgMailPassword')) document.getElementById('cfgMailPassword').value = '';
+                showToast('💾 信箱設定已儲存，正在測試連線並抓取…');
+                await triggerBankMailFetch(true);
+            } catch (e) { alert(`❌ 儲存失敗：${e.message || e}`); }
+        }
+        function renderChairBankMailSection() {
+            const box = document.getElementById('bankMailBox');
+            if (!box) return;
+            const acct = getBankAccount();
+            const st = bankMailStatus;
+            const badge = document.getElementById('bankMailSummaryBadge');
+            if (badge) {
+                if (!acct.accountNo && !(st && st.has_password)) badge.innerText = '尚未設定';
+                else if (acct.accountNo && st && st.has_password && !st.last_error) badge.innerText = '✅ 帳號與信箱已設定';
+                else if (acct.accountNo && !(st && st.has_password)) badge.innerText = '帳號已設定，信箱未設定';
+                else if (st && st.last_error) badge.innerText = '⚠️ 信箱有錯誤';
+                else badge.innerText = '信箱已設定，帳號未填';
+            }
+            const line = document.getElementById('bankMailStatusLine');
+            if (line) {
+                if (!st) {
+                    line.innerHTML = '尚無抓取狀態。請先儲存信箱設定；若已設定仍無狀態，代表雲端小程式尚未部署（見 README）。';
+                } else {
+                    const parts = [];
+                    parts.push(`信箱：<b>${st.email_masked || '未設定'}</b>`);
+                    parts.push(`密碼：<b>${st.has_password ? '已設定' : '未設定'}</b>`);
+                    parts.push(`上次抓取：<b>${st.last_fetch_at ? new Date(st.last_fetch_at).toLocaleString('zh-TW', { hour12: false }) : '尚未抓取'}</b>`);
+                    if (st.last_error) parts.push(`<span class="text-rose-700 font-bold">❌ ${escapeHtmlText(st.last_error)}</span>`);
+                    else if (st.last_result) parts.push(`<span class="text-emerald-700">${escapeHtmlText(st.last_result)}</span>`);
+                    parts.push(`累計入帳 <b>${st.total_transactions || 0}</b> 筆 · 系統每 10 分鐘自動抓取`);
+                    line.innerHTML = parts.join('　|　');
+                }
+            }
+            // 入帳紀錄列表
+            const list = document.getElementById('bankTxList');
+            const cnt = document.getElementById('bankTxCountBadge');
+            if (cnt) cnt.innerText = `${bankTransactions.length} 筆`;
+            if (list) {
+                if (bankTransactions.length === 0) {
+                    list.innerHTML = '<div class="text-[11px] text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-lg p-3 text-center">目前沒有入帳紀錄。設定好信箱後，銀行每一筆入帳通知都會出現在這裡。</div>';
+                } else {
+                    const clubOptions = getPaymentDivisions().map(d => `<optgroup label="${escapeHtmlText(d.name)}">${d.clubs.map(c => `<option value="${escapeHtmlText(c.name)}">${escapeHtmlText(c.name)}</option>`).join('')}</optgroup>`).join('');
+                    const currentKey = getActivePaymentKey();
+                    const subName = currentKey.split('::')[1] || '';
+                    list.innerHTML = `
+                        <table class="w-full text-[11px]">
+                            <thead><tr class="bg-slate-50 text-slate-600 text-left"><th class="p-1.5">入帳日期</th><th class="p-1.5 text-right">金額</th><th class="p-1.5">存摺備註</th><th class="p-1.5">配對狀態</th></tr></thead>
+                            <tbody>${bankTransactions.map(t => {
+                                const matched = !!t.matched_key;
+                                const evName = matched ? (t.matched_key.split('::')[1] || t.matched_key) : '';
+                                return `<tr class="border-t border-slate-100 ${matched ? '' : 'bg-amber-50/60'}">
+                                    <td class="p-1.5 font-mono whitespace-nowrap">${escapeHtmlText(t.tx_date || (t.mail_date || '').slice(0, 10) || '-')}</td>
+                                    <td class="p-1.5 font-mono text-right font-bold">NT$ ${(Number(t.amount) || 0).toLocaleString()}</td>
+                                    <td class="p-1.5 break-all">${escapeHtmlText(t.note || '（無備註）')}</td>
+                                    <td class="p-1.5">${matched
+                                        ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold">✅ ${escapeHtmlText(t.matched_club)}</span><span class="block text-[10px] text-slate-500 mt-0.5">${escapeHtmlText(evName)}</span>`
+                                        : `<div class="flex items-center gap-1 flex-wrap"><span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-bold">❓ 未配對</span>
+                                            <select id="assignClub_${t.id}" class="bg-white border border-slate-300 rounded p-1 text-[11px] max-w-[160px]"><option value="">指定給…</option>${clubOptions}</select>
+                                            <button type="button" onclick="assignBankTransactionToClub(${t.id})" class="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold" title="指定為「${escapeHtmlText(subName)}」的繳費">指定</button></div>`}
+                                    </td></tr>`;
+                            }).join('')}</tbody>
+                        </table>`;
+                }
+            }
+        }
+        async function assignBankTransactionToClub(txId) {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') { alert('⚠️ 權限限制：只有主委或最高管理員可以指定入帳。'); return; }
+            const sel = document.getElementById(`assignClub_${txId}`);
+            const clubName = sel ? sel.value : '';
+            if (!clubName) { alert('請先選擇要指定的社別。'); return; }
+            const tx = bankTransactions.find(t => t.id === txId);
+            if (!tx) return;
+            const key = getActivePaymentKey();
+            const subName = key.split('::')[1] || key;
+            if (!confirm(`確定將這筆 NT$ ${(Number(tx.amount) || 0).toLocaleString()}（備註：${tx.note || '無'}）指定為【${clubName}】在《${subName}》的繳費？`)) return;
+            applyTransactionToRecord(key, clubName, tx, '主委手動指定銀行入帳');
+            await persistTransactionMatch(tx);
+            await savePaymentRecords();
+            renderDivisionPaymentSection();
+            renderChairBankMailSection();
+            renderRemitInfoBox();
+            showToast(`✅ 已將入帳指定給【${clubName}】並標記為已繳費`);
+        }
+
+        // ---------- 執秘端：匯款資訊與回報 ----------
+        function renderRemitInfoBox() {
+            const box = document.getElementById('remitInfoBox');
+            if (!box) return;
+            const acct = getBankAccount();
+            const show = isRemitApplicable() && !!acct.accountNo && !!selectedClubName;
+            box.classList.toggle('hidden', !show);
+            if (!show) return;
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+            set('remitBankName', `${acct.bankName}${acct.bankCode ? `（${acct.bankCode}）` : ''}${acct.branch ? ' ' + acct.branch : ''}`);
+            set('remitAccountName', acct.accountName || '—');
+            set('remitAccountNo', acct.accountNo);
+            const required = getRequiredRemitAmount();
+            set('remitRequiredAmount', required ? `NT$ ${required.toLocaleString()}` : '依主委公告');
+
+            const key = getActivePaymentKey();
+            const rec = (chairPaymentRecords[key] || {})[selectedClubName];
+            const noteInput = document.getElementById('remitNoteInput');
+            const amtInput = document.getElementById('remitAmountInput');
+            const dateInput = document.getElementById('remitDateInput');
+            const idle = el => el && document.activeElement !== el;
+            if (idle(noteInput)) noteInput.value = (rec && rec.remitNote) || suggestRemitNote(selectedClubName);
+            if (idle(amtInput)) amtInput.value = (rec && rec.remitAmount) || required || '';
+            if (idle(dateInput)) dateInput.value = (rec && rec.remitDate) || new Date().toISOString().slice(0, 10);
+
+            const line = document.getElementById('remitStatusLine');
+            const btn = document.getElementById('btnSubmitRemit');
+            if (line) {
+                if (rec && (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL')) {
+                    line.className = 'text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded p-2';
+                    line.innerHTML = `✅ 已收到您的匯款：NT$ ${(Number(rec.amount) || 0).toLocaleString()}${rec.date ? `，入帳日 ${escapeHtmlText(rec.date)}` : ''}${rec.status === 'PAID_EMAIL' ? '（銀行入帳通知自動核對）' : '（主委人工核對）'}`;
+                    if (btn) btn.classList.add('hidden');
+                } else if (rec && rec.status === 'EXEMPT') {
+                    line.className = 'text-[11px] font-bold text-purple-800 bg-purple-50 border border-purple-200 rounded p-2';
+                    line.innerText = '🆓 本社為免收／贊助折抵，無需匯款';
+                    if (btn) btn.classList.add('hidden');
+                } else if (rec && rec.status === 'NOTIFIED') {
+                    line.className = 'text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded p-2';
+                    line.innerHTML = `⏳ 已於 ${escapeHtmlText(rec.notifiedAt || '')} 送出匯款通知，等待銀行入帳核對（通常 10 分鐘內）。若超過一天仍未更新，請確認匯款備註與金額，或聯絡活動主委。`;
+                    if (btn) { btn.classList.remove('hidden'); btn.innerText = '🔁 更新匯款資料並重新通知'; }
+                } else {
+                    line.className = 'text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded p-2';
+                    line.innerText = '尚未回報匯款。匯款完成後，請填寫下方資料並送出通知。';
+                    if (btn) { btn.classList.remove('hidden'); btn.innerText = '✅ 我已匯款，送出通知'; }
+                }
+            }
+        }
+        function copyRemitAccount() {
+            const acct = getBankAccount();
+            const text = `${acct.bankName}${acct.bankCode ? `(${acct.bankCode})` : ''}${acct.branch ? ' ' + acct.branch : ''}\n戶名：${acct.accountName}\n帳號：${acct.accountNo}`;
+            navigator.clipboard.writeText(text).then(() => showToast('📋 已複製匯款帳號資訊')).catch(() => prompt('請複製匯款帳號：', text));
+        }
+        async function submitRemitNotice() {
+            if (!selectedClubName) { alert('請先選擇本社。'); return; }
+            const note = (document.getElementById('remitNoteInput')?.value || '').trim();
+            const amount = parseFloat(document.getElementById('remitAmountInput')?.value) || 0;
+            const date = document.getElementById('remitDateInput')?.value || new Date().toISOString().slice(0, 10);
+            if (!note) { alert('請填寫您在匯款備註寫的內容（例如：南區扶輪社），系統才能比對入帳。'); return; }
+            if (!amount) { alert('請填寫匯款金額。'); return; }
+            const key = getActivePaymentKey();
+            if (!chairPaymentRecords[key]) chairPaymentRecords[key] = {};
+            const prev = chairPaymentRecords[key][selectedClubName] || {};
+            if (isRecordPaid(prev)) { showToast('✅ 本社此活動已核對為已繳費，不需再回報'); renderRemitInfoBox(); return; }
+            chairPaymentRecords[key][selectedClubName] = {
+                ...prev,
+                status: 'NOTIFIED',
+                amount: 0,
+                method: '銀行匯款',
+                last5: '',
+                date: '',
+                remitNote: note,
+                remitAmount: amount,
+                remitDate: date,
+                notifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                notifiedBy: (loggedInUser && loggedInUser.club) || selectedClubName,
+                note: `執秘回報已匯款（備註：${note}，NT$ ${amount.toLocaleString()}，${date}），等待銀行入帳核對`
+            };
+            await savePaymentRecords();
+            renderRemitInfoBox();
+            showToast('📨 匯款通知已送出，系統正在比對銀行入帳…');
+            // 立刻嘗試抓信並比對；若雲端小程式尚未部署則靜默略過，由排程處理
+            await triggerBankMailFetch(false);
+            const rec = (chairPaymentRecords[key] || {})[selectedClubName];
+            if (rec && rec.status === 'PAID_EMAIL') showToast('✅ 已收到您的匯款，感謝！');
+        }
+        async function recheckRemitStatus() {
+            showToast('🔄 正在重新檢查銀行入帳…');
+            await triggerBankMailFetch(false);
+            const key = getActivePaymentKey();
+            const rec = (chairPaymentRecords[key] || {})[selectedClubName];
+            if (rec && isRecordPaid(rec)) showToast('✅ 已收到您的匯款！');
+            else showToast('⏳ 尚未比對到入帳，銀行通知可能還沒送達，請稍後再試');
         }
 
         // ================= 可收合面板（主委後台 / 最高權限頁） =================
