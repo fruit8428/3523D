@@ -153,12 +153,19 @@ export class SimpleImap {
     return out;
   }
 
-  // 分段下載整封信（每段 64 KB），不改變已讀狀態
-  async fetchSource(uid: number, size: number): Promise<Uint8Array> {
+  // 讀某個 MIME 段落的標頭（很小），用來判斷它是不是 PDF 附件
+  async fetchPartMime(uid: number, part: string): Promise<string> {
+    const r = await this.cmd(`UID FETCH ${uid} (BODY.PEEK[${part}.MIME])`);
+    const item = r.untagged.find((u) => /FETCH/.test(u.text) && u.literals.length > 0);
+    return item ? dec.decode(item.literals[0]) : "";
+  }
+
+  // 分段下載整封信或某個段落（每段 64 KB），不改變已讀狀態；section 留空＝整封
+  async fetchSource(uid: number, size: number, section = ""): Promise<Uint8Array> {
     const parts: Uint8Array[] = [];
     let off = 0, total = 0;
     while (true) {
-      const r = await this.cmd(`UID FETCH ${uid} (BODY.PEEK[]<${off}.${CHUNK}>)`);
+      const r = await this.cmd(`UID FETCH ${uid} (BODY.PEEK[${section}]<${off}.${CHUNK}>)`);
       const item = r.untagged.find((u) => /FETCH/.test(u.text) && u.literals.length > 0);
       const chunk = item ? item.literals[0] : new Uint8Array(0);
       if (chunk.length === 0) break;

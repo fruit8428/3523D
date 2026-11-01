@@ -8102,20 +8102,24 @@
                 });
                 result = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
                 // 雲端每次最多處理 4 封（CPU 上限），若還有待處理的信，主委按「立即抓取」時自動連續呼叫到做完（最多 12 輪）
-                let rounds = 0, totalInserted = Number(result.inserted) || 0;
-                while (manual && result && result.ok && !result.skipped && (Number(result.pending) || 0) > 0 && rounds < 12) {
+                // 平台偶爾會以「運算資源不足」中止（CPU 配額累積），此時已解析的筆數已寫入，等 8 秒換新的工作程序再續抓
+                const isTransient = (r) => !!r && !r.ok && /WORKER_RESOURCE_LIMIT|compute resources|IDLE_TIMEOUT/i.test(`${r.code || ''} ${r.message || ''} ${r.error || ''}`);
+                let rounds = 0, totalInserted = Number(result.inserted) || 0, lastPending = Number(result.pending) || 0;
+                while (manual && result && !result.skipped && (((result.ok && (Number(result.pending) || 0) > 0)) || isTransient(result)) && rounds < 15) {
                     rounds++;
-                    if (btn) btn.innerText = `⏳ 已新增 ${totalInserted} 筆，還有 ${result.pending} 封處理中…`;
+                    if (result.ok) lastPending = Number(result.pending) || 0;
+                    if (btn) btn.innerText = `⏳ 已新增 ${totalInserted} 筆，還有約 ${lastPending} 封處理中…`;
                     await loadBankData();
-                    await new Promise(r => setTimeout(r, 6000)); // 雲端 5 秒內重複呼叫會被略過
+                    await new Promise(r => setTimeout(r, isTransient(result) ? 8000 : 6000)); // 雲端 5 秒內重複呼叫會被略過
                     const again = await fetch(BANK_MAIL_FUNCTION_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
                         body: JSON.stringify({ source: 'manual-continue' })
-                    });
-                    result = await again.json().catch(() => ({ ok: false, error: `HTTP ${again.status}` }));
+                    }).catch(() => null);
+                    result = again ? await again.json().catch(() => ({ ok: false, error: `HTTP ${again.status}` })) : { ok: false, error: '網路錯誤', message: 'IDLE_TIMEOUT' };
                     totalInserted += Number(result.inserted) || 0;
                 }
+                if (manual && isTransient(result)) result = { ok: true, scanned: result.scanned || '-', inserted: 0, pending: lastPending };
                 if (manual) {
                     if (result.ok && !result.skipped) showToast(`📬 抓取完成：掃描 ${result.scanned} 封，新增 ${totalInserted} 筆入帳${(Number(result.pending) || 0) > 0 ? `，尚有 ${result.pending} 封將由排程續抓` : ''}`);
                     else if (result.skipped) showToast('📬 剛剛才抓取過，請稍候再試');
@@ -8227,7 +8231,9 @@
                     parts.push(`信箱：<b>${st.email_masked || '未設定'}</b>`);
                     parts.push(`密碼：<b>${st.has_password ? '已設定' : '未設定'}</b>`);
                     parts.push(`上次抓取：<b>${st.last_fetch_at ? new Date(st.last_fetch_at).toLocaleString('zh-TW', { hour12: false }) : '尚未抓取'}</b>`);
+                    const stale = st.last_result && /^⏳/.test(st.last_result) && st.updated_at && (Date.now() - new Date(st.updated_at).getTime() > 3 * 60 * 1000);
                     if (st.last_error) parts.push(`<span class="text-rose-700 font-bold">❌ ${escapeHtmlText(st.last_error)}</span>`);
+                    else if (stale) parts.push(`<span class="text-amber-700">上次抓取中途被平台中止（已解析的筆數已保留），排程每 10 分鐘會自動續抓，或按「立即抓取」</span>`);
                     else if (st.last_result) parts.push(`<span class="text-emerald-700">${escapeHtmlText(st.last_result)}</span>`);
                     parts.push(`累計入帳 <b>${st.total_transactions || 0}</b> 筆 · 系統每 10 分鐘自動抓取`);
                     line.innerHTML = parts.join('　|　');

@@ -6,6 +6,7 @@
 // =====================================================================
 import { SimpleImap } from "./imap.ts";
 import { Buffer } from "node:buffer";
+const dec = new TextDecoder();
 import { simpleParser } from "npm:mailparser@3.7.2";
 import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
 
@@ -152,7 +153,7 @@ export async function fetchBankNotices(opt: FetchOptions): Promise<FetchResult> 
     if (uids.length === 0) return result;
 
     // 第一輪：只抓信頭（寄件者／主旨／Message-ID），挑出銀行入帳通知；每 25 封一批
-    const candidates: { uid: number; size: number; key: string }[] = [];
+    const candidates: { uid: number; size: number; key: string; date: Date | null }[] = [];
     for (let i = 0; i < uids.length; i += 25) {
       const chunk = uids.slice(i, i + 25);
       await progress(`④掃描信頭 ${Math.min(i + 25, uids.length)}/${uids.length}`);
@@ -166,7 +167,7 @@ export async function fetchBankNotices(opt: FetchOptions): Promise<FetchResult> 
         // 去重用 Message-ID（HiNet 的 UID 不保證固定）；沒有 Message-ID 才退回 uidValidity-uid
         const key = (parsed.messageId && String(parsed.messageId).trim()) || `${uidValidity}-${h.uid}`;
         if (opt.seen.has(key)) continue;
-        candidates.push({ uid: h.uid, size: h.size, key });
+        candidates.push({ uid: h.uid, size: h.size, key, date: parsed.date || null });
       }
     }
     await progress(`⑤銀行入帳通知 ${result.bankMails} 封，其中 ${candidates.length} 封尚未匯入`);
@@ -177,36 +178,53 @@ export async function fetchBankNotices(opt: FetchOptions): Promise<FetchResult> 
       if (heavy >= maxNew) break;
       const c = candidates[index];
       await progress(`⑥下載並解析第 ${index + 1}/${candidates.length} 封`);
-      const source = await imap.fetchSource(c.uid, c.size);
-      if (source.length === 0) continue;
-      const parsed = await simpleParser(Buffer.from(source)); // mailparser 要 Node Buffer
       let text = "";
-      // 先找 PDF 附件（銀行把 PDF 標成 text/plain，所以用檔名或檔頭判斷）
-      const pdfAtt = (parsed.attachments || []).find((a: any) => {
-        const name = String(a.filename || "").toLowerCase();
-        const head = a.content ? String.fromCharCode(...a.content.slice(0, 4)) : "";
-        return name.endsWith(".pdf") || head === "%PDF";
-      });
-      if (pdfAtt) {
+      let mailDate: Date | null = c.date;
+      // 省 CPU 的做法：先問伺服器第 2、3、1 段的 MIME 標頭，找到 PDF 附件就只下載那一段自己解 base64，
+      // 不用下載整封信再用 mailparser 解析（Supabase 每次請求 CPU 只有 2 秒）
+      let pdfBytes: Uint8Array | null = null;
+      for (const part of ["2", "3", "1"]) {
+        const mime = await imap.fetchPartMime(c.uid, part);
+        if (!mime) continue;
+        if (/filename="?[^"\n]*\.pdf|application\/pdf/i.test(mime) && /base64/i.test(mime)) {
+          const raw = await imap.fetchSource(c.uid, 0, part);
+          const b64 = dec.decode(raw).replace(/[^A-Za-z0-9+/=]/g, "");
+          pdfBytes = new Uint8Array(Buffer.from(b64, "base64"));
+          break;
+        }
+      }
+      if (!pdfBytes) {
+        // 找不到 PDF 段落就退回下載整封信解析（相容其他格式）
+        const source = await imap.fetchSource(c.uid, c.size);
+        if (source.length === 0) continue;
+        const parsed = await simpleParser(Buffer.from(source)); // mailparser 要 Node Buffer
+        mailDate = parsed.date || mailDate;
+        const pdfAtt = (parsed.attachments || []).find((a: any) => {
+          const name = String(a.filename || "").toLowerCase();
+          const head = a.content ? String.fromCharCode(...a.content.slice(0, 4)) : "";
+          return name.endsWith(".pdf") || head === "%PDF";
+        });
+        if (pdfAtt) pdfBytes = new Uint8Array(pdfAtt.content);
+        else text = (parsed.text || "") || (parsed.html ? String(parsed.html).replace(/<[^>]+>/g, "\n") : "");
+      }
+      const pdfAtt = !!pdfBytes;
+      if (pdfBytes) {
         heavy++; // 解 PDF 才算吃重的工作（約 0.2 秒 CPU）
         try {
-          text = await extractPdfText(new Uint8Array(pdfAtt.content), opt.pdfPassword);
+          text = await extractPdfText(pdfBytes, opt.pdfPassword);
         } catch (e) {
           result.pdfErrors++;
           result.lastPdfError = (e as Error)?.message || String(e);
           log(`PDF 讀取失敗（${c.key}）：${result.lastPdfError}`);
           continue;
         }
-      } else {
-        // 沒有附件就看信件本文（相容舊格式）
-        text = (parsed.text || "") || (parsed.html ? String(parsed.html).replace(/<[^>]+>/g, "\n") : "");
       }
       const fields = parseNotice(text);
       if (!fields) { log(`不是入帳通知，跳過（${c.key}）`); continue; }
       if (!pdfAtt) heavy++;
       const notice: FetchedNotice = {
         mail_uid: c.key,
-        mail_date: parsed.date ? parsed.date.toISOString() : null,
+        mail_date: mailDate ? mailDate.toISOString() : null,
         ...fields,
         raw_text: normalizeText(text).slice(0, 4000),
       };
