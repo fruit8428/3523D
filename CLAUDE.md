@@ -70,7 +70,8 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 
 ### 入帳通知自動對帳（上海商銀）
 
-- 後端：`supabase/functions/fetch-bank-mail/index.ts`（Deno，IMAP 用 `npm:imapflow`、解析用 `npm:mailparser`），讀 `bank_mail_settings`（service role 才能讀），解析「入帳交易日期／入帳金額／存摺備註」寫入 `bank_transactions`，狀態寫 `bank_mail_status`。以 `--no-verify-jwt` 部署，pg_cron 每 10 分鐘 POST 一次；SQL 在 `supabase/sql/bank_mail_setup.sql`。
+- 後端：`supabase/functions/fetch-bank-mail/`，`index.ts` 只負責讀設定／寫資料表／回狀態，核心在 `lib.ts`（`fetchBankNotices`、`parseNotice`、`extractPdfText`，index.ts 與本機測試腳本共用）。IMAP 用 `npm:imapflow`、信件解析 `npm:mailparser`、PDF 用 `npm:unpdf`。**上海商銀通知信本文沒有金額，明細在加密 PDF 附件（密碼＝戶名統編／身分證末六碼，存 `bank_mail_settings.pdf_password`）**；流程是 SEARCH SINCE 60 天 → 只抓信封挑出寄件者/主旨像銀行的信 → 對新信下載原文 → 取 PDF 附件（銀行把它標成 text/plain，用檔名或 `%PDF` 檔頭判斷）→ 解密讀字 → `parseNotice`。去重 key `mail_uid` 用 Message-ID（HiNet 的 UID 不固定，`UIDNOTSTICKY`）。HiNet 收信主機 `msa.hinet.net:993`，用一般登入密碼。以 `--no-verify-jwt` 部署，pg_cron 每 10 分鐘 POST 一次；SQL 在 `supabase/sql/bank_mail_setup.sql`。
+- 本機測試後端：已安裝 `deno`（Homebrew）。專案目錄有 node_modules，Deno 指令要加 `--node-modules-dir=none` 才會自動下載 npm 套件：`deno check --node-modules-dir=none supabase/functions/fetch-bank-mail/index.ts`。真實抓信流程可寫小腳本 import `lib.ts` 的 `fetchBankNotices`，帳密用環境變數傳入、不寫資料庫。
 - 前端：`chairConfig.bankAccount`（全活動共用匯款帳號）；繳費紀錄新增狀態 `NOTIFIED`（執秘已回報，含 `remitNote/remitAmount/remitDate/notifiedAt`）。`submitRemitNotice()` 寫入 NOTIFIED 並呼叫 `triggerBankMailFetch()`；`loadBankData()` 讀入帳紀錄與狀態後 `reconcileBankTransactions()` 比對（規則見 `findTransactionForRecord`：備註完全相同／純數字包含／最長唯一社名關鍵字，金額一致、日期 3 天內），成功則 `applyTransactionToRecord()` 標 `PAID_EMAIL` 並把配對寫回 `bank_transactions.matched_*`。主委可 `assignBankTransactionToClub()` 手動指定。顯示：執秘端 `#remitInfoBox`（`renderRemitInfoBox`，只在 `isRemitApplicable()` 且帳號已填時顯示）、主委端 `#bankMailBox`（`renderChairBankMailSection`）。
 - `isPaid` 的判斷式（`PAID_EMAIL || PAID_MANUAL || EXEMPT`）在檔案中出現十多次，NOTIFIED 視為未繳；新增狀態時要全部一起看。
 

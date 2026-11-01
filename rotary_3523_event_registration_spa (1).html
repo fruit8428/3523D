@@ -1029,18 +1029,20 @@
                         <!-- (2) 入帳通知信箱 -->
                         <div class="bg-white border border-slate-200 rounded-lg p-3">
                             <div class="text-xs font-bold text-slate-800 mb-1">② 入帳通知信箱（上海商銀會把「入帳通知單」寄到這個信箱）</div>
-                            <p class="text-[11px] text-slate-500 mb-2">密碼請用信箱的「應用程式密碼」（Gmail 需先開啟兩步驟驗證再產生 16 碼密碼），不要用平常登入的密碼。密碼儲存後任何人都無法再讀出，只有雲端小程式能使用。</p>
+                            <p class="text-[11px] text-slate-500 mb-2">HiNet（ms○.hinet.net）信箱直接用平常的登入密碼即可；Gmail／Outlook 要用「應用程式密碼」（Gmail 需先開啟兩步驟驗證再產生 16 碼密碼）。上海商銀的入帳明細放在<b>加密 PDF 附件</b>裡，開啟密碼是帳戶戶名的「身分證號或統一編號<b>末六碼</b>」，請一併填入。這些密碼儲存後任何人都無法再讀出，只有雲端小程式能使用。</p>
                             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                                 <label class="block"><span class="text-[11px] text-slate-500">信箱服務</span>
                                     <select id="cfgMailProvider" onchange="onMailProviderChange()" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs">
+                                        <option value="msa.hinet.net">HiNet（中華電信 ms○.hinet.net）</option>
                                         <option value="imap.gmail.com">Gmail</option>
                                         <option value="outlook.office365.com">Outlook / Hotmail</option>
                                         <option value="imap.mail.yahoo.com">Yahoo</option>
                                         <option value="custom">其他（自填主機）</option>
                                     </select></label>
-                                <label class="block hidden" id="cfgMailHostWrap"><span class="text-[11px] text-slate-500">收信主機（選「其他」才需填，向該信箱服務商查詢）</span><input type="text" id="cfgMailHost" placeholder="imap.example.com" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
+                                <label class="block hidden" id="cfgMailHostWrap"><span class="text-[11px] text-slate-500">收信主機（選「其他」才需填，向該信箱服務商查詢，例如 HiNet 是 msa.hinet.net）</span><input type="text" id="cfgMailHost" placeholder="imap.example.com" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
                                 <label class="block"><span class="text-[11px] text-slate-500">Email address</span><input type="email" id="cfgMailEmail" placeholder="例如：rotary3523@gmail.com" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
-                                <label class="block"><span class="text-[11px] text-slate-500">Email 密碼（該信箱的「應用程式密碼」，非登入密碼）</span><input type="password" id="cfgMailPassword" placeholder="16 碼應用程式密碼；留空＝不變更" autocomplete="new-password" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
+                                <label class="block"><span class="text-[11px] text-slate-500">Email 密碼（HiNet 用登入密碼；Gmail 用應用程式密碼）</span><input type="password" id="cfgMailPassword" placeholder="留空＝不變更" autocomplete="new-password" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
+                                <label class="block"><span class="text-[11px] text-slate-500">PDF 開啟密碼（戶名的身分證號／統編末六碼）</span><input type="password" id="cfgPdfPassword" placeholder="6 碼數字；留空＝不變更" autocomplete="new-password" inputmode="numeric" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
                             </div>
                             <div class="flex flex-wrap items-center gap-2 mt-2">
                                 <button type="button" onclick="saveBankMailSettings()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition">💾 儲存信箱並測試連線</button>
@@ -8167,6 +8169,8 @@
             if (!email) { alert('請先填寫 Email address。'); return; }
             const payload = { id: 1, email, imap_host: host, imap_port: 993, updated_at: new Date().toISOString() };
             if (pwd) payload.app_password = pwd.replace(/\s+/g, ''); // Gmail 應用程式密碼常帶空格，去掉
+            const pdfPw = (document.getElementById('cfgPdfPassword')?.value || '').replace(/\s+/g, '');
+            if (pdfPw) payload.pdf_password = pdfPw; // 上海商銀入帳通知單 PDF 的開啟密碼（末六碼）
             try {
                 const { error } = await supabaseClient.from('bank_mail_settings').upsert(payload, { onConflict: 'id' });
                 if (error) {
@@ -8174,6 +8178,7 @@
                     alert(`❌ 儲存失敗：${msg}`); return;
                 }
                 if (document.getElementById('cfgMailPassword')) document.getElementById('cfgMailPassword').value = '';
+                if (document.getElementById('cfgPdfPassword')) document.getElementById('cfgPdfPassword').value = '';
                 showToast('💾 信箱設定已儲存，正在測試連線並抓取…');
                 await triggerBankMailFetch(true);
             } catch (e) { alert(`❌ 儲存失敗：${e.message || e}`); }

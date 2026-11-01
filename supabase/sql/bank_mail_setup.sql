@@ -76,3 +76,7 @@ select cron.schedule(
        body := '{"source":"cron"}'::jsonb
      ); $$
 );
+
+-- 5. （2026-11-01 新增）上海商銀的入帳明細放在加密 PDF 附件，開啟密碼為戶名的身分證號／統一編號末六碼
+--    這欄同樣只有雲端小程式（service role）能讀，前端只能寫入
+alter table public.bank_mail_settings add column if not exists pdf_password text;
