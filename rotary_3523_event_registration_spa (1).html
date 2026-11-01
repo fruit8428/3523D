@@ -3310,6 +3310,7 @@
                 const grandDisp = document.getElementById('regGrandTotalDisplay');
                 if (grandDisp) grandDisp.innerText = `$${grandTotal.toLocaleString()}元`;
             }
+            if (typeof renderRemitInfoBox === 'function') renderRemitInfoBox(); // 應繳金額跟著表單總計變
         }
 
         // 主委戰情室即時動態調整費用設定
@@ -7969,15 +7970,25 @@
             return chairConfig.bankAccount;
         }
         function isRemitApplicable() {
-            // 研討會／年會（各社應繳）或分攤金模式才需要匯款
-            return isPaymentTrackingCategory(currentCatId) || document.body.getAttribute('data-mode') === 'apportionment';
+            // 所有活動（研討會、年會、運動賽事、社慶、RYLA…）都要能匯款與回報；只要主委填了匯款帳號且已選社就顯示
+            return true;
         }
+        // 本社這個活動的應繳金額：分攤金＝執秘填的金額；研討會／年會＝各社應繳金額；
+        // 其他（運動賽事、社慶、RYLA…）＝本社已送出的報名表總計，尚未送出就用目前表單算出的總計
         function getRequiredRemitAmount() {
             if (document.body.getAttribute('data-mode') === 'apportionment') {
                 const inp = document.getElementById('secApportionmentInput');
                 return inp ? (parseFloat(inp.value) || 0) : 0;
             }
-            return getApportionmentFee() || 0;
+            if (isPaymentTrackingCategory(currentCatId)) return getApportionmentFee() || 0;
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const subName = (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : '';
+            const order = ((registrationOrders || {})[subName] || []).find(o => o.clubName === selectedClubName);
+            if (order && Number(order.grandTotal) > 0) return Number(order.grandTotal);
+            const disp = document.getElementById('regGrandTotalDisplay');
+            const label = document.getElementById('regGrandTotalLabel');
+            if (disp && label && !label.classList.contains('hidden')) return parseFloat(String(disp.innerText).replace(/[^0-9.]/g, '')) || 0;
+            return 0;
         }
         // 備註正規化：全形轉半形、去空白與符號、臺→台、小寫
         function normalizeRemitNote(str) {
@@ -8364,9 +8375,18 @@
             const key = getActivePaymentKey();
             const rows = bankTransactions.filter(t => t.matched_key === key);
             const total = rows.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-            if (badge) badge.innerText = `${rows.length} 筆 · NT$ ${total.toLocaleString()}`;
+            // 執秘已回報匯款但還沒對到銀行入帳的社（銀行通知可能還沒到，或備註對不上）
+            const notified = Object.entries(chairPaymentRecords[key] || {}).filter(([, r]) => r && r.status === 'NOTIFIED');
+            if (badge) badge.innerText = `${rows.length} 筆 · NT$ ${total.toLocaleString()}${notified.length ? ` · 待核對 ${notified.length} 社` : ''}`;
+            const notifiedHtml = notified.length === 0 ? '' : `
+                <div class="mt-3 text-[11px] font-bold text-amber-800">📨 執秘已回報匯款、尚未對到銀行入帳（${notified.length} 社）</div>
+                <table class="w-full text-[11px] mt-1">
+                    <thead><tr class="bg-amber-50 text-amber-800 text-left"><th class="p-1.5">社別</th><th class="p-1.5">執秘填的匯款備註</th><th class="p-1.5 text-right">金額</th><th class="p-1.5">匯款日</th><th class="p-1.5">回報時間</th></tr></thead>
+                    <tbody>${notified.map(([club, r]) => `<tr class="border-t border-amber-100"><td class="p-1.5 font-bold">${escapeHtmlText(club)}</td><td class="p-1.5">${escapeHtmlText(r.remitNote || '')}</td><td class="p-1.5 font-mono text-right">NT$ ${(Number(r.remitAmount) || 0).toLocaleString()}</td><td class="p-1.5 font-mono">${escapeHtmlText(r.remitDate || '')}</td><td class="p-1.5 text-slate-500">${escapeHtmlText(r.notifiedAt || '')}</td></tr>`).join('')}</tbody>
+                </table>
+                <p class="text-[10px] text-slate-500 mt-1">對不上時，到「③ 銀行入帳紀錄」找到該筆入帳，選這個社按「指定」即可。</p>`;
             if (rows.length === 0) {
-                list.innerHTML = '<div class="text-[11px] text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-lg p-3 text-center">目前沒有歸入此活動的銀行入帳。</div>';
+                list.innerHTML = '<div class="text-[11px] text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-lg p-3 text-center">目前沒有歸入此活動的銀行入帳。</div>' + notifiedHtml;
                 return;
             }
             const clubOptions = getPaymentDivisions().map(d => `<optgroup label="${escapeHtmlText(d.name)}">${d.clubs.map(c => `<option value="${escapeHtmlText(c.name)}">${escapeHtmlText(c.name)}</option>`).join('')}</optgroup>`).join('');
@@ -8384,7 +8404,7 @@
                                 <button type="button" onclick="assignBankTransactionToClub(${t.id})" class="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold">指定</button></div>`}
                         </td></tr>`).join('')}</tbody>
                     <tfoot><tr class="border-t-2 border-slate-300 bg-slate-50 font-bold"><td class="p-1.5">合計 ${rows.length} 筆</td><td class="p-1.5 font-mono text-right">NT$ ${total.toLocaleString()}</td><td colspan="2" class="p-1.5 text-slate-500 font-normal">社別已確認 ${rows.filter(t => t.matched_club).length} 筆</td></tr></tfoot>
-                </table>`;
+                </table>` + notifiedHtml;
         }
 
         // ---------- 執秘端：匯款資訊與回報 ----------
