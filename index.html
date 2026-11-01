@@ -1038,9 +1038,9 @@
                                         <option value="imap.mail.yahoo.com">Yahoo</option>
                                         <option value="custom">其他（自填主機）</option>
                                     </select></label>
-                                <label class="block" id="cfgMailHostWrap"><span class="text-[11px] text-slate-500">IMAP 主機</span><input type="text" id="cfgMailHost" placeholder="imap.example.com" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
+                                <label class="block hidden" id="cfgMailHostWrap"><span class="text-[11px] text-slate-500">收信主機（選「其他」才需填，向該信箱服務商查詢）</span><input type="text" id="cfgMailHost" placeholder="imap.example.com" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
                                 <label class="block"><span class="text-[11px] text-slate-500">Email address</span><input type="email" id="cfgMailEmail" placeholder="例如：rotary3523@gmail.com" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
-                                <label class="block"><span class="text-[11px] text-slate-500">Email 密碼（應用程式密碼）</span><input type="password" id="cfgMailPassword" placeholder="留空＝不變更" autocomplete="new-password" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
+                                <label class="block"><span class="text-[11px] text-slate-500">Email 密碼（該信箱的「應用程式密碼」，非登入密碼）</span><input type="password" id="cfgMailPassword" placeholder="16 碼應用程式密碼；留空＝不變更" autocomplete="new-password" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
                             </div>
                             <div class="flex flex-wrap items-center gap-2 mt-2">
                                 <button type="button" onclick="saveBankMailSettings()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition">💾 儲存信箱並測試連線</button>
@@ -8159,7 +8159,11 @@
             if (!supabaseClient) { alert('❌ 目前無法連線雲端，無法儲存信箱設定。'); return; }
             const email = (document.getElementById('cfgMailEmail')?.value || '').trim();
             const pwd = document.getElementById('cfgMailPassword')?.value || '';
-            const host = (document.getElementById('cfgMailHost')?.value || '').trim() || 'imap.gmail.com';
+            // 收信主機：依「信箱服務」下拉決定；選「其他」才用手填的主機
+            const provider = document.getElementById('cfgMailProvider')?.value || 'imap.gmail.com';
+            const host = provider === 'custom'
+                ? ((document.getElementById('cfgMailHost')?.value || '').trim() || 'imap.gmail.com')
+                : provider;
             if (!email) { alert('請先填寫 Email address。'); return; }
             const payload = { id: 1, email, imap_host: host, imap_port: 993, updated_at: new Date().toISOString() };
             if (pwd) payload.app_password = pwd.replace(/\s+/g, ''); // Gmail 應用程式密碼常帶空格，去掉
