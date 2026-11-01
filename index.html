@@ -566,8 +566,12 @@
                                 </div>
                                 <div class="bg-white border border-sky-200 rounded-lg p-2.5 text-xs space-y-2">
                                     <div id="remitStatusLine" class="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded p-2">尚未回報匯款</div>
-                                    <label class="block"><span class="text-[11px] text-slate-500">我在匯款備註填寫的內容</span>
-                                        <input type="text" id="remitNoteInput" placeholder="例如：南區扶輪社" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
+                                    <!-- 匯款備註是系統自動對帳的關鍵欄位，特別加強顏色提醒執秘一定要填 -->
+                                    <label class="block bg-rose-50 border-2 border-rose-400 rounded-lg p-2 shadow-sm">
+                                        <span class="flex items-center gap-1.5 text-[11px] font-bold text-rose-800"><span class="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[10px] leading-none">必填</span>我在匯款備註填寫的內容<span class="text-rose-500">＊</span></span>
+                                        <input type="text" id="remitNoteInput" placeholder="例如：南區扶輪社（請與銀行匯款備註完全一致）" class="w-full mt-1 bg-white border-2 border-rose-400 focus:border-rose-600 focus:ring-2 focus:ring-rose-200 rounded p-2 text-sm font-bold text-rose-900 placeholder:font-normal placeholder:text-rose-300">
+                                        <span class="block text-[10px] text-rose-700 mt-1">請填寫與銀行匯款備註<b>一模一樣</b>的文字，系統才能自動核對入帳；沒有備註欄請填轉出帳號末五碼。</span>
+                                    </label>
                                     <div class="grid grid-cols-2 gap-2">
                                         <label class="block"><span class="text-[11px] text-slate-500">匯款金額 (NT$)</span><input type="number" id="remitAmountInput" min="0" step="1" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
                                         <label class="block"><span class="text-[11px] text-slate-500">匯款日期</span><input type="date" id="remitDateInput" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
