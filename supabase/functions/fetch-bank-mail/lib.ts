@@ -33,6 +33,7 @@ export interface FetchOptions {
   seen: Set<string>;        // 已匯入過的 mail_uid，跳過
   maxNew?: number;          // 每次最多處理幾封新信（Supabase 每次請求 CPU 只有 2 秒，一封 PDF 約 0.2 秒）
   onNotice?: (n: FetchedNotice) => Promise<void>; // 每解析出一筆就立刻回呼（馬上寫入資料庫，被中止也不會白做）
+  onProgress?: (stage: string) => Promise<void>;  // 每個階段回呼一次（寫到狀態表，卡住時看得出卡在哪）
   log?: (msg: string) => void;
 }
 
@@ -127,6 +128,7 @@ export async function fetchBankNotices(opt: FetchOptions): Promise<FetchResult> 
     if (!line || /^[A-Z] [A-Za-z0-9+/=]{16,}$/.test(line)) return; // 跳過空行與 base64 認證字串（含帳號）
     trail.push(line.slice(0, 160)); if (trail.length > 12) trail.shift();
   };
+  const progress = async (stage: string) => { log(stage); if (opt.onProgress) { try { await opt.onProgress(stage); } catch (_) { /* ignore */ } } };
   const client = new ImapFlow({
     host: opt.host,
     port: opt.port,
@@ -134,6 +136,9 @@ export async function fetchBankNotices(opt: FetchOptions): Promise<FetchResult> 
     auth: { user: opt.user, pass: opt.pass },
     logger: { debug: keep("D"), info: keep("I"), warn: keep("W"), error: keep("E"), trace: () => {}, fatal: keep("F") } as any,
     tls: { servername: opt.host },
+    connectionTimeout: 30_000, // 連線 30 秒、伺服器打招呼 20 秒、指令無回應 60 秒就放棄，才不會無聲掛到被平台砍掉
+    greetingTimeout: 20_000,
+    socketTimeout: 60_000,
   });
   const describe = (e: any) => {
     const parts = [e?.message || String(e)];
@@ -145,6 +150,7 @@ export async function fetchBankNotices(opt: FetchOptions): Promise<FetchResult> 
     if (trail.length) parts.push(`紀錄：${trail.slice(-6).join(" / ")}`);
     return parts.join("；");
   };
+  await progress("①連線並登入信箱");
   try {
     await client.connect();
   } catch (e) {
@@ -153,36 +159,42 @@ export async function fetchBankNotices(opt: FetchOptions): Promise<FetchResult> 
     throw err;
   }
   try {
+    await progress("②登入成功，開啟收件匣");
     const lock = await client.getMailboxLock("INBOX");
     try {
       const since = new Date(Date.now() - opt.sinceDays * 24 * 3600 * 1000);
+      await progress("③搜尋最近 " + opt.sinceDays + " 天的信");
       // SEARCH SINCE 只有日期（純 ASCII），HiNet / Gmail 都支援；中文關鍵字改在程式內過濾
       const uids = (await client.search({ since }, { uid: true })) || [];
       result.scanned = uids.length;
-      log(`最近 ${opt.sinceDays} 天共 ${uids.length} 封`);
       if (uids.length === 0) return result;
       const uidValidity = String((client.mailbox as any)?.uidValidity || "0");
 
-      // 第一輪：只抓信封（寄件者／主旨／Message-ID），挑出銀行信
+      // 第一輪：只抓信封（寄件者／主旨／Message-ID），挑出銀行信；每 25 封一批，進度看得到
       const candidates: { uid: number; key: string }[] = [];
-      for await (const msg of client.fetch(uids, { uid: true, envelope: true }, { uid: true })) {
-        const env = msg.envelope;
-        const from = (env?.from || []).map((a: any) => `${a.name || ""} ${a.address || ""}`).join(" ");
-        const subject = env?.subject || "";
-        if (!looksLikeBankMail(from, subject, opt.senderFilter)) continue;
-        result.bankMails++;
-        // 去重用 Message-ID（HiNet 的 UID 不保證固定）；沒有 Message-ID 才退回 uidValidity-uid
-        const key = (env?.messageId && String(env.messageId).trim()) || `${uidValidity}-${msg.uid}`;
-        if (opt.seen.has(key)) continue;
-        candidates.push({ uid: msg.uid, key });
+      for (let i = 0; i < uids.length; i += 25) {
+        const chunk = uids.slice(i, i + 25);
+        await progress(`④掃描信封 ${Math.min(i + 25, uids.length)}/${uids.length}`);
+        for await (const msg of client.fetch(chunk, { uid: true, envelope: true }, { uid: true })) {
+          const env = msg.envelope;
+          const from = (env?.from || []).map((a: any) => `${a.name || ""} ${a.address || ""}`).join(" ");
+          const subject = env?.subject || "";
+          if (!looksLikeBankMail(from, subject, opt.senderFilter)) continue;
+          result.bankMails++;
+          // 去重用 Message-ID（HiNet 的 UID 不保證固定）；沒有 Message-ID 才退回 uidValidity-uid
+          const key = (env?.messageId && String(env.messageId).trim()) || `${uidValidity}-${msg.uid}`;
+          if (opt.seen.has(key)) continue;
+          candidates.push({ uid: msg.uid, key });
+        }
       }
-      log(`銀行信 ${result.bankMails} 封，其中 ${candidates.length} 封尚未匯入`);
+      await progress(`⑤銀行入帳通知 ${result.bankMails} 封，其中 ${candidates.length} 封尚未匯入`);
 
       // 第二輪：只對新的銀行信下載完整內容；最多「解 maxNew 個 PDF」，其餘留給下次
       let heavy = 0, index = 0;
       for (; index < candidates.length; index++) {
         if (heavy >= maxNew) break;
         const c = candidates[index];
+        await progress(`⑥下載並解析第 ${index + 1}/${candidates.length} 封`);
         const msg = await client.fetchOne(String(c.uid), { source: true }, { uid: true });
         if (!msg || !msg.source) continue;
         const parsed = await simpleParser(msg.source);

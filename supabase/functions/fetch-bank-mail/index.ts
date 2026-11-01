@@ -58,9 +58,10 @@ Deno.serve(async (req) => {
     const seen = new Set<string>((existing || []).map((r: any) => String(r.mail_uid)));
 
     // 3. 登入信箱抓取並解析（每解析出一筆就立刻寫入，避免超過 CPU 上限被中止時前功盡棄）
-    await writeStatus({ email_masked: maskEmail(settings.email), has_password: true, last_result: "⏳ 處理中：正在登入信箱…" });
+    let stage = "準備中";
     let inserted = 0;
-    const r = await fetchBankNotices({
+    const startedAt = Date.now();
+    const run = fetchBankNotices({
       host: settings.imap_host || "imap.gmail.com",
       port: settings.imap_port || 993,
       user: settings.email,
@@ -74,7 +75,16 @@ Deno.serve(async (req) => {
         const { error: iErr } = await admin.from("bank_transactions").insert(n);
         if (!iErr) inserted++;
       },
+      onProgress: async (s) => {
+        stage = s;
+        await writeStatus({ email_masked: maskEmail(settings.email), has_password: true, last_result: `⏳ 處理中：${s}（${Math.round((Date.now() - startedAt) / 1000)} 秒）` });
+      },
     });
+    // 總時限 100 秒（平台 150 秒就會切斷），超時就回報卡在哪一步
+    const r = await Promise.race([
+      run,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`逾時：執行超過 100 秒，卡在「${stage}」`)), 100_000)),
+    ]);
 
     const { count } = await admin.from("bank_transactions").select("id", { count: "exact", head: true });
     const pdfNote = r.pdfErrors ? `；有 ${r.pdfErrors} 封 PDF 無法開啟（${r.lastPdfError}）` : "";
