@@ -1055,7 +1055,10 @@
                         <div class="bg-white border border-slate-200 rounded-lg p-3">
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
                                 <div class="text-xs font-bold text-slate-800">③ 銀行入帳紀錄（最近 60 天）<span id="bankTxCountBadge" class="ml-1 text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300 px-1.5 py-0.5 rounded-full">0 筆</span></div>
-                                <span class="text-[11px] text-slate-500">未配對的入帳可在右側選擇社別，指定為「目前這個活動」的繳費。</span>
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="text-[11px] text-slate-500">未配對的入帳可在右側選社別「指定」，或按「歸入此活動」先記在目前活動的帳上、社別之後再補。</span>
+                                    <button type="button" onclick="assignAllUnmatchedToEvent()" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold">📌 全部未配對歸入目前活動</button>
+                                </div>
                             </div>
                             <div id="bankTxList" class="overflow-x-auto"></div>
                         </div>
@@ -1067,6 +1070,23 @@
 
 
             <!-- ================= 各分區各社繳費狀況清楚列表 (依附圖42要求新增：專為開會秀出打造) ================= -->
+            <div data-panel="eventIncome" id="eventIncomeSection" class="hidden bg-white rounded-xl shadow-sm border-2 border-emerald-200/90 p-4 sm:p-5 space-y-4">
+                <button type="button" onclick="togglePanel('eventIncome')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_eventIncome">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">🏦</div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">本活動銀行入帳明細 <span id="eventIncomeBadge" class="ml-1 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full align-middle">0 筆</span></div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>查看已歸入「目前這個活動」的每一筆銀行入帳（日期、金額、存摺備註、社別）與合計金額；備註看不出社別的可在這裡指定社別。要把新入帳歸入此活動，請到「活動設定與費用金額 → 匯款帳號與入帳通知信箱 → ③ 銀行入帳紀錄」。</p>
+                        </div>
+                    </div>
+                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
+                        <span id="panelToggleText_eventIncome">展開</span><span id="panelChevron_eventIncome" class="inline-block transition-transform duration-200">▼</span>
+                    </span>
+                </button>
+                <div id="panelBody_eventIncome" class="hidden mt-4 pt-4 border-t border-slate-100">
+                    <div id="eventIncomeList" class="overflow-x-auto"></div>
+                </div>
+            </div>
             <div data-panel="chairPayment" id="chairDivisionPaymentSection" class="bg-white rounded-xl shadow-sm border-2 border-indigo-200/90 p-4 sm:p-5 space-y-4">
                 <!-- 面板標題列（永遠顯示）：白話說明點開能做什麼，方便每年換屆的新主委 -->
                 <button type="button" onclick="togglePanel('chairPayment')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_chairPayment">
@@ -8210,6 +8230,7 @@
             } catch (e) { alert(`❌ 儲存失敗：${e.message || e}`); }
         }
         function renderChairBankMailSection() {
+            renderEventIncomeBox();
             const box = document.getElementById('bankMailBox');
             if (!box) return;
             const acct = getBankAccount();
@@ -8256,16 +8277,23 @@
                             <tbody>${bankTransactions.map(t => {
                                 const matched = !!t.matched_key;
                                 const evName = matched ? (t.matched_key.split('::')[1] || t.matched_key) : '';
+                                const clubPicker = `<select id="assignClub_${t.id}" class="bg-white border border-slate-300 rounded p-1 text-[11px] max-w-[160px]"><option value="">指定給…</option>${clubOptions}</select>
+                                            <button type="button" onclick="assignBankTransactionToClub(${t.id})" class="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold" title="指定社別">指定</button>`;
+                                let cell;
+                                if (matched && t.matched_club) {
+                                    cell = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold">✅ ${escapeHtmlText(t.matched_club)}</span><span class="block text-[10px] text-slate-500 mt-0.5">${escapeHtmlText(evName)}</span>`;
+                                } else if (matched) {
+                                    // 已歸入某活動但社別待確認（備註是帳號數字等看不出社名）
+                                    cell = `<div class="flex items-center gap-1 flex-wrap"><span class="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-300 font-bold">📌 ${escapeHtmlText(evName)}</span><span class="text-[10px] text-slate-500">社別待確認</span>${clubPicker}</div>`;
+                                } else {
+                                    cell = `<div class="flex items-center gap-1 flex-wrap"><span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-bold">❓ 未配對</span>${clubPicker}
+                                            <button type="button" onclick="assignBankTransactionToEvent(${t.id})" class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold" title="先記在「${escapeHtmlText(subName)}」的帳上，社別之後再補">歸入此活動</button></div>`;
+                                }
                                 return `<tr class="border-t border-slate-100 ${matched ? '' : 'bg-amber-50/60'}">
                                     <td class="p-1.5 font-mono whitespace-nowrap">${escapeHtmlText(t.tx_date || (t.mail_date || '').slice(0, 10) || '-')}</td>
                                     <td class="p-1.5 font-mono text-right font-bold">NT$ ${(Number(t.amount) || 0).toLocaleString()}</td>
                                     <td class="p-1.5 break-all">${escapeHtmlText(t.note || '（無備註）')}</td>
-                                    <td class="p-1.5">${matched
-                                        ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold">✅ ${escapeHtmlText(t.matched_club)}</span><span class="block text-[10px] text-slate-500 mt-0.5">${escapeHtmlText(evName)}</span>`
-                                        : `<div class="flex items-center gap-1 flex-wrap"><span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-bold">❓ 未配對</span>
-                                            <select id="assignClub_${t.id}" class="bg-white border border-slate-300 rounded p-1 text-[11px] max-w-[160px]"><option value="">指定給…</option>${clubOptions}</select>
-                                            <button type="button" onclick="assignBankTransactionToClub(${t.id})" class="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold" title="指定為「${escapeHtmlText(subName)}」的繳費">指定</button></div>`}
-                                    </td></tr>`;
+                                    <td class="p-1.5">${cell}</td></tr>`;
                             }).join('')}</tbody>
                         </table>`;
                 }
@@ -8273,12 +8301,13 @@
         }
         async function assignBankTransactionToClub(txId) {
             if (currentRole !== 'chair' && currentRole !== 'super_admin') { alert('⚠️ 權限限制：只有主委或最高管理員可以指定入帳。'); return; }
-            const sel = document.getElementById(`assignClub_${txId}`);
+            const sel = document.getElementById(`assignClub_${txId}`) || document.getElementById(`incomeClub_${txId}`);
             const clubName = sel ? sel.value : '';
             if (!clubName) { alert('請先選擇要指定的社別。'); return; }
             const tx = bankTransactions.find(t => t.id === txId);
             if (!tx) return;
-            const key = getActivePaymentKey();
+            // 已歸入某活動（社別待確認）的入帳，社別補上後仍記在原活動；否則記在目前活動
+            const key = tx.matched_key || getActivePaymentKey();
             const subName = key.split('::')[1] || key;
             if (!confirm(`確定將這筆 NT$ ${(Number(tx.amount) || 0).toLocaleString()}（備註：${tx.note || '無'}）指定為【${clubName}】在《${subName}》的繳費？`)) return;
             applyTransactionToRecord(key, clubName, tx, '主委手動指定銀行入帳');
@@ -8288,6 +8317,73 @@
             renderChairBankMailSection();
             renderRemitInfoBox();
             showToast(`✅ 已將入帳指定給【${clubName}】並標記為已繳費`);
+        }
+        // 先把入帳「歸入目前活動」但不指定社別（備註是帳號數字等看不出社名時用）
+        async function assignBankTransactionToEvent(txId) {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') { alert('⚠️ 權限限制：只有主委或最高管理員可以歸入入帳。'); return; }
+            const tx = bankTransactions.find(t => t.id === txId);
+            if (!tx) return;
+            const key = getActivePaymentKey();
+            const subName = key.split('::')[1] || key;
+            if (!confirm(`確定把這筆 NT$ ${(Number(tx.amount) || 0).toLocaleString()}（備註：${tx.note || '無'}）歸入《${subName}》的帳上？社別可之後再指定。`)) return;
+            tx.matched_key = key; tx.matched_club = null; tx.matched_at = new Date().toISOString();
+            await persistTransactionMatch(tx);
+            renderChairBankMailSection();
+            showToast(`📌 已歸入《${subName}》，社別待確認`);
+        }
+        async function assignAllUnmatchedToEvent() {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') { alert('⚠️ 權限限制：只有主委或最高管理員可以歸入入帳。'); return; }
+            const key = getActivePaymentKey();
+            const subName = key.split('::')[1] || key;
+            const list = bankTransactions.filter(t => !t.matched_key);
+            if (list.length === 0) { alert('目前沒有未配對的入帳。'); return; }
+            if (!confirm(`確定把 ${list.length} 筆未配對入帳全部歸入《${subName}》？備註含社名的會同時指定社別並標記已繳費，其餘「社別待確認」。`)) return;
+            let withClub = 0;
+            for (const tx of list) {
+                const club = findClubByNoteKeyword(normalizeRemitNote(tx.note || ''));
+                if (club) { applyTransactionToRecord(key, club, tx, '主委批次歸入（依存摺備註社名）'); withClub++; }
+                else { tx.matched_key = key; tx.matched_club = null; tx.matched_at = new Date().toISOString(); }
+                await persistTransactionMatch(tx);
+            }
+            if (withClub > 0) await savePaymentRecords();
+            renderDivisionPaymentSection();
+            renderChairBankMailSection();
+            renderRemitInfoBox();
+            showToast(`📌 已歸入 ${list.length} 筆到《${subName}》，其中 ${withClub} 筆已依備註指定社別`);
+        }
+        // 本活動銀行入帳明細（所有大類都顯示，含運動賽事）
+        function renderEventIncomeBox() {
+            const section = document.getElementById('eventIncomeSection');
+            const list = document.getElementById('eventIncomeList');
+            const badge = document.getElementById('eventIncomeBadge');
+            if (!section || !list) return;
+            const canSee = (currentRole === 'chair' || currentRole === 'super_admin');
+            section.classList.toggle('hidden', !canSee);
+            if (!canSee) return;
+            const key = getActivePaymentKey();
+            const rows = bankTransactions.filter(t => t.matched_key === key);
+            const total = rows.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+            if (badge) badge.innerText = `${rows.length} 筆 · NT$ ${total.toLocaleString()}`;
+            if (rows.length === 0) {
+                list.innerHTML = '<div class="text-[11px] text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-lg p-3 text-center">目前沒有歸入此活動的銀行入帳。</div>';
+                return;
+            }
+            const clubOptions = getPaymentDivisions().map(d => `<optgroup label="${escapeHtmlText(d.name)}">${d.clubs.map(c => `<option value="${escapeHtmlText(c.name)}">${escapeHtmlText(c.name)}</option>`).join('')}</optgroup>`).join('');
+            list.innerHTML = `
+                <table class="w-full text-[11px]">
+                    <thead><tr class="bg-slate-50 text-slate-600 text-left"><th class="p-1.5">入帳日期</th><th class="p-1.5 text-right">金額</th><th class="p-1.5">存摺備註</th><th class="p-1.5">社別</th></tr></thead>
+                    <tbody>${rows.map(t => `<tr class="border-t border-slate-100">
+                        <td class="p-1.5 font-mono whitespace-nowrap">${escapeHtmlText(t.tx_date || (t.mail_date || '').slice(0, 10) || '-')}</td>
+                        <td class="p-1.5 font-mono text-right font-bold">NT$ ${(Number(t.amount) || 0).toLocaleString()}</td>
+                        <td class="p-1.5 break-all">${escapeHtmlText(t.note || '（無備註）')}</td>
+                        <td class="p-1.5">${t.matched_club
+                            ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold">✅ ${escapeHtmlText(t.matched_club)}</span>`
+                            : `<div class="flex items-center gap-1 flex-wrap"><span class="text-[10px] text-sky-700 font-bold">社別待確認</span>
+                                <select id="incomeClub_${t.id}" class="bg-white border border-slate-300 rounded p-1 text-[11px] max-w-[160px]"><option value="">指定給…</option>${clubOptions}</select>
+                                <button type="button" onclick="assignBankTransactionToClub(${t.id})" class="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold">指定</button></div>`}
+                        </td></tr>`).join('')}</tbody>
+                    <tfoot><tr class="border-t-2 border-slate-300 bg-slate-50 font-bold"><td class="p-1.5">合計 ${rows.length} 筆</td><td class="p-1.5 font-mono text-right">NT$ ${total.toLocaleString()}</td><td colspan="2" class="p-1.5 text-slate-500 font-normal">社別已確認 ${rows.filter(t => t.matched_club).length} 筆</td></tr></tfoot>
+                </table>`;
         }
 
         // ---------- 執秘端：匯款資訊與回報 ----------
