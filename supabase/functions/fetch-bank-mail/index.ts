@@ -26,7 +26,7 @@ async function writeStatus(patch: Record<string, unknown>) {
 // 把技術錯誤訊息轉成主委看得懂的中文
 function friendlyError(msg: string): string {
   if (/PDF 開啟密碼/.test(msg)) return msg;
-  if (/auth|login|credentials|invalid|AUTHENTICATIONFAILED/i.test(msg)) return `信箱登入失敗，請確認 Email 與密碼是否正確（${msg}）`;
+  if (/登入被拒|auth|login|credentials|invalid|AUTHENTICATIONFAILED/i.test(msg)) return `信箱登入失敗（可能是帳密錯誤，或信箱服務商不允許從國外伺服器登入）：${msg}`;
   if (/ENOTFOUND|getaddrinfo|ECONNREFUSED|ETIMEDOUT|timeout/i.test(msg)) return `連不上收信主機，請確認「信箱服務」選對了（${msg}）`;
   return msg;
 }

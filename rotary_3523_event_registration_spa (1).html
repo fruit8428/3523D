@@ -8167,14 +8167,21 @@
                 ? ((document.getElementById('cfgMailHost')?.value || '').trim() || 'imap.gmail.com')
                 : provider;
             if (!email) { alert('請先填寫 Email address。'); return; }
-            const payload = { id: 1, email, imap_host: host, imap_port: 993, updated_at: new Date().toISOString() };
-            if (pwd) payload.app_password = pwd.replace(/\s+/g, ''); // Gmail 應用程式密碼常帶空格，去掉
-            const pdfPw = (document.getElementById('cfgPdfPassword')?.value || '').replace(/\s+/g, '');
-            if (pdfPw) payload.pdf_password = pdfPw; // 上海商銀入帳通知單 PDF 的開啟密碼（末六碼）
+            // 設定表刻意不讓前端讀取（保護密碼），所以不能直接 upsert，改呼叫雲端儲存函式 set_bank_mail_settings
+            // 密碼欄留空＝不變更（函式端用 coalesce 保留舊值）
+            const params = {
+                p_email: email,
+                p_password: pwd.replace(/\s+/g, ''), // Gmail 應用程式密碼常帶空格，去掉
+                p_imap_host: host,
+                p_imap_port: 993,
+                p_pdf_password: (document.getElementById('cfgPdfPassword')?.value || '').replace(/\s+/g, ''), // 上海商銀通知單 PDF 的開啟密碼（末六碼）
+            };
             try {
-                const { error } = await supabaseClient.from('bank_mail_settings').upsert(payload, { onConflict: 'id' });
+                const { error } = await supabaseClient.rpc('set_bank_mail_settings', params);
                 if (error) {
-                    const msg = /relation .* does not exist|schema cache/i.test(error.message || '') ? '雲端尚未建立設定資料表，請最高管理員依 README「入帳通知自動對帳設定」執行 SQL。' : error.message;
+                    const msg = /could not find the function|schema cache|does not exist/i.test(error.message || '')
+                        ? '雲端尚未建立「儲存信箱設定」函式，請最高管理員依 README「入帳通知自動對帳設定」執行 supabase/sql/bank_mail_settings_rpc.sql。'
+                        : error.message;
                     alert(`❌ 儲存失敗：${msg}`); return;
                 }
                 if (document.getElementById('cfgMailPassword')) document.getElementById('cfgMailPassword').value = '';

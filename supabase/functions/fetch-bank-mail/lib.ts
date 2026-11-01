@@ -114,15 +114,38 @@ export function looksLikeBankMail(from: string, subject: string, filter: string)
 export async function fetchBankNotices(opt: FetchOptions): Promise<FetchResult> {
   const log = opt.log || (() => {});
   const result: FetchResult = { scanned: 0, bankMails: 0, notices: [], pdfErrors: 0, lastPdfError: null };
+  // 把 imapflow 的通訊紀錄留最後 12 行，出錯時一起回報，才看得出是哪個指令被伺服器拒絕
+  const trail: string[] = [];
+  const keep = (level: string) => (o: any) => {
+    const line = `${level} ${o?.msg || ""} ${o?.err?.message || ""}`.trim();
+    if (!line || /^[A-Z] [A-Za-z0-9+/=]{16,}$/.test(line)) return; // 跳過空行與 base64 認證字串（含帳號）
+    trail.push(line.slice(0, 160)); if (trail.length > 12) trail.shift();
+  };
   const client = new ImapFlow({
     host: opt.host,
     port: opt.port,
     secure: true,
     auth: { user: opt.user, pass: opt.pass },
-    logger: false,
+    logger: { debug: keep("D"), info: keep("I"), warn: keep("W"), error: keep("E"), trace: () => {}, fatal: keep("F") } as any,
     tls: { servername: opt.host },
   });
-  await client.connect();
+  const describe = (e: any) => {
+    const parts = [e?.message || String(e)];
+    if (e?.responseText) parts.push(`伺服器回應：${e.responseText}`);
+    if (e?.serverResponseCode) parts.push(`代碼：${e.serverResponseCode}`);
+    if (e?.command) parts.push(`指令：${e.command}`);
+    if (e?.authenticationFailed) parts.push("（登入被拒）");
+    if (e?.code) parts.push(`code=${e.code}`);
+    if (trail.length) parts.push(`紀錄：${trail.slice(-6).join(" / ")}`);
+    return parts.join("；");
+  };
+  try {
+    await client.connect();
+  } catch (e) {
+    const err = new Error(describe(e));
+    (err as any).authenticationFailed = !!(e as any)?.authenticationFailed;
+    throw err;
+  }
   try {
     const lock = await client.getMailboxLock("INBOX");
     try {
@@ -186,6 +209,8 @@ export async function fetchBankNotices(opt: FetchOptions): Promise<FetchResult> 
     } finally {
       lock.release();
     }
+  } catch (e) {
+    throw new Error(describe(e));
   } finally {
     try { await client.logout(); } catch (_) { /* ignore */ }
   }
