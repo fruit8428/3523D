@@ -8301,8 +8301,9 @@
         }
         async function assignBankTransactionToClub(txId) {
             if (currentRole !== 'chair' && currentRole !== 'super_admin') { alert('⚠️ 權限限制：只有主委或最高管理員可以指定入帳。'); return; }
-            const sel = document.getElementById(`assignClub_${txId}`) || document.getElementById(`incomeClub_${txId}`);
-            const clubName = sel ? sel.value : '';
+            // 同一筆入帳在「入帳紀錄」與「本活動入帳明細」各有一個下拉，哪個有選就用哪個
+            const sels = [document.getElementById(`assignClub_${txId}`), document.getElementById(`incomeClub_${txId}`)].filter(Boolean);
+            const clubName = (sels.find(x => x.value) || { value: '' }).value;
             if (!clubName) { alert('請先選擇要指定的社別。'); return; }
             const tx = bankTransactions.find(t => t.id === txId);
             if (!tx) return;
