@@ -24,6 +24,9 @@
         if (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY') {
             supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         }
+        // ================= AI 小幫手（Agentic RAG）=================
+        // 執秘報名頁「🤖 AI 小幫手」按鈕要開啟的網址；留空字串則不顯示按鈕。
+        const RAG_ASSISTANT_URL = 'https://agentic-rag-dusky.vercel.app';
     </script>
 <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -426,6 +429,9 @@
                     </button>
                     <button onclick="shareToLine()" class="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white border border-green-700 font-bold rounded-md transition flex items-center gap-1 shadow-sm" title="手機會直接開啟 LINE 選擇群組並帶入報名名冊文字">
                         📲 一鍵傳送到 LINE 群組
+                    </button>
+                    <button id="ragAssistantBtn" onclick="openRagAssistant()" class="hidden px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white border border-violet-700 font-bold rounded-md transition flex items-center gap-1 shadow-sm" title="開啟 AI 小幫手，可詢問本社報名與繳費狀態、扶輪知識">
+                        🤖 AI 小幫手
                     </button>
                     <button onclick="downloadICS()" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 font-bold rounded-md transition flex items-center gap-1">
                         📅 加入手機/電腦行事曆 (.ics)
@@ -2875,6 +2881,7 @@
         // ================= INITIALIZATION & NAVIGATION =================
 
         document.addEventListener('DOMContentLoaded', async () => {
+            initRagAssistantButton();
             const searchInput = document.getElementById('memberSearchInput');
             if (searchInput) searchInput.value = '';
             
@@ -5564,6 +5571,23 @@
             const text = getLineRegistrationText();
             const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(text)}`;
             window.open(lineUrl, '_blank');
+        }
+
+        // AI 小幫手：開新分頁到 Agentic RAG，網址帶上目前綁定的社名，對方登入頁會自動選好社
+        function getRagAssistantLink() {
+            if (!RAG_ASSISTANT_URL) return '';
+            const base = RAG_ASSISTANT_URL.replace(/\/+$/, '');
+            const club = (typeof selectedClubName === 'string' && selectedClubName) ? selectedClubName : '';
+            return club ? `${base}/?club=${encodeURIComponent(club)}` : `${base}/`;
+        }
+        function openRagAssistant() {
+            const link = getRagAssistantLink();
+            if (!link) { showToast('⚠️ 尚未設定 AI 小幫手網址'); return; }
+            window.open(link, '_blank', 'noopener');
+        }
+        function initRagAssistantButton() {
+            const btn = document.getElementById('ragAssistantBtn');
+            if (btn) btn.classList.toggle('hidden', !RAG_ASSISTANT_URL);
         }
 
         // Calendar .ics generator
