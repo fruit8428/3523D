@@ -240,3 +240,4 @@ Fruit 用手冊建立第二個地區（可用測試資料）並成功運作。
 |------|------|----------|------|
 | 2026-11-05 | 階段 0 | 環境確認與安全檢查完成，發現與「環境假設」有重大差異（本專案是單檔靜態 HTML、母版是 React+Vite 前端＋Python FastAPI 後端、母版位於 `/Users/fruit/Documents/AI Agent/RAG`），已提出調整方案，等待 Fruit 確認 | 兩邊 git 皆乾淨、無 .env 進 git；兩個 GitHub 倉庫皆為公開 |
 | 2026-11-05 | 階段 1 | Fruit 確認方案 A（AI 小幫手先放網頁按鈕、倉庫維持公開）；計畫文件依方案 A 重寫；兩個專案各開 `feature/agentic-rag` 分支；產出 `docs/rag-integration-plan.md` | 等待 Fruit 閱讀規劃書後回覆「確認」 |
+| 2026-11-05 | 階段 2 | RAG 後端新增 `get_my_club_registration` 工具（`signup_bridge.py`）、system prompt 規則、`SIGNUP_*` 環境變數、前端來源卡片；純函式測試 11 項與端到端測試 11 項全部通過；兩邊 81 社名稱完全一致 | 母版分支 `feature/agentic-rag` 兩個 commit；等 Fruit 把變數同步到 Vercel |
