@@ -242,3 +242,4 @@ Fruit 用手冊建立第二個地區（可用測試資料）並成功運作。
 | 2026-11-05 | 階段 1 | Fruit 確認方案 A（AI 小幫手先放網頁按鈕、倉庫維持公開）；計畫文件依方案 A 重寫；兩個專案各開 `feature/agentic-rag` 分支；產出 `docs/rag-integration-plan.md` | 等待 Fruit 閱讀規劃書後回覆「確認」 |
 | 2026-11-05 | 階段 2 | RAG 後端新增 `get_my_club_registration` 工具（`signup_bridge.py`）、system prompt 規則、`SIGNUP_*` 環境變數、前端來源卡片；純函式測試 11 項與端到端測試 11 項全部通過；兩邊 81 社名稱完全一致 | 母版分支 `feature/agentic-rag` 兩個 commit；等 Fruit 把變數同步到 Vercel |
 | 2026-11-05 | 階段 3 | 報名系統執秘快捷列新增「🤖 AI 小幫手」按鈕（`RAG_ASSISTANT_URL` 設定、`openRagAssistant()` 帶社名開新分頁，puppeteer 驗證通過）；RAG 登入頁支援 `?club=` 自動選社（tsc 與 vite build 通過）；README 已更新 | 兩邊皆在 `feature/agentic-rag` 分支，未 push |
+| 2026-11-05 | 階段 4 | RAG 聊天 API 加每社每分鐘 10 次速率限制（429 + Retry-After），防護測試 5/5 通過；金鑰盤點：service role 只在後端、測試腳本與報名系統雲端小程式，前端皆無；橋接模組只有 GET；產出 `docs/rag-security-checklist.md` | 等 Fruit 確認後進入階段 5（報名系統去地區化） |
