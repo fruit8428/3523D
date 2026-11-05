@@ -1,0 +1,50 @@
+{
+  "_說明": "新地區設定範本：複製成 config/districts/<地區代號>.json，把每個欄位換成該地區的值，再執行 node scripts/build-config.js。supabaseAnonKey 填 Supabase 的 publishable（anon）金鑰，不要填 secret。",
+  "code": "3481",
+  "name": "國際扶輪 3481 地區",
+  "nameEn": "Rotary District 3481",
+  "shortTitle": "扶輪3481報名",
+  "rotaryYear": "2026-27",
+  "rotaryYearLong": "2026-2027",
+  "logo": "./assets/logo-3481.png",
+  "supabaseUrl": "https://xxxxxxxxxxxx.supabase.co",
+  "supabaseAnonKey": "sb_publishable_xxxxxxxxxxxxxxxxxxxx",
+  "ragAssistantUrl": "https://rotary-3481-ai.vercel.app",
+  "emailDomain": "rotary3481.org",
+  "divisions": [
+    {
+      "id": 1,
+      "name": "第一分區",
+      "clubs": [
+        {
+          "code": "01-1",
+          "name": "○○扶輪社"
+        },
+        {
+          "code": "01-2",
+          "name": "○○扶輪社"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "第二分區",
+      "clubs": [
+        {
+          "code": "02-1",
+          "name": "○○扶輪社"
+        }
+      ]
+    },
+    {
+      "id": 99,
+      "name": "地區團隊",
+      "clubs": [
+        {
+          "code": "3481",
+          "name": "地區辦公室"
+        }
+      ]
+    }
+  ]
+}

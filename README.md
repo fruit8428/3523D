@@ -131,3 +131,13 @@ supabase functions deploy fetch-bank-mail --no-verify-jwt
 - 執秘填的是至少 5 碼的純數字（例如轉出帳號末碼），而銀行備註包含該數字 → 自動配對。
 - 金額若執秘有填，必須與入帳金額一致；日期相差 3 天內。
 - 其餘情況（備註空白、亂碼、金額不符）會留在「未配對」，主委在入帳紀錄右側選社別按「指定」即可。
+
+## 地區設定（同一份程式給不同扶輪地區使用）
+
+所有「地區專屬」的內容（地區名稱、年度、Logo、Supabase 連線、AI 小幫手網址、分區與社名冊）都不寫在 `index.html`，而是放在 `config/districts/<地區代號>.json`，由 `scripts/build-config.js` 轉成 `district-config.js` 給網頁讀取。
+
+- 3523 的 `district-config.js` 已放在倉庫裡當預設值，所以直接開 `index.html`、GitHub Pages、現有 Vercel 專案都不需要額外步驟。
+- 要改 3523 的名冊或年度：改 `config/districts/3523.json`，執行 `node scripts/build-config.js`，把產生的 `district-config.js` 一起 commit。
+- 要給另一個地區用：複製 `config/districts/_template.json` 成 `<代號>.json` 填好，Logo 放 `assets/logo-<代號>.png`，在該地區的 Vercel 專案設定環境變數 `DISTRICT_CODE=<代號>`，部署時 `vercel.json` 會自動執行建置腳本換成該地區的設定。
+- `supabaseAnonKey` 是可公開的 publishable 金鑰，資料安全靠 Supabase 端的 Row Level Security，不靠藏金鑰。
+

@@ -1,0 +1,17 @@
+# 不需要上傳到 Vercel 的檔案（純靜態網站只需要 index.html、district-config.js、logo 與 config/scripts）
+node_modules
+supabase
+.github
+*.py
+check_*.js
+extract_js.js
+stub.js
+test.js
+test_supabase*.js
+rotary_3523_event_registration_spa*.html
+*.PNG
+*.jpg
+screenshot_*.png
+*.xlsx
+deno.lock
+*.command

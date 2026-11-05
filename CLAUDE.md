@@ -40,8 +40,21 @@ node test_supabase.js
   - GitHub Pages：`.github/workflows/deploy.yml` 把整個 repo 根目錄上傳，網址 `https://fruit8428.github.io/3523D/`。
   - Vercel：專案 `3523d`（帳號 `fruit8428-3918`）已連結此 repo，網址 `https://3523d.vercel.app`，不需任何建置設定。
   驗證上線時兩個網址都要 curl 比對 md5 是否與本機 `index.html` 一致。
-- 因為是靜態網站，Supabase 的 URL 與 anon key 直接寫在 `index.html` 第 21–22 行，這是刻意的設計；
+- 因為是靜態網站，Supabase 的 URL 與 anon key 是可公開的 publishable 金鑰，放在地區設定檔 `config/districts/3523.json`（見下方「地區設定」），
   資料安全靠 Supabase 端的 Row Level Security 設定。
+- `vercel.json`：`installCommand` 跳過安裝、`buildCommand` 執行 `node scripts/build-config.js`、`outputDirectory` 為根目錄；`.vercelignore` 排除測試腳本與大圖。
+
+### 地區設定（去地區化，2026-11-05 起）
+
+所有地區專屬內容都不寫在 `index.html`，而是：`config/districts/<代號>.json`（地區代號、名稱、年度、Logo、Supabase 連線、AI 小幫手網址、分區與社名冊）
+→ `node scripts/build-config.js`（依 `DISTRICT_CODE` 環境變數，預設 3523；或 `DISTRICT_CONFIG_FILE` 指定檔案）→ 產生 `district-config.js`（定義 `window.DISTRICT`）。
+- **3523 版的 `district-config.js` 有進 git** 當預設值，所以 file://、GitHub Pages、現有 Vercel 都不需建置；改 3523 設定後要重新產生並一起 commit。其他地區在 Vercel 設 `DISTRICT_CODE` 即可。
+- `index.html` 讀取方式：JS 用 `DISTRICT.xxx`；HTML 靜態文字用 `data-district-text="{name}…"` / `data-district-html` 樣板，由 `applyDistrictBranding()` 在 DOMContentLoaded 最先填入（可用變數 `{code} {name} {nameEn} {rotaryYear} {rotaryYearLong} {yearStart}`）；Logo 用 `data-district-logo`。
+- `DEFAULT_DIVISIONS_DATA` 來自 `DISTRICT.divisions`；但 `loadFromStorage` 讀到雲端已存的 `divisionsData` 時會覆蓋（既有行為，名冊可在 UI 編輯），設定檔只是新資料庫的初始值。
+- 儲存 key 名稱（`rotary_3523_spa_data_v3` 等 5 個）**刻意不改**：改了會讓 3523 現有資料變孤兒，各地區各自一個 Supabase 所以沒有衝突。
+- 新增地區專屬文字時不要寫死，用上面的機制；`config/districts/_template.json` 是新地區範本。
+- 驗證腳本 `check_district.js`：用測試設定建置後檢查標題／名冊／連線都跟著變，最後自動還原 3523 並比對 md5。
+- AI 小幫手：`DISTRICT.ragAssistantUrl` → `RAG_ASSISTANT_URL`，執秘快捷列 `#ragAssistantBtn` 由 `openRagAssistant()` 以 `?club=社名` 開啟 Agentic RAG（獨立專案 `/Users/fruit/Documents/AI Agent/RAG`，整合計畫見 `AGENTIC_RAG_整合計畫.md`）。
 
 ### Supabase 資料表（只有一張）
 
@@ -83,6 +96,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 | 檔案 | 說明 |
 |---|---|
 | `index.html` | **唯一要編輯的程式碼來源**，GitHub Pages 實際提供的檔案。 |
+| `config/districts/*.json`、`scripts/build-config.js`、`district-config.js` | 地區設定與其產生物（見「地區設定」）。 |
 | `rotary_3523_event_registration_spa.html`、`rotary_3523_event_registration_spa (1).html` | `index.html` 的歷史複本（目前內容完全相同），不要在這兩個檔案上開發。 |
 | `patch_*.py`、`fix_*.py` | 過去各次對話用來對 `index.html` 做字串取代的一次性腳本，**不是建置系統，不可重跑**（不具冪等性）。 |
 | `test.js` | `extract_js.js` 產生的輸出，不要手動編輯。 |

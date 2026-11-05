@@ -21,3 +21,8 @@ rotary_3523_event_registration_spa.html
 GitHub-33.jpg
 IMG_7003.PNG
 supabase/.temp/
+
+# 環境變數與金鑰（RAG 母版用；報名系統本身沒有 .env，但先排除以防誤加）
+.env
+.env.*
+!.env.example

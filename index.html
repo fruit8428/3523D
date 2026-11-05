@@ -3,30 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
-    <title>國際扶輪 3523 地區活動整合報名系統 (跨系統與行動連動版)</title>
+    <title>扶輪地區活動整合報名系統</title>
     <!-- PWA & Mobile Web App Capabilities (跨手機與作業系統支援) -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="扶輪3523報名">
+    <meta name="apple-mobile-web-app-title" content="扶輪報名">
     <meta name="theme-color" content="#0F172A">
     <meta name="format-detection" content="telephone=no">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
         <!-- Supabase CDN -->
+    <!-- 地區設定：由 scripts/build-config.js 從 config/districts/<代號>.json 產生，所有地區專屬內容都從這裡來 -->
+    <script src="./district-config.js"></script>
+    <script>
+        if (!window.DISTRICT) {
+            console.error('找不到 district-config.js，請執行 node scripts/build-config.js');
+            window.DISTRICT = { code: '', name: '扶輪地區', nameEn: 'Rotary District', shortTitle: '扶輪報名', rotaryYear: '', rotaryYearLong: '', logo: './logo.png', supabaseUrl: '', supabaseAnonKey: '', ragAssistantUrl: '', emailDomain: 'example.org', divisions: [] };
+        }
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         // ================= SUPABASE CONFIGURATION =================
-        // 請在此填入您的 Supabase 專案 URL 與 anon key
-        const SUPABASE_URL = 'https://ncrvmhfggfczicpyebvn.supabase.co';
-        const SUPABASE_ANON_KEY = 'sb_publishable_oTRCxVE73AYelSw9P-Zf4A_f_Ooj98u';
+        // Supabase 專案 URL 與 anon key 來自地區設定檔 config/districts/<代號>.json
+        const SUPABASE_URL = DISTRICT.supabaseUrl || '';
+        const SUPABASE_ANON_KEY = DISTRICT.supabaseAnonKey || '';
         let supabaseClient = null;
-        if (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY') {
+        if (SUPABASE_URL && SUPABASE_ANON_KEY) {
             supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         }
         // ================= AI 小幫手（Agentic RAG）=================
-        // 執秘報名頁「🤖 AI 小幫手」按鈕要開啟的網址；留空字串則不顯示按鈕。
-        const RAG_ASSISTANT_URL = 'https://agentic-rag-dusky.vercel.app';
+        // 執秘報名頁「🤖 AI 小幫手」按鈕要開啟的網址（來自地區設定檔 ragAssistantUrl）；留空則不顯示按鈕。
+        const RAG_ASSISTANT_URL = DISTRICT.ragAssistantUrl || '';
     </script>
 <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -229,12 +237,12 @@
             <!-- Left Side -->
             <div class="bg-[#0b2463] text-white p-8 md:p-12 md:w-5/12 flex flex-col justify-center items-center relative text-center">
                 <div class="mb-6 flex items-center justify-center">
-                    <img src="./logo.png" alt="Logo" class="w-28 h-28 object-contain">
+                    <img src="./logo.png" alt="Logo" class="w-28 h-28 object-contain" data-district-logo>
                 </div>
                 <p class="text-amber-500 font-bold tracking-widest text-xs mb-3">ROTARY INTERNATIONAL</p>
-                <h1 class="text-2xl md:text-3xl font-black mb-6 leading-tight">國際扶輪3523地區<br>報名系統</h1>
+                <h1 class="text-2xl md:text-3xl font-black mb-6 leading-tight" data-district-html="{name}<br>報名系統">扶輪地區<br>報名系統</h1>
                 <p class="text-sm text-blue-100 leading-relaxed mb-12">專為各地區社打造的專屬報名平台，提供高效率、安全的活動報名管理服務。</p>
-                <div class="text-[10px] text-blue-300/60 mt-auto">© 2026 Rotary District 3523. All rights reserved.</div>
+                <div class="text-[10px] text-blue-300/60 mt-auto" data-district-text="© {yearStart} {nameEn}. All rights reserved.">© Rotary District. All rights reserved.</div>
             </div>
             
             <!-- Right Side -->
@@ -294,7 +302,7 @@
         <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex flex-wrap justify-between items-center gap-3">
             <div>
                 <div class="flex items-center gap-1.5">
-                    <h1 class="text-base sm:text-lg font-bold leading-tight">國際扶輪 3523 地區</h1>
+                    <h1 class="text-base sm:text-lg font-bold leading-tight" data-district-text="{name}">扶輪地區</h1>
                     <span class="px-1.5 py-0.5 bg-blue-600 text-[10px] font-bold rounded text-white hidden sm:inline-block">跨平台連動版</span>
                 </div>
                 <p class="text-[11px] sm:text-xs text-slate-300">年度常態活動整合報名系統 (支援iOS / Android / Mac / Windows)</p>
@@ -382,7 +390,7 @@
         <div id="categoryHeaderBanner" class="bg-white rounded-xl shadow-sm border p-4 sm:p-5 mb-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-8 border-blue-600">
             <div class="space-y-1.5 flex-1">
                 <div class="flex items-center space-x-2 flex-wrap gap-y-1">
-                    <span id="rotaryYearTag" class="text-xs font-bold text-slate-500">2026-2027 年度</span>
+                    <span id="rotaryYearTag" class="text-xs font-bold text-slate-500" data-district-text="{rotaryYearLong} 年度">年度</span>
                     <span id="golfSpecialBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 hidden">⛳ 高爾夫賽事 (差點連動已啟用)</span>
                 </div>
                 
@@ -741,7 +749,7 @@
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
                     <div>
                         <h3 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2 flex-wrap" id="divisionDirectoryHeaderTitle">
-                            <span>📍 3523 地區分區所屬扶輪社標準名單</span>
+                            <span data-district-text="📍 {code} 地區分區所屬扶輪社標準名單">📍 地區分區所屬扶輪社標準名單</span>
                             <span id="divisionTotalSummaryBadge" class="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
                                 (依地區排序，共 13 分區 80 社)
                             </span>
@@ -1034,7 +1042,7 @@
                                 <label class="block"><span class="text-[11px] text-slate-500">銀行名稱</span><input type="text" id="cfgBankName" placeholder="上海商業儲蓄銀行" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
                                 <label class="block"><span class="text-[11px] text-slate-500">銀行代碼</span><input type="text" id="cfgBankCode" placeholder="011" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
                                 <label class="block"><span class="text-[11px] text-slate-500">分行</span><input type="text" id="cfgBankBranch" placeholder="例如：敦北分行" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
-                                <label class="block"><span class="text-[11px] text-slate-500">戶名</span><input type="text" id="cfgBankAccountName" placeholder="例如：國際扶輪3523地區" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
+                                <label class="block"><span class="text-[11px] text-slate-500">戶名</span><input type="text" id="cfgBankAccountName" placeholder="例如：國際扶輪○○○○地區" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
                                 <label class="block col-span-2 sm:col-span-3"><span class="text-[11px] text-slate-500">帳號</span><input type="text" id="cfgBankAccountNo" placeholder="例如：40102-0000000-70" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
                                 <div class="flex items-end"><button type="button" onclick="saveBankAccount()" class="w-full px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition">💾 儲存匯款帳號</button></div>
                             </div>
@@ -1053,7 +1061,7 @@
                                         <option value="custom">其他（自填主機）</option>
                                     </select></label>
                                 <label class="block hidden" id="cfgMailHostWrap"><span class="text-[11px] text-slate-500">收信主機（選「其他」才需填，向該信箱服務商查詢，例如 HiNet 是 msa.hinet.net）</span><input type="text" id="cfgMailHost" placeholder="imap.example.com" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
-                                <label class="block"><span class="text-[11px] text-slate-500">Email address</span><input type="email" id="cfgMailEmail" placeholder="例如：rotary3523@gmail.com" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
+                                <label class="block"><span class="text-[11px] text-slate-500">Email address</span><input type="email" id="cfgMailEmail" placeholder="例如：rotary@gmail.com" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
                                 <label class="block"><span class="text-[11px] text-slate-500">Email 密碼（HiNet 用登入密碼；Gmail 用應用程式密碼）</span><input type="password" id="cfgMailPassword" placeholder="留空＝不變更" autocomplete="new-password" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
                                 <label class="block"><span class="text-[11px] text-slate-500">PDF 開啟密碼（戶名的身分證號／統編末六碼）</span><input type="password" id="cfgPdfPassword" placeholder="6 碼數字；留空＝不變更" autocomplete="new-password" inputmode="numeric" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
                             </div>
@@ -1120,7 +1128,7 @@
                     <div>
                         <div class="flex items-center gap-2 flex-wrap">
                             <span class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-black uppercase tracking-wider">Meeting Presentation Mode</span>
-                            <span class="text-xs font-bold text-slate-500">3523 地區專用開會展示清單</span>
+                            <span class="text-xs font-bold text-slate-500" data-district-text="{code} 地區專用開會展示清單">地區專用開會展示清單</span>
                         </div>
                         <h3 class="text-base sm:text-lg font-black text-slate-900 mt-1 flex items-center gap-2 flex-wrap">
                             <span>🏛️ 各分區各社繳費狀況即時總表</span>
@@ -1936,7 +1944,7 @@
             <div>
                 <div class="flex items-center gap-2">
                     <span class="px-2 py-0.5 bg-indigo-500 text-white rounded text-[10px] font-black tracking-wider">PROJECTOR MODE</span>
-                    <span class="text-xs text-slate-400 font-semibold">國際扶輪 3523 地區開會大螢幕投影展示</span>
+                    <span class="text-xs text-slate-400 font-semibold" data-district-text="{name}開會大螢幕投影展示">開會大螢幕投影展示</span>
                 </div>
                     <h2 class="text-lg sm:text-2xl font-black text-white flex items-center gap-2" id="presEventTitle">
                         研討會及講習會 各分區各社繳費狀況總表
@@ -2099,7 +2107,7 @@
     <!-- Footer -->
     <footer class="bg-slate-900 text-slate-400 text-xs py-6 mt-12 border-t border-slate-800 no-print">
         <div class="max-w-7xl mx-auto px-4 text-center space-y-2">
-            <p>國際扶輪 3523 地區 Rotary District 3523 © 2026-2027 年度活動報名整合系統</p>
+            <p data-district-text="{name} {nameEn} © {rotaryYearLong} 年度活動報名整合系統">活動報名整合系統</p>
             <p class="text-[11px] text-slate-500">支援各作業系統與手機連動 | 高爾夫差點整合庫 | 快照防護 | 自動化年度銜接</p>
         </div>
     </footer>
@@ -2109,417 +2117,10 @@
         // ================= STORAGE KEY & DATA INITIALIZATION =================
         const LOCAL_STORAGE_KEY = 'rotary_3523_spa_data_v3';
 
-        // Appendix: Division & Clubs Dictionary (依據 3523地區現有社名排序.xlsx 完整 13 分區 80 社)
-        const DEFAULT_DIVISIONS_DATA = [
-    {
-        "id": 1,
-        "name": "第一分區",
-        "clubs": [
-            {
-                "code": "01-1",
-                "name": "臺北市南區扶輪社"
-            },
-            {
-                "code": "01-2",
-                "name": "台北逸仙扶輪社"
-            },
-            {
-                "code": "01-3",
-                "name": "台北逸天扶輪社"
-            },
-            {
-                "code": "01-4",
-                "name": "台北市雲聯網扶輪社"
-            },
-            {
-                "code": "01-5",
-                "name": "台北逸澤扶輪社"
-            },
-            {
-                "code": "01-6",
-                "name": "臺北黃埔扶輪社"
-            },
-            {
-                "code": "01-7",
-                "name": "台北逸新扶輪社"
-            },
-            {
-                "code": "01-8",
-                "name": "台北蘭亭鐵馬扶輪社"
-            },
-            {
-                "code": "01-9",
-                "name": "台北銀河扶輪社"
-            }
-        ]
-    },
-    {
-        "id": 2,
-        "name": "第二分區",
-        "clubs": [
-            {
-                "code": "02-1",
-                "name": "台北市西南區扶輪社"
-            },
-            {
-                "code": "02-2",
-                "name": "台北健康扶輪社"
-            },
-            {
-                "code": "02-3",
-                "name": "台北高峰扶輪社"
-            },
-            {
-                "code": "02-4",
-                "name": "台北永康扶輪社"
-            },
-            {
-                "code": "02-5",
-                "name": "台北市南山扶輪社"
-            }
-        ]
-    },
-    {
-        "id": 3,
-        "name": "第三分區",
-        "clubs": [
-            {
-                "code": "03-1",
-                "name": "台北市華南扶輪社"
-            },
-            {
-                "code": "03-2",
-                "name": "台北市華陽扶輪社"
-            },
-            {
-                "code": "03-3",
-                "name": "台北市瑞光扶輪社"
-            },
-            {
-                "code": "03-4",
-                "name": "台北市華東扶輪社"
-            },
-            {
-                "code": "03-5",
-                "name": "台北市永續扶輪社"
-            },
-            {
-                "code": "03-6",
-                "name": "影響力扶輪社"
-            }
-        ]
-    },
-    {
-        "id": 4,
-        "name": "第四分區",
-        "clubs": [
-            {
-                "code": "04-1",
-                "name": "台北市南欣扶輪社"
-            },
-            {
-                "code": "04-2",
-                "name": "台北松山扶輪社"
-            },
-            {
-                "code": "04-3",
-                "name": "台北市民生扶輪社"
-            },
-            {
-                "code": "04-4",
-                "name": "台北政愛扶輪社"
-            },
-            {
-                "code": "04-5",
-                "name": "台北添愛扶輪社"
-            },
-            {
-                "code": "04-6",
-                "name": "台北泰愛扶輪社"
-            },
-            {
-                "code": "04-7",
-                "name": "文化扶輪社"
-            }
-        ]
-    },
-    {
-        "id": 5,
-        "name": "第五分區",
-        "clubs": [
-            {
-                "code": "05-1",
-                "name": "台北府門扶輪社"
-            },
-            {
-                "code": "05-2",
-                "name": "台北南陽扶輪社"
-            },
-            {
-                "code": "05-3",
-                "name": "台北明星扶輪社"
-            },
-            {
-                "code": "05-4",
-                "name": "台北風雲扶輪社"
-            }
-        ]
-    },
-    {
-        "id": 6,
-        "name": "第六分區",
-        "clubs": [
-            {
-                "code": "06-1",
-                "name": "台北市南門扶輪社"
-            },
-            {
-                "code": "06-2",
-                "name": "台北大都會扶輪社"
-            },
-            {
-                "code": "06-3",
-                "name": "台北市南方扶輪社"
-            },
-            {
-                "code": "06-4",
-                "name": "台北市南光扶輪社"
-            },
-            {
-                "code": "06-5",
-                "name": "台北南英扶輪社"
-            },
-            {
-                "code": "06-6",
-                "name": "台北市南揚扶輪社"
-            },
-            {
-                "code": "06-7",
-                "name": "台北市南波扶輪社"
-            },
-            {
-                "code": "06-8",
-                "name": "臺北市南星扶輪社"
-            },
-            {
-                "code": "06-9",
-                "name": "台北南法扶輪社"
-            }
-        ]
-    },
-    {
-        "id": 7,
-        "name": "第七分區",
-        "clubs": [
-            {
-                "code": "07-1",
-                "name": "台北市南海扶輪社"
-            },
-            {
-                "code": "07-2",
-                "name": "台北市南雅扶輪社"
-            },
-            {
-                "code": "07-3",
-                "name": "台北市新世代扶輪社"
-            },
-            {
-                "code": "07-4",
-                "name": "台北市南鷹扶輪社"
-            },
-            {
-                "code": "07-5",
-                "name": "台北大加蚋扶輪社"
-            }
-        ]
-    },
-    {
-        "id": 8,
-        "name": "第八分區",
-        "clubs": [
-            {
-                "code": "08-1",
-                "name": "台北市華麗扶輪社"
-            },
-            {
-                "code": "08-2",
-                "name": "台北市華欣扶輪社"
-            },
-            {
-                "code": "08-3",
-                "name": "台北市華樂扶輪社"
-            },
-            {
-                "code": "08-4",
-                "name": "台北網路扶輪社"
-            },
-            {
-                "code": "08-5",
-                "name": "臺北新北投扶輪社"
-            },
-            {
-                "code": "08-6",
-                "name": "台北市華真扶輪社"
-            }
-        ]
-    },
-    {
-        "id": 9,
-        "name": "第九分區",
-        "clubs": [
-            {
-                "code": "09-1",
-                "name": "台北市華安扶輪社"
-            },
-            {
-                "code": "09-2",
-                "name": "台北市華中扶輪社"
-            },
-            {
-                "code": "09-3",
-                "name": "台北市益成扶輪社"
-            },
-            {
-                "code": "09-4",
-                "name": "台北市南德扶輪社"
-            },
-            {
-                "code": "09-5",
-                "name": "台北市華茂扶輪社"
-            },
-            {
-                "code": "09-6",
-                "name": "台北南茂扶輪社"
-            },
-            {
-                "code": "09-7",
-                "name": "台北市三友扶輪社"
-            }
-        ]
-    },
-    {
-        "id": 10,
-        "name": "第十分區",
-        "clubs": [
-            {
-                "code": "10-1",
-                "name": "台北市南港扶輪社"
-            },
-            {
-                "code": "10-2",
-                "name": "台北市南北扶輪社"
-            },
-            {
-                "code": "10-3",
-                "name": "台北市南西扶輪社"
-            },
-            {
-                "code": "10-4",
-                "name": "台北市南東扶輪社"
-            }
-        ]
-    },
-    {
-        "id": 11,
-        "name": "第十一分區",
-        "clubs": [
-            {
-                "code": "11-1",
-                "name": "台北市南華扶輪社"
-            },
-            {
-                "code": "11-2",
-                "name": "台北市文華扶輪社"
-            },
-            {
-                "code": "11-3",
-                "name": "台北永華扶輪社"
-            },
-            {
-                "code": "11-4",
-                "name": "台北市西華扶輪社"
-            },
-            {
-                "code": "11-5",
-                "name": "台北市碩華扶輪社"
-            },
-            {
-                "code": "11-6",
-                "name": "台北富華扶輪社"
-            }
-        ]
-    },
-    {
-        "id": 12,
-        "name": "第十二分區",
-        "clubs": [
-            {
-                "code": "12-1",
-                "name": "台北龍門扶輪社"
-            },
-            {
-                "code": "12-2",
-                "name": "台北龍華扶輪社"
-            },
-            {
-                "code": "12-3",
-                "name": "台北龍鳳扶輪社"
-            },
-            {
-                "code": "12-4",
-                "name": "台北龍族扶輪社"
-            },
-            {
-                "code": "12-5",
-                "name": "台北龍欣扶輪社"
-            },
-            {
-                "code": "12-6",
-                "name": "台北龍來扶輪社"
-            },
-            {
-                "code": "12-7",
-                "name": "台北龍穎扶輪社"
-            },
-            {
-                "code": "12-8",
-                "name": "台北龍舟扶輪社"
-            }
-        ]
-    },
-    {
-        "id": 13,
-        "name": "第十三分區",
-        "clubs": [
-            {
-                "code": "13-1",
-                "name": "台北市南天扶輪社"
-            },
-            {
-                "code": "13-2",
-                "name": "台北市天一扶輪社"
-            },
-            {
-                "code": "13-3",
-                "name": "台北樂雅扶輪社"
-            },
-            {
-                "code": "13-4",
-                "name": "台北風澤扶輪社"
-            }
-        ]
-    },
-    {
-        "id": 14,
-        "name": "地區團隊",
-        "clubs": [
-            {
-                "code": "3523",
-                "name": "地區辦公室"
-            }
-        ]
-    }
-];
+        // Appendix: Division & Clubs Dictionary — 名冊來自地區設定檔 config/districts/<代號>.json 的 divisions
+        const DEFAULT_DIVISIONS_DATA = JSON.parse(JSON.stringify(DISTRICT.divisions || []));
+        const DISTRICT_PAYMENT_DIVISION_COUNT = DEFAULT_DIVISIONS_DATA.filter(d => d.name !== '地區團隊').length;
+        const DISTRICT_PAYMENT_CLUB_COUNT = DEFAULT_DIVISIONS_DATA.filter(d => d.name !== '地區團隊').reduce((a, d) => a + (d.clubs || []).length, 0);
 
         // Categories & Sub-Events Master List
         const DEFAULT_CATEGORIES = [
@@ -2601,7 +2202,7 @@
                 hexColor: '#4F46E5',
                 allowSponsors: true,
                 allowAddSubEvents: true,
-                desc: '3523 地區年度社友代表大會暨年會慶典，全體 13 分區 80 社出席與繳費報名。',
+                desc: `${DISTRICT.code} 地區年度社友代表大會暨年會慶典，全體 ${DISTRICT_PAYMENT_DIVISION_COUNT} 分區 ${DISTRICT_PAYMENT_CLUB_COUNT} 社出席與繳費報名。`,
                 subEvents: [
                     '1. 地區年會大會 (全體代表大會)',
                     '2. 地區年會歡迎晚宴暨頒獎典禮'
@@ -2740,8 +2341,8 @@
 
         // Event-specific Email settings: { [eventKey]: { email, password } }
         let chairEventEmails = {
-            'seminars': { email: 'gms3523@gmail.com', password: '••••••••' },
-            'conference': { email: 'conf2027@rotary3523.org', password: '••••••••' }
+            'seminars': { email: `gms@${DISTRICT.emailDomain}`, password: '••••••••' },
+            'conference': { email: `conf@${DISTRICT.emailDomain}`, password: '••••••••' }
         };
 
         // Payment status records: { [categoryOrEventKey]: { [clubName]: { status, amount, method, last5, date, note, verifiedAt, fromEmail, subject } } }
@@ -2881,6 +2482,7 @@
         // ================= INITIALIZATION & NAVIGATION =================
 
         document.addEventListener('DOMContentLoaded', async () => {
+            applyDistrictBranding();
             initRagAssistantButton();
             const searchInput = document.getElementById('memberSearchInput');
             if (searchInput) searchInput.value = '';
@@ -4354,7 +3956,7 @@
             if (cat && cat.subEvents && cat.subEvents.length > currentSubEventIndex) {
                 const newName = document.getElementById('cfgEventName').value.trim();
                 if (newName) {
-                    cat.subEvents[currentSubEventIndex] = newName.replace(/^2026-27年度 /, ''); // Strip prefix if they left it
+                    cat.subEvents[currentSubEventIndex] = newName.replace(new RegExp('^' + DISTRICT.rotaryYear + '年度 '), ''); // Strip prefix if they left it
                 }
             }
 
@@ -5004,7 +4606,7 @@
                     XLSX.utils.book_append_sheet(wb, wsPrize, "贊助獎彙整");
                 }
                 const dateStr = new Date().toISOString().slice(0, 10);
-                XLSX.writeFile(wb, `3523地區報名名冊_合併全覽_${subEventName.replace(/[/\\s:]/g, '_')}_${dateStr}.xlsx`);
+                XLSX.writeFile(wb, `${DISTRICT.code}地區報名名冊_合併全覽_${subEventName.replace(/[/\\s:]/g, '_')}_${dateStr}.xlsx`);
                 showToast("📗 合併 Excel 檔 (.xlsx) 已成功匯出！");
             } else {
                 exportReportCSV();
@@ -5024,7 +4626,7 @@
             if (orders.length === 0) return;
 
             let lines = [];
-            lines.push(`【2026-27年度 國際扶輪3523地區 - ${subEventName}】`);
+            lines.push(`【${DISTRICT.rotaryYear}年度 ${DISTRICT.name} - ${subEventName}】`);
             lines.push(`📋 全體各社合併出席名冊全覽清單`);
             lines.push(`----------------------------------------`);
             let idx = 1;
@@ -5384,7 +4986,7 @@
             const a = document.createElement('a');
             a.href = url;
             const dateStr = new Date().toISOString().slice(0, 10);
-            a.download = `3523地區報名名冊_${subEventName.replace(/[/\\s:]/g, '_')}_${dateStr}.csv`;
+            a.download = `${DISTRICT.code}地區報名名冊_${subEventName.replace(/[/\\s:]/g, '_')}_${dateStr}.csv`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -5450,7 +5052,7 @@
             const text = getLineRegistrationText();
             if (navigator.share) {
                 navigator.share({
-                    title: '國際扶輪 3523 地區活動整合報名系統',
+                    title: `${DISTRICT.name}活動整合報名系統`,
                     text: text,
                     url: window.location.href
                 }).then(() => {
@@ -5484,7 +5086,7 @@
             const avgHcap = calculateAvgHandicap(currentFormSelectedMembers);
 
             let lines = [];
-            lines.push(`【國際扶輪 3523 地區 活動報名通報】`);
+            lines.push(`【${DISTRICT.name} 活動報名通報】`);
             lines.push(`🏆 活動名稱：${subEventName}`);
             lines.push(`🏛️ 報名社別：${selectedClubName}`);
             if (isAnniversaryMode()) {
@@ -5590,6 +5192,24 @@
             if (btn) btn.classList.toggle('hidden', !RAG_ASSISTANT_URL);
         }
 
+        // 把地區設定填進畫面：標題、手機捷徑名稱、Logo，以及所有 data-district-text / data-district-html 樣板
+        function fillDistrictTemplate(tpl) {
+            const vars = {
+                code: DISTRICT.code || '', name: DISTRICT.name || '', nameEn: DISTRICT.nameEn || '',
+                rotaryYear: DISTRICT.rotaryYear || '', rotaryYearLong: DISTRICT.rotaryYearLong || '',
+                yearStart: String(DISTRICT.rotaryYearLong || '').slice(0, 4),
+            };
+            return String(tpl).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+        }
+        function applyDistrictBranding() {
+            document.title = `${DISTRICT.name}活動整合報名系統`;
+            const meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+            if (meta) meta.setAttribute('content', DISTRICT.shortTitle || '扶輪報名');
+            document.querySelectorAll('[data-district-logo]').forEach(img => { if (DISTRICT.logo) img.src = DISTRICT.logo; });
+            document.querySelectorAll('[data-district-text]').forEach(el => { el.textContent = fillDistrictTemplate(el.getAttribute('data-district-text')); });
+            document.querySelectorAll('[data-district-html]').forEach(el => { el.innerHTML = fillDistrictTemplate(el.getAttribute('data-district-html')); });
+        }
+
         // Calendar .ics generator
         function downloadICS() {
             const cat = categoriesData.find(c => c.id === currentCatId);
@@ -5599,12 +5219,12 @@
             const icsData = [
                 "BEGIN:VCALENDAR",
                 "VERSION:2.0",
-                "PRODID:-//Rotary District 3523//Event Registration//TW",
+                `PRODID:-//${DISTRICT.nameEn}//Event Registration//TW`,
                 "CALSCALE:GREGORIAN",
                 "METHOD:PUBLISH",
                 "BEGIN:VEVENT",
-                `SUMMARY:國際扶輪3523地區 - ${subEventName}`,
-                `DESCRIPTION:國際扶輪3523地區年度常態活動：${subEventName}\\n活動類別：${cat.name}\\n報名分社：${selectedClubName}`,
+                `SUMMARY:${DISTRICT.name} - ${subEventName}`,
+                `DESCRIPTION:${DISTRICT.name}年度常態活動：${subEventName}\\n活動類別：${cat.name}\\n報名分社：${selectedClubName}`,
                 `LOCATION:台北市 (請參閱地區公文通知)`,
                 `DTSTART:${startDate}`,
                 `DTEND:${endDate}`,
@@ -5617,7 +5237,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Rotary3523_${subEventName.replace(/[/\\s:]/g, '_')}.ics`;
+            a.download = `Rotary${DISTRICT.code}_${subEventName.replace(/[/\\s:]/g, '_')}.ics`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -5628,8 +5248,8 @@
         function openGoogleCalendar() {
             const cat = categoriesData.find(c => c.id === currentCatId);
             const subEventName = cat.subEvents[currentSubEventIndex];
-            const title = encodeURIComponent(`國際扶輪3523地區 - ${subEventName}`);
-            const details = encodeURIComponent(`國際扶輪 3523 地區年度常態活動整合報名\\n活動類別：${cat.name}\\n報名分社：${selectedClubName}`);
+            const title = encodeURIComponent(`${DISTRICT.name} - ${subEventName}`);
+            const details = encodeURIComponent(`${DISTRICT.name}年度常態活動整合報名\\n活動類別：${cat.name}\\n報名分社：${selectedClubName}`);
             const location = encodeURIComponent(`台北市 (請參閱地區公文通知)`);
             const dates = "20261015T010000Z/20261015T090000Z";
             const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}`;
@@ -5639,7 +5259,7 @@
         // Backup and Sync Code
         function exportBackupJSON() {
             const payload = {
-                system: "Rotary3523_Registration_System",
+                system: `Rotary${DISTRICT.code}_Registration_System`,
                 version: "2.1",
                 savedAt: new Date().toISOString(),
                 clubMemberDatabase,
@@ -5654,7 +5274,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `rotary_3523_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `rotary_${DISTRICT.code}_backup_${new Date().toISOString().slice(0, 10)}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -6455,8 +6075,8 @@
                 if (stored) {
                     const parsed = JSON.parse(stored);
                     chairEventEmails = Object.assign({
-                        'seminars': { email: 'gms3523@gmail.com', password: '••••••••' },
-                        'conference': { email: 'conf2027@rotary3523.org', password: '••••••••' }
+                        'seminars': { email: `gms@${DISTRICT.emailDomain}`, password: '••••••••' },
+                        'conference': { email: `conf@${DISTRICT.emailDomain}`, password: '••••••••' }
                     }, parsed);
                 }
             } catch (e) {
@@ -6534,7 +6154,7 @@
             }
         }
 
-        // ================= 3523 各分區各社繳費狀況初始種子資料 =================
+        // ================= 各分區各社繳費狀況初始種子資料（示範資料） =================
 
         // 示範用繳費資料：只有最高管理員按「載入示範資料」才會生成，正式上線時不會自動出現。
         // 會為每一個研討會/年會子活動各產生一份（key 為「大類id::子活動名稱」）。
@@ -6543,7 +6163,7 @@
                 const seminarRecords = {};
                 const conferenceRecords = {};
 
-                // 預設常見繳費名單種子（模擬 3523 地區開會真實繳費實況：約 75% 已繳費，25% 待繳催繳）
+                // 預設常見繳費名單種子（模擬開會真實繳費實況：約 75% 已繳費，25% 待繳催繳）
                 const unpaidClubNames = new Set([
                     "台北逸仙扶輪社", "台北市雲聯網扶輪社", "台北市南山扶輪社", "台北市瑞光扶輪社",
                     "台北市華東扶輪社", "台北市南欣扶輪社", "台北市南天扶輪社", "台北健康扶輪社",
@@ -6594,7 +6214,7 @@
                                 date: dateStr,
                                 note: isEmailVerified ? 'Email 自動核對相符' : '執秘於大會現場回報核訖',
                                 verifiedAt: `${dateStr} 11:${(cIdx * 5 % 50).toString().padStart(2, '0')}`,
-                                fromEmail: `sec.${club.name.replace(/[^a-zA-Z0-9]/g, '') || 'club'}@rotary3523.org`,
+                                fromEmail: `sec.${club.name.replace(/[^a-zA-Z0-9]/g, '') || 'club'}@${DISTRICT.emailDomain}`,
                                 subject: `[銀行入帳通知] ${club.name} 繳納 2026 GMS 研討會報名費 NT$ ${amountSeminars.toLocaleString()}`
                             };
 
@@ -6606,7 +6226,7 @@
                                 date: dateStr,
                                 note: isEmailVerified ? 'Email 自動核對相符' : '現場確認入帳',
                                 verifiedAt: `${dateStr} 14:${(cIdx * 5 % 50).toString().padStart(2, '0')}`,
-                                fromEmail: `sec.${club.name.replace(/[^a-zA-Z0-9]/g, '') || 'club'}@rotary3523.org`,
+                                fromEmail: `sec.${club.name.replace(/[^a-zA-Z0-9]/g, '') || 'club'}@${DISTRICT.emailDomain}`,
                                 subject: `[入帳通知] ${club.name} 2027 地區年會註冊費 NT$ ${amountConf.toLocaleString()}`
                             };
                         }
@@ -7198,7 +6818,7 @@
 
             const titleEl = document.getElementById('presEventTitle');
             if (titleEl) {
-                titleEl.innerText = `3523 地區《${subEventName}》各分區各社繳費狀況總表`;
+                titleEl.innerText = `${DISTRICT.code} 地區《${subEventName}》各分區各社繳費狀況總表`;
             }
 
             renderMeetingPresentationContent();
@@ -7551,7 +7171,7 @@
             const subEventName = (cat.subEvents && cat.subEvents[currentSubEventIndex]) 
                 ? cat.subEvents[currentSubEventIndex] 
                 : cat.name;
-            const eventTitle = `2026-27 年度 ${subEventName}`;
+            const eventTitle = `${DISTRICT.rotaryYear} 年度 ${subEventName}`;
             const records = chairPaymentRecords[activeCatKey] || {};
 
             let unpaidListByDiv = [];
@@ -7577,7 +7197,7 @@
             const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
 
             const lineMessage = [
-                `【國際扶輪 3523 地區】`,
+                `【${DISTRICT.name}】`,
                 `🏛️ ${eventTitle} - 各分區各社繳費催繳提醒名單`,
                 `📅 統計時間：${nowStr}`,
                 `📊 全區 80 社繳費進度：已繳 ${totalClubsCount - totalUnpaidCount} 社｜尚待繳費：${totalUnpaidCount} 社`,
@@ -7617,7 +7237,7 @@
                 return;
             }
 
-            const text = `【3523 地區 ${eventTitle} 催繳通知】\n📍 ${div.name} 尚未繳費之扶輪社 (${missing.length}社)：\n${missing.join('、')}\n敬請儘速辦理匯款並回報對帳信箱。感謝！`;
+            const text = `【${DISTRICT.code} 地區 ${eventTitle} 催繳通知】\n📍 ${div.name} 尚未繳費之扶輪社 (${missing.length}社)：\n${missing.join('、')}\n敬請儘速辦理匯款並回報對帳信箱。感謝！`;
             navigator.clipboard.writeText(text).then(() => {
                 showToast(`📋 已複製【${div.name}】未繳名單至剪貼簿！`);
             });
@@ -7637,7 +7257,7 @@
             }
 
             const rows = [
-                [`國際扶輪 3523 地區 ${eventTitle} 各分區各社繳費狀況總表`],
+                [`${DISTRICT.name} ${eventTitle} 各分區各社繳費狀況總表`],
                 [`匯出時間：${new Date().toLocaleString()}`],
                 []
             ];
@@ -7687,7 +7307,7 @@
 
             XLSX.utils.book_append_sheet(wb, ws, "各分區各社繳費狀況");
             const dateStr = new Date().toISOString().slice(0, 10);
-            XLSX.writeFile(wb, `3523地區_${eventTitle}_各社繳費狀況總表_${dateStr}.xlsx`);
+            XLSX.writeFile(wb, `${DISTRICT.code}地區_${eventTitle}_各社繳費狀況總表_${dateStr}.xlsx`);
             showToast(`📗 開會專用繳費狀況 Excel 檔已成功匯出！`);
         }
 

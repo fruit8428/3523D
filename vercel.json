@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "echo '純靜態網站，不需要安裝套件'",
+  "buildCommand": "node scripts/build-config.js",
+  "outputDirectory": "."
+}
