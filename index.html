@@ -609,7 +609,7 @@
                         <!-- Apportionment Input Box (Conditional display) -->
                         <!-- 匯款資訊（研討會／年會／分攤金等需匯款的活動才顯示；帳號由主委後台設定） -->
                         <div id="remitInfoBox" class="mb-4 p-3 sm:p-3.5 bg-sky-50 border border-sky-200 rounded-xl hidden">
-                            <h4 class="text-xs font-bold text-sky-900 mb-2 flex items-center gap-1.5">💳 匯款資訊與匯款回報</h4>
+                            <h4 class="text-xs font-bold text-sky-900 mb-2 flex items-center gap-1.5">💳 匯款資訊與入帳狀態</h4>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <div class="bg-white border border-sky-200 rounded-lg p-2.5 text-xs text-slate-700 space-y-1">
                                     <div>銀行：<b id="remitBankName" class="text-slate-900"></b></div>
@@ -618,26 +618,16 @@
                                         <button type="button" onclick="copyRemitAccount()" class="px-2 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-800 border border-sky-300 rounded text-[11px] font-bold">📋 複製帳號</button></div>
                                     <div>本活動應繳：<b id="remitRequiredAmount" class="text-rose-700 font-mono"></b></div>
                                     <div class="mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 leading-relaxed">
-                                        ⚠️ <b>匯款備註請填寫貴社全名</b>（例如：<b>南區扶輪社</b>），系統才能自動核對入帳。若銀行 App 沒有備註欄，請在下方填入您轉出帳號的末五碼或實際填寫的內容。
+                                        ⚠️ <b>匯款備註請填寫貴社全名</b>（例如：<b>南區扶輪社</b>），系統才能自動核對入帳。若銀行 App 沒有備註欄，入帳後請通知活動主委人工指定。
                                     </div>
                                 </div>
                                 <div class="bg-white border border-sky-200 rounded-lg p-2.5 text-xs space-y-2">
-                                    <div id="remitStatusLine" class="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded p-2">尚未回報匯款</div>
-                                    <!-- 匯款備註是系統自動對帳的關鍵欄位，特別加強顏色提醒執秘一定要填 -->
-                                    <label class="block bg-rose-50 border-2 border-rose-400 rounded-lg p-2 shadow-sm">
-                                        <span class="flex items-center gap-1.5 text-[11px] font-bold text-rose-800"><span class="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[10px] leading-none">必填</span>我在匯款備註填寫的內容<span class="text-rose-500">＊</span></span>
-                                        <input type="text" id="remitNoteInput" placeholder="例如：南區扶輪社（請與銀行匯款備註完全一致）" class="w-full mt-1 bg-white border-2 border-rose-400 focus:border-rose-600 focus:ring-2 focus:ring-rose-200 rounded p-2 text-sm font-bold text-rose-900 placeholder:font-normal placeholder:text-rose-300">
-                                        <span class="block text-[10px] text-rose-700 mt-1">請填寫與銀行匯款備註<b>一模一樣</b>的文字，系統才能自動核對入帳；沒有備註欄請填轉出帳號末五碼。</span>
-                                    </label>
-                                    <div class="grid grid-cols-2 gap-2">
-                                        <label class="block"><span class="text-[11px] text-slate-500">匯款金額 (NT$)</span><input type="number" id="remitAmountInput" min="0" step="1" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs font-mono"></label>
-                                        <label class="block"><span class="text-[11px] text-slate-500">匯款日期</span><input type="date" id="remitDateInput" class="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-xs"></label>
-                                    </div>
+                                    <div id="remitStatusLine" class="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded p-2">尚未收到入帳</div>
+                                    <p class="text-[11px] text-slate-600 leading-relaxed">匯款後<b>不需要另外回報</b>：銀行入帳時會自動通知系統，系統依「存摺備註裡的社名」與「金額」核對，通常 10 分鐘內這裡會顯示「已收到您的匯款」。</p>
                                     <div class="flex flex-wrap items-center gap-2">
-                                        <button type="button" onclick="submitRemitNotice()" id="btnSubmitRemit" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition">✅ 我已匯款，送出通知</button>
                                         <button type="button" onclick="recheckRemitStatus()" class="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold">🔄 重新檢查入帳</button>
                                     </div>
-                                    <p class="text-[10px] text-slate-500">送出後系統會自動讀取銀行入帳通知進行比對，通常 10 分鐘內會顯示「已收到您的匯款」。</p>
+                                    <p class="text-[10px] text-slate-500">匯款金額請與「本活動應繳」相同。超過一天仍未顯示已收到，請聯絡活動主委人工核對。</p>
                                 </div>
                             </div>
                         </div>
@@ -2067,7 +2057,6 @@
                     <select id="editPayStatusSelect" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500">
                         <option value="PAID_MANUAL">✅ 已繳費（人工現場 / 支票 / 匯款核帳）</option>
                         <option value="UNPAID">⏳ 待匯款 / 未繳費</option>
-                        <option value="NOTIFIED">📨 執秘已回報匯款（待核對）</option>
                         <option value="EXEMPT">🆓 免收 / 贊助款折抵</option>
                     </select>
                 </div>
@@ -2257,7 +2246,7 @@
                 hexColor: '#1A56DB',
                 allowSponsors: false,
                 allowAddSubEvents: true,
-                desc: '地區辦公室分攤金與地區服務配合款，各社填寫金額並回報匯款。',
+                desc: '地區辦公室分攤金與地區服務配合款，各社匯款後由銀行入帳通知自動核對。',
                 subEvents: [
                     '1.上半年地辦分攤金',
                     '2.下半年地辦分攤金',
@@ -6793,7 +6782,7 @@
         }
 
         // ================= 分攤金／配合款：各分區繳款達成率圖表 =================
-        // 橫條＝該分區「已繳社數 ÷ 分區社數」；淺色段＝執秘已回報匯款、等銀行入帳核對（還不算已繳）。
+        // 橫條＝該分區「已繳社數 ÷ 分區社數」。
         // 右側列出該分區尚未繳款的社名。資料來源與繳費總表相同（chairPaymentRecords[getActivePaymentKey()]）。
         let apportionChartSort = 'division'; // 'division' 依分區順序｜'rate' 達成率低的排前面
         function setApportionChartSort(mode) { apportionChartSort = mode; renderApportionChart(); }
@@ -6820,7 +6809,6 @@
                 div.clubs.forEach(club => {
                     const rec = records[club.name] || { status: 'UNPAID' };
                     if (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT') { paid.push(club.name); amt += Number(rec.amount) || 0; }
-                    else if (rec.status === 'NOTIFIED') notified.push(club.name);
                     else unpaid.push(club.name);
                 });
                 const total = div.clubs.length;
@@ -6838,14 +6826,13 @@
             let html = `
                 <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
                     ${tile('全區達成率', `${pct(overall)}%`, `已繳 ${tPaid} / ${tClubs} 社`)}
-                    ${tile('尚未繳款', `${tClubs - tPaid} 社`, tNotified ? `其中 ${tNotified} 社已回報匯款、待核對` : '皆尚未回報匯款')}
+                    ${tile('尚未繳款', `${tClubs - tPaid} 社`, tClubs - tPaid === 0 ? '全區皆已繳清' : `未繳率 ${pct(1 - overall)}%`)}
                     ${tile('實收金額', `NT$ ${tAmt.toLocaleString()}`, expected ? `應收 NT$ ${expected.toLocaleString()}（每社 ${required.toLocaleString()}）` : '尚未設定每社應繳金額')}
                     ${tile('全數繳清的分區', `${doneDivs} / ${rows.length}`, doneDivs === rows.length ? '所有分區皆已繳清' : `還有 ${rows.length - doneDivs} 個分區未繳清`)}
                 </div>
                 <div class="flex flex-wrap items-center justify-between gap-2 mt-4">
                     <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600">
                         <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm" style="background:#4338CA"></span>已繳款</span>
-                        <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm" style="background:#A5B4FC"></span>執秘已回報匯款，待核對</span>
                         <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm border border-slate-300" style="background:#E2E8F0"></span>尚未繳款</span>
                     </div>
                     <div class="inline-flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5" role="group" aria-label="排序方式">${sortBtn('division', '依分區順序')}${sortBtn('rate', '達成率低的在前')}</div>
@@ -6854,7 +6841,7 @@
 
             ordered.forEach(r => {
                 const paidW = r.rate * 100, notiW = r.notified.length / r.total * 100;
-                const tip = `${r.div.name}：已繳 ${r.paid.length} 社、已回報待核對 ${r.notified.length} 社、未繳 ${r.unpaid.length} 社，分區實收 NT$ ${r.amt.toLocaleString()}`;
+                const tip = `${r.div.name}：已繳 ${r.paid.length} 社、未繳 ${r.unpaid.length} 社，分區實收 NT$ ${r.amt.toLocaleString()}`;
                 const chips = r.notified.map(n => `<span title="${escapeHtmlText(n)}：執秘已回報匯款，等待銀行入帳核對" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-indigo-200 bg-indigo-50 text-slate-800 text-[11px] font-semibold whitespace-nowrap">📨 ${escapeHtmlText(shortName(n))}<span class="text-slate-500 font-normal">已回報</span></span>`)
                     .concat(r.unpaid.map(n => `<span title="${escapeHtmlText(n)}：尚未繳款" class="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-300 bg-white text-slate-800 text-[11px] font-semibold whitespace-nowrap">${escapeHtmlText(shortName(n))}</span>`)).join('');
                 html += `
@@ -8140,8 +8127,9 @@
 
 
         // ================= 匯款帳號 + 上海商銀入帳通知自動對帳 =================
-        // 流程：主委填匯款帳號與通知信箱 → 執秘匯款後填「匯款備註／金額／日期」送出通知（狀態 NOTIFIED）
-        //      → 雲端小程式讀信寫入 bank_transactions → 前端 reconcileBankTransactions() 比對 → 標記 PAID_EMAIL → 執秘看到「已收到您的匯款」
+        // 流程（2026-11-12 起不需執秘回報）：主委填匯款帳號與通知信箱 → 執秘匯款（備註填社名）
+        //      → 雲端小程式讀信寫入 bank_transactions → 前端 reconcileBankTransactions() 依「備註社名＋金額」比對 → 標記 PAID_EMAIL → 執秘看到「已收到您的匯款」
+        //      舊資料若仍有 NOTIFIED（執秘已回報）狀態，一律視為未繳，舊的比對邏輯保留以相容
         const BANK_MAIL_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/fetch-bank-mail`;
         let bankTransactions = [];      // 來自 bank_transactions 資料表
         let bankMailStatus = null;      // 來自 bank_mail_status 資料表
@@ -8226,6 +8214,40 @@
         }
 
         // ---------- 自動比對 ----------
+        // 某社在某活動（key＝大類id::子活動）的應繳金額；回傳 0＝無法確定，不自動核對
+        function requiredAmountForKey(key, clubName) {
+            const idx = key.indexOf('::');
+            if (idx < 0) return 0;
+            const catId = key.slice(0, idx), sub = key.slice(idx + 2);
+            const cat = categoriesData.find(c => c.id === catId);
+            if (!cat || !(cat.subEvents || []).includes(sub)) return 0;
+            const order = ((registrationOrders || {})[sub] || []).find(o => o.clubName === clubName);
+            const cfgFee = Number(((chairConfig.subEventFees || {})[key] || {}).feeApportionment) || 0; // 只認主委明確設定過的金額
+            const isApp = /分攤金|配合款/.test(cat.name || '') || /分攤金|配合款/.test(sub);
+            if (isApp) return (order && Number(order.apportionmentFee) > 0) ? Number(order.apportionmentFee) : cfgFee;
+            if (isPaymentTrackingCategory(catId)) return cfgFee;
+            return (order && Number(order.grandTotal) > 0) ? Number(order.grandTotal) : 0; // 運動賽事、社慶…＝該社報名表總計
+        }
+        // 一筆銀行入帳該歸給哪個社的哪個活動：備註認得出社名，且金額等於該社某個未繳活動的應繳金額才回傳；
+        // 對不上、或對上不同主選單的多個活動就回傳 null，留給主委在「③ 銀行入帳紀錄」手動指定
+        function findAutoMatchTarget(tx) {
+            const club = findClubByNoteKeyword(normalizeRemitNote(tx.note || ''));
+            const amt = Number(tx.amount) || 0;
+            if (!club || !amt) return null;
+            const keys = [];
+            categoriesData.forEach(cat => (cat.subEvents || []).forEach(sub => {
+                const key = `${cat.id}::${sub}`;
+                if (isRecordPaid((chairPaymentRecords[key] || {})[club])) return;
+                const req = requiredAmountForKey(key, club);
+                if (req > 0 && Math.abs(req - amt) < 0.5) keys.push(key);
+            }));
+            if (keys.length === 0) return null;
+            // 同一個主選單裡有多個同金額的未繳項目（例如上半年、下半年分攤金）→ 先沖銷排在前面的那一項；
+            // 若橫跨不同主選單就無法判斷，交給主委手動指定
+            const catOf = k => k.slice(0, k.indexOf('::'));
+            if (keys.some(k => catOf(k) !== catOf(keys[0]))) return null;
+            return { key: keys[0], club };
+        }
         function findTransactionForRecord(txs, clubName, rec) {
             const noteNorm = normalizeRemitNote(rec.remitNote || '');
             const amt = Number(rec.remitAmount) || 0;
@@ -8287,6 +8309,15 @@
                     unmatched.splice(unmatched.indexOf(tx), 1);
                     changed++;
                 }
+            }
+            // 不需執秘回報的自動核對：存摺備註認得出社名，且金額正好等於該社「唯一一個」未繳活動的應繳金額
+            for (const tx of unmatched.slice()) {
+                const target = findAutoMatchTarget(tx);
+                if (!target) continue;
+                applyTransactionToRecord(target.key, target.club, tx, '上海商銀入帳通知自動核對（存摺備註社名與金額相符）');
+                await persistTransactionMatch(tx);
+                unmatched.splice(unmatched.indexOf(tx), 1);
+                changed++;
             }
             if (changed > 0) {
                 await savePaymentRecords();
@@ -8625,14 +8656,9 @@
                     line.className = 'text-[11px] font-bold text-purple-800 bg-purple-50 border border-purple-200 rounded p-2';
                     line.innerText = '🆓 本社為免收／贊助折抵，無需匯款';
                     if (btn) btn.classList.add('hidden');
-                } else if (rec && rec.status === 'NOTIFIED') {
-                    line.className = 'text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded p-2';
-                    line.innerHTML = `⏳ 已於 ${escapeHtmlText(rec.notifiedAt || '')} 送出匯款通知，等待銀行入帳核對（通常 10 分鐘內）。若超過一天仍未更新，請確認匯款備註與金額，或聯絡活動主委。`;
-                    if (btn) { btn.classList.remove('hidden'); btn.innerText = '🔁 更新匯款資料並重新通知'; }
                 } else {
                     line.className = 'text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded p-2';
-                    line.innerText = '尚未回報匯款。匯款完成後，請填寫下方資料並送出通知。';
-                    if (btn) { btn.classList.remove('hidden'); btn.innerText = '✅ 我已匯款，送出通知'; }
+                    line.innerText = '⏳ 尚未收到本社這個活動的入帳。';
                 }
             }
         }
