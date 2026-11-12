@@ -7422,7 +7422,7 @@
                             </div>
                             <h4 class="text-base sm:text-lg font-black text-white truncate group-hover:text-rose-200 transition">${club.name}</h4>
                             <div class="mt-1.5 flex items-center gap-2">
-                                <span class="text-xs font-mono font-bold text-rose-200">待繳費 (應繳 NT$ 10,000)</span>
+                                <span class="text-xs font-mono font-bold text-rose-200">待繳費 (應繳 NT$ ${(getApportionmentFee() || 0).toLocaleString()})</span>
                             </div>
                         </div>
                         <div class="text-right flex-shrink-0">
@@ -7688,7 +7688,7 @@
                 `【尚未繳費扶輪社明細 (依分區排序)】`,
                 unpaidListByDiv.join('\n'),
                 ``,
-                `敬請尚未繳費之扶輪社社長與執秘儘速辦理匯款，並將匯款帳號末五碼或匯款憑證回報活動主委。`,
+                `敬請尚未繳費之扶輪社社長與執秘儘速辦理匯款，匯款備註請填寫貴社社名，系統會自動核對入帳。`,
                 `感謝各位扶輪領導人與執秘對地區活動的全力支持！`
             ].join('\n');
 
@@ -7699,10 +7699,17 @@
             });
         }
 
+        // 目前繳費表對應的活動名稱（子活動名稱，例如「1.上半年地辦分攤金」）；以前寫死成「研討會及講習會／地區年會」
+        function paymentEventTitle() {
+            const key = getActivePaymentKey();
+            const i = key.indexOf('::');
+            return (i >= 0 ? key.slice(i + 2) : '') || ((categoriesData.find(c => c.id === currentCatId) || {}).name) || '活動';
+        }
+
         function copyDivisionUnpaidList(divId) {
             const activeCatKey = getActivePaymentKey();
             const isConf = (activeCatKey.startsWith('conference'));
-            const eventTitle = isConf ? '地區年會' : '研討會及講習會';
+            const eventTitle = paymentEventTitle(); // 催繳訊息與匯出檔都用實際的子活動名稱
             const records = chairPaymentRecords[activeCatKey] || {};
             const div = divisionsData.find(d => d.id === divId);
             if (!div) return;
@@ -7720,7 +7727,7 @@
                 return;
             }
 
-            const text = `【${DISTRICT.code} 地區 ${eventTitle} 催繳通知】\n📍 ${div.name} 尚未繳費之扶輪社 (${missing.length}社)：\n${missing.join('、')}\n敬請儘速辦理匯款並回報對帳信箱。感謝！`;
+            const text = `【${DISTRICT.code} 地區 ${eventTitle} 催繳通知】\n📍 ${div.name} 尚未繳費之扶輪社 (${missing.length}社)：\n${missing.join('、')}\n敬請儘速辦理匯款，匯款備註請填寫貴社社名。感謝！`;
             navigator.clipboard.writeText(text).then(() => {
                 showToast(`📋 已複製【${div.name}】未繳名單至剪貼簿！`);
             });
@@ -7731,7 +7738,7 @@
         function exportDivisionPaymentsExcel() {
             const activeCatKey = getActivePaymentKey();
             const isConf = (activeCatKey.startsWith('conference'));
-            const eventTitle = isConf ? '地區年會' : '研討會及講習會';
+            const eventTitle = paymentEventTitle(); // 催繳訊息與匯出檔都用實際的子活動名稱
             const records = chairPaymentRecords[activeCatKey] || {};
 
             if (typeof XLSX === 'undefined') {
@@ -7790,7 +7797,7 @@
 
             XLSX.utils.book_append_sheet(wb, ws, "各分區各社繳費狀況");
             const dateStr = taiwanTodayStr();
-            XLSX.writeFile(wb, `${DISTRICT.code}地區_${eventTitle}_各社繳費狀況總表_${dateStr}.xlsx`);
+            XLSX.writeFile(wb, `${DISTRICT.code}地區_${String(eventTitle).replace(/[\\/:*?"<>|\s]+/g, '_')}_各社繳費狀況總表_${dateStr}.xlsx`);
             showToast(`📗 開會專用繳費狀況 Excel 檔已成功匯出！`);
         }
 
@@ -7888,7 +7895,7 @@
             if (!chairPaymentRecords[activeCatKey]) chairPaymentRecords[activeCatKey] = {};
             chairPaymentRecords[activeCatKey][clubName] = {
                 status: 'PAID_MANUAL',
-                amount: amount || 10000,
+                amount: amount || getApportionmentFee() || 0,
                 last5: '現場收訖',
                 method: '現場核對',
                 date: taiwanTodayStr(),
