@@ -79,7 +79,7 @@ CREATE POLICY "Allow anon all operations" ON public.app_storage
 建立 SQL 見 README「活動 DM 檔案空間設定」。檔案清單存在 `chairConfig.eventDMs["大類id::子活動名稱"]`
 （`{name, path, url, ext, size, uploadedAt, uploadedBy}`），上傳/刪除走 `handleEventDMUpload` / `removeEventDM`，
 顯示走 `renderEventDMList()`（主委後台清單 `#eventDMList` 與執秘端連結列 `#secretaryDMBox`），在 `updateRolePermissionsUI` 內重繪。
-圖片類 DM（`isEventDMImage`）點開時走站內全螢幕視窗 `#dmViewerOverlay`（`openEventDMViewer(idx)` 回傳 false 攔下連結；寬度滿版可捲動，可切「整頁顯示」），因為 iPad 直接開圖檔網址無法滿版；PDF／PPT 仍開新分頁。
+圖片與 PDF 的 DM（`isEventDMViewable`）點開時走站內全螢幕視窗 `#dmViewerOverlay`（`openEventDMViewer(idx)` 回傳 false 攔下連結），因為 iPad 直接開檔案網址無法滿版：圖片用 `<img>` 寬度滿版（可切「整頁顯示」）；PDF 由 `renderEventDMPdf` 用 pdf.js 3.11.174（第一次開 PDF 才從 cdnjs 載入，cmaps 來自 jsdelivr）逐頁畫成與螢幕同寬的 canvas，以 IntersectionObserver 只畫可視範圍附近的頁面、捲遠即釋放（iPad canvas 記憶體有限；**不要改用 iframe**，iOS 的 iframe 只顯示 PDF 第一頁）；載入失敗會顯示「改用新分頁開啟」。PPT 仍開新分頁。
 bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` 會轉成中文提示。
 
 ### 入帳通知自動對帳（上海商銀）

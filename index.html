@@ -234,7 +234,7 @@
 <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col pb-16 md:pb-0">
 
     <!-- Login Overlay -->
-    <!-- 活動 DM 全螢幕看圖視窗：圖片寬度撐滿螢幕，可上下捲動；手機、iPad 都滿版 -->
+    <!-- 活動 DM 全螢幕檢視視窗：圖片與 PDF 的寬度都撐滿螢幕，可上下捲動；手機、iPad 都滿版 -->
     <div id="dmViewerOverlay" class="hidden fixed inset-0 z-[300] bg-black flex flex-col" style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);">
         <div class="flex items-center gap-2 px-3 py-2 bg-slate-900 text-white shrink-0">
             <div id="dmViewerTitle" class="text-sm font-bold truncate flex-1 min-w-0"></div>
@@ -244,6 +244,7 @@
         </div>
         <div id="dmViewerBody" class="flex-1 min-h-0 overflow-auto" style="-webkit-overflow-scrolling: touch;">
             <img id="dmViewerImg" alt="" src="" style="display:block; width:100%; height:auto;">
+            <div id="dmViewerPdf" class="hidden bg-slate-700"></div>
         </div>
     </div>
 
@@ -7524,13 +7525,42 @@
         function escapeHtmlText(str) {
             return String(str || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
         }
-        // 圖片類 DM（JPG）用站內全螢幕視窗開啟：直接開圖檔網址時，iPad 的瀏覽器只會把圖縮在中間、兩側留白，無法滿版。
-        // PDF／PPT 仍開新分頁，交給裝置內建的檢視器（本身就是滿版寬度）。
+        // 圖片與 PDF 的 DM 用站內全螢幕視窗開啟：直接開檔案網址時，iPad 的瀏覽器只會把內容縮在中間、兩側留白，無法滿版。
+        // 圖片直接用 <img>；PDF 用 pdf.js 把每一頁畫成與螢幕同寬的畫面（iPad 的 iframe 只會顯示 PDF 第一頁，所以不能用 iframe）。
+        // PPT／PPTX 瀏覽器無法直接顯示，仍開新分頁交給裝置處理。
         function isEventDMImage(f) {
             const ext = String((f && f.ext) || '').toLowerCase();
             return ext === 'jpg' || ext === 'jpeg' || ext === 'png';
         }
-        let eventDMViewerFitWidth = true; // true＝寬度滿版（可上下捲動）；false＝整張縮到一個畫面內
+        function isEventDMPdf(f) {
+            return String((f && f.ext) || '').toLowerCase() === 'pdf';
+        }
+        function isEventDMViewable(f) {
+            return isEventDMImage(f) || isEventDMPdf(f);
+        }
+        let eventDMViewerFitWidth = true; // 圖片專用：true＝寬度滿版（可上下捲動）；false＝整張縮到一個畫面內
+        let eventDMViewerToken = 0;       // 每次開啟／關閉就 +1，讓還在背景載入的舊 PDF 自動停止
+        let eventDMViewerCleanup = null;  // 關閉時要執行的收尾（釋放 PDF 佔用的記憶體）
+        const PDFJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+        const PDFJS_ASSET_BASE = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/';
+        let pdfJsLoadingPromise = null;
+        // 第一次有人開 PDF 時才下載 pdf.js，平常不增加網頁載入時間
+        function loadPdfJs() {
+            if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+            if (pdfJsLoadingPromise) return pdfJsLoadingPromise;
+            pdfJsLoadingPromise = new Promise((resolve, reject) => {
+                const sc = document.createElement('script');
+                sc.src = PDFJS_BASE + 'pdf.min.js';
+                sc.onload = () => {
+                    if (!window.pdfjsLib) { pdfJsLoadingPromise = null; reject(new Error('pdf.js 載入後找不到 pdfjsLib')); return; }
+                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'pdf.worker.min.js';
+                    resolve(window.pdfjsLib);
+                };
+                sc.onerror = () => { pdfJsLoadingPromise = null; reject(new Error('無法下載 PDF 顯示元件')); };
+                document.head.appendChild(sc);
+            });
+            return pdfJsLoadingPromise;
+        }
         function applyEventDMViewerFit() {
             const img = document.getElementById('dmViewerImg');
             const body = document.getElementById('dmViewerBody');
@@ -7550,26 +7580,113 @@
             eventDMViewerFitWidth = !eventDMViewerFitWidth;
             applyEventDMViewerFit();
         }
+        function showEventDMViewerMessage(html) {
+            const box = document.getElementById('dmViewerPdf');
+            if (box) box.innerHTML = `<div class="text-center text-white text-sm font-bold px-6 py-16 leading-relaxed">${html}</div>`;
+        }
+        // 把 PDF 每一頁畫成與螢幕同寬。只畫「目前看得到附近」的頁面，捲遠了就釋放，避免頁數多時 iPad 記憶體不足。
+        async function renderEventDMPdf(f, token) {
+            const box = document.getElementById('dmViewerPdf');
+            const body = document.getElementById('dmViewerBody');
+            showEventDMViewerMessage('⏳ PDF 載入中，請稍候…');
+            try {
+                const pdfjs = await loadPdfJs();
+                if (token !== eventDMViewerToken) return;
+                const task = pdfjs.getDocument({ url: f.url, cMapUrl: PDFJS_ASSET_BASE + 'cmaps/', cMapPacked: true, standardFontDataUrl: PDFJS_ASSET_BASE + 'standard_fonts/' });
+                const pdf = await task.promise;
+                if (token !== eventDMViewerToken) { task.destroy(); return; }
+                box.innerHTML = '';
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+                const slots = [];
+                for (let n = 1; n <= pdf.numPages; n++) {
+                    const page = await pdf.getPage(n);
+                    if (token !== eventDMViewerToken) { task.destroy(); return; }
+                    const base = page.getViewport({ scale: 1 });
+                    const wrap = document.createElement('div');
+                    wrap.dataset.page = String(n);
+                    // 先用正確的長寬比佔位，捲動時畫面不會跳動
+                    wrap.style.cssText = `position:relative; width:100%; aspect-ratio:${base.width} / ${base.height}; background:#fff; margin:0 0 6px 0;`;
+                    box.appendChild(wrap);
+                    slots.push({ wrap, page, base, canvas: null, rendering: false });
+                }
+                const drawSlot = async (slot) => {
+                    if (slot.canvas || slot.rendering) return;
+                    slot.rendering = true;
+                    try {
+                        const cssWidth = slot.wrap.clientWidth || body.clientWidth || window.innerWidth;
+                        const viewport = slot.page.getViewport({ scale: (cssWidth * dpr) / slot.base.width });
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.floor(viewport.width);
+                        canvas.height = Math.floor(viewport.height);
+                        canvas.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; display:block;';
+                        await slot.page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                        if (token !== eventDMViewerToken) return;
+                        slot.wrap.appendChild(canvas);
+                        slot.canvas = canvas;
+                    } finally { slot.rendering = false; }
+                };
+                const freeSlot = (slot) => {
+                    if (!slot.canvas) return;
+                    slot.canvas.width = 0; slot.canvas.height = 0; // iPad 要把畫布縮成 0 才會真的釋放記憶體
+                    slot.canvas.remove();
+                    slot.canvas = null;
+                };
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(en => {
+                        const slot = slots[parseInt(en.target.dataset.page, 10) - 1];
+                        if (!slot) return;
+                        if (en.isIntersecting) drawSlot(slot).catch(err => console.warn('PDF 頁面繪製失敗', err));
+                        else freeSlot(slot);
+                    });
+                }, { root: body, rootMargin: '150% 0px' }); // 提前畫好上下各一個半畫面的頁面
+                slots.forEach(sl => observer.observe(sl.wrap));
+                eventDMViewerCleanup = () => { observer.disconnect(); slots.forEach(freeSlot); task.destroy(); };
+            } catch (err) {
+                console.warn('PDF 顯示失敗', err);
+                if (token !== eventDMViewerToken) return;
+                showEventDMViewerMessage(`⚠️ 這份 PDF 無法在這裡顯示（可能是網路不穩或檔案有加密）。<br><a href="${escapeHtmlText(f.url)}" target="_blank" rel="noopener" class="underline text-sky-300">👉 改用新分頁開啟</a>`);
+            }
+        }
         function openEventDMViewer(idx) {
             const f = getEventDMs()[idx];
             const overlay = document.getElementById('dmViewerOverlay');
-            if (!f || !overlay || !isEventDMImage(f)) return true; // 回傳 true＝照原本的連結開新分頁
+            if (!f || !overlay || !isEventDMViewable(f)) return true; // 回傳 true＝照原本的連結開新分頁
+            if (eventDMViewerCleanup) { eventDMViewerCleanup(); eventDMViewerCleanup = null; }
+            const token = ++eventDMViewerToken;
+            const isPdf = isEventDMPdf(f);
             document.getElementById('dmViewerTitle').textContent = f.name || '活動 DM';
             const dl = document.getElementById('dmViewerDownload');
             dl.href = f.url; dl.setAttribute('download', f.name || 'DM');
-            document.getElementById('dmViewerImg').src = f.url;
-            eventDMViewerFitWidth = true;
-            applyEventDMViewerFit();
-            document.getElementById('dmViewerBody').scrollTop = 0;
+            const img = document.getElementById('dmViewerImg');
+            const pdfBox = document.getElementById('dmViewerPdf');
+            const body = document.getElementById('dmViewerBody');
+            document.getElementById('dmViewerFitBtn').classList.toggle('hidden', isPdf); // 「整頁顯示」只適用單張圖片
+            img.classList.toggle('hidden', isPdf);
+            pdfBox.classList.toggle('hidden', !isPdf);
+            pdfBox.innerHTML = '';
             overlay.classList.remove('hidden');
-            document.body.style.overflow = 'hidden'; // 看圖時底下的頁面不要跟著捲
+            document.body.style.overflow = 'hidden'; // 檢視時底下的頁面不要跟著捲
+            if (isPdf) {
+                img.src = '';
+                body.style.overflow = 'auto';
+                renderEventDMPdf(f, token);
+            } else {
+                img.src = f.url;
+                eventDMViewerFitWidth = true;
+                applyEventDMViewerFit();
+            }
+            body.scrollTop = 0;
             return false; // 攔下連結，不另開分頁
         }
         function closeEventDMViewer() {
+            eventDMViewerToken++;
+            if (eventDMViewerCleanup) { eventDMViewerCleanup(); eventDMViewerCleanup = null; }
             const overlay = document.getElementById('dmViewerOverlay');
             if (overlay) overlay.classList.add('hidden');
             const img = document.getElementById('dmViewerImg');
             if (img) img.src = '';
+            const pdfBox = document.getElementById('dmViewerPdf');
+            if (pdfBox) pdfBox.innerHTML = '';
             document.body.style.overflow = '';
         }
 
@@ -7597,7 +7714,7 @@
                                 <div class="text-xs font-bold text-slate-800 truncate" title="${escapeHtmlText(f.name)}">${escapeHtmlText(f.name)}</div>
                                 <div class="text-[10px] text-slate-500 mt-0.5">${String(f.ext || '').toUpperCase()} · ${formatFileSize(f.size)} · ${escapeHtmlText(f.uploadedAt || '')}${f.uploadedBy ? ' · ' + escapeHtmlText(f.uploadedBy) : ''}</div>
                                 <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
-                                    <a href="${escapeHtmlText(f.url)}" target="_blank" rel="noopener" ${isImg ? `onclick="return openEventDMViewer(${idx})"` : ''} class="px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded text-[11px] font-bold">🔗 開啟</a>
+                                    <a href="${escapeHtmlText(f.url)}" target="_blank" rel="noopener" ${isEventDMViewable(f) ? `onclick="return openEventDMViewer(${idx})"` : ''} class="px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded text-[11px] font-bold">🔗 開啟</a>
                                     <a href="${escapeHtmlText(f.url)}" download="${escapeHtmlText(f.name)}" class="px-2 py-0.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded text-[11px] font-bold">⬇️ 下載</a>
                                     ${manage ? `<button type="button" onclick="removeEventDM(${idx})" class="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[11px] font-bold">🗑️ 刪除</button>` : ''}
                                 </div>
@@ -7613,7 +7730,7 @@
             if (secBox && secLinks) {
                 secBox.classList.toggle('hidden', list.length === 0);
                 secLinks.innerHTML = list.map((f, idx) =>
-                    `<a href="${escapeHtmlText(f.url)}" target="_blank" rel="noopener" ${isEventDMImage(f) ? `onclick="return openEventDMViewer(${idx})"` : ''} class="px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded font-bold whitespace-nowrap" title="${escapeHtmlText(f.name)}">${eventDMIcon(f.ext)} ${escapeHtmlText(f.name.length > 28 ? f.name.slice(0, 26) + '…' : f.name)}</a>`
+                    `<a href="${escapeHtmlText(f.url)}" target="_blank" rel="noopener" ${isEventDMViewable(f) ? `onclick="return openEventDMViewer(${idx})"` : ''} class="px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded font-bold whitespace-nowrap" title="${escapeHtmlText(f.name)}">${eventDMIcon(f.ext)} ${escapeHtmlText(f.name.length > 28 ? f.name.slice(0, 26) + '…' : f.name)}</a>`
                 ).join('');
             }
         }
