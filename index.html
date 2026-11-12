@@ -234,6 +234,19 @@
 <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col pb-16 md:pb-0">
 
     <!-- Login Overlay -->
+    <!-- 活動 DM 全螢幕看圖視窗：圖片寬度撐滿螢幕，可上下捲動；手機、iPad 都滿版 -->
+    <div id="dmViewerOverlay" class="hidden fixed inset-0 z-[300] bg-black flex flex-col" style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);">
+        <div class="flex items-center gap-2 px-3 py-2 bg-slate-900 text-white shrink-0">
+            <div id="dmViewerTitle" class="text-sm font-bold truncate flex-1 min-w-0"></div>
+            <button type="button" id="dmViewerFitBtn" onclick="toggleEventDMViewerFit()" class="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-md text-xs font-bold whitespace-nowrap">🔍 整頁顯示</button>
+            <a id="dmViewerDownload" href="#" class="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-md text-xs font-bold whitespace-nowrap">⬇️ 下載</a>
+            <button type="button" onclick="closeEventDMViewer()" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 rounded-md text-xs font-bold whitespace-nowrap">✕ 關閉</button>
+        </div>
+        <div id="dmViewerBody" class="flex-1 min-h-0 overflow-auto" style="-webkit-overflow-scrolling: touch;">
+            <img id="dmViewerImg" alt="" src="" style="display:block; width:100%; height:auto;">
+        </div>
+    </div>
+
     <div id="loginOverlay" class="fixed inset-0 z-[100] bg-slate-100 overflow-y-auto flex flex-col">
         <div class="flex-grow flex items-center justify-center p-4 py-8">
             <div class="bg-white rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden max-w-4xl w-full">
@@ -7511,6 +7524,55 @@
         function escapeHtmlText(str) {
             return String(str || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
         }
+        // 圖片類 DM（JPG）用站內全螢幕視窗開啟：直接開圖檔網址時，iPad 的瀏覽器只會把圖縮在中間、兩側留白，無法滿版。
+        // PDF／PPT 仍開新分頁，交給裝置內建的檢視器（本身就是滿版寬度）。
+        function isEventDMImage(f) {
+            const ext = String((f && f.ext) || '').toLowerCase();
+            return ext === 'jpg' || ext === 'jpeg' || ext === 'png';
+        }
+        let eventDMViewerFitWidth = true; // true＝寬度滿版（可上下捲動）；false＝整張縮到一個畫面內
+        function applyEventDMViewerFit() {
+            const img = document.getElementById('dmViewerImg');
+            const body = document.getElementById('dmViewerBody');
+            const btn = document.getElementById('dmViewerFitBtn');
+            if (!img || !body) return;
+            if (eventDMViewerFitWidth) {
+                img.style.cssText = 'display:block; width:100%; height:auto;';
+                body.style.overflow = 'auto';
+                if (btn) btn.textContent = '🔍 整頁顯示';
+            } else {
+                img.style.cssText = 'display:block; width:100%; height:100%; object-fit:contain;';
+                body.style.overflow = 'hidden';
+                if (btn) btn.textContent = '↔️ 滿版寬度';
+            }
+        }
+        function toggleEventDMViewerFit() {
+            eventDMViewerFitWidth = !eventDMViewerFitWidth;
+            applyEventDMViewerFit();
+        }
+        function openEventDMViewer(idx) {
+            const f = getEventDMs()[idx];
+            const overlay = document.getElementById('dmViewerOverlay');
+            if (!f || !overlay || !isEventDMImage(f)) return true; // 回傳 true＝照原本的連結開新分頁
+            document.getElementById('dmViewerTitle').textContent = f.name || '活動 DM';
+            const dl = document.getElementById('dmViewerDownload');
+            dl.href = f.url; dl.setAttribute('download', f.name || 'DM');
+            document.getElementById('dmViewerImg').src = f.url;
+            eventDMViewerFitWidth = true;
+            applyEventDMViewerFit();
+            document.getElementById('dmViewerBody').scrollTop = 0;
+            overlay.classList.remove('hidden');
+            document.body.style.overflow = 'hidden'; // 看圖時底下的頁面不要跟著捲
+            return false; // 攔下連結，不另開分頁
+        }
+        function closeEventDMViewer() {
+            const overlay = document.getElementById('dmViewerOverlay');
+            if (overlay) overlay.classList.add('hidden');
+            const img = document.getElementById('dmViewerImg');
+            if (img) img.src = '';
+            document.body.style.overflow = '';
+        }
+
         function renderEventDMList() {
             const list = getEventDMs();
             const badge = document.getElementById('eventDMCountBadge');
@@ -7535,7 +7597,7 @@
                                 <div class="text-xs font-bold text-slate-800 truncate" title="${escapeHtmlText(f.name)}">${escapeHtmlText(f.name)}</div>
                                 <div class="text-[10px] text-slate-500 mt-0.5">${String(f.ext || '').toUpperCase()} · ${formatFileSize(f.size)} · ${escapeHtmlText(f.uploadedAt || '')}${f.uploadedBy ? ' · ' + escapeHtmlText(f.uploadedBy) : ''}</div>
                                 <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
-                                    <a href="${escapeHtmlText(f.url)}" target="_blank" rel="noopener" class="px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded text-[11px] font-bold">🔗 開啟</a>
+                                    <a href="${escapeHtmlText(f.url)}" target="_blank" rel="noopener" ${isImg ? `onclick="return openEventDMViewer(${idx})"` : ''} class="px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded text-[11px] font-bold">🔗 開啟</a>
                                     <a href="${escapeHtmlText(f.url)}" download="${escapeHtmlText(f.name)}" class="px-2 py-0.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded text-[11px] font-bold">⬇️ 下載</a>
                                     ${manage ? `<button type="button" onclick="removeEventDM(${idx})" class="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[11px] font-bold">🗑️ 刪除</button>` : ''}
                                 </div>
@@ -7550,8 +7612,8 @@
             const secLinks = document.getElementById('secretaryDMLinks');
             if (secBox && secLinks) {
                 secBox.classList.toggle('hidden', list.length === 0);
-                secLinks.innerHTML = list.map(f =>
-                    `<a href="${escapeHtmlText(f.url)}" target="_blank" rel="noopener" class="px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded font-bold whitespace-nowrap" title="${escapeHtmlText(f.name)}">${eventDMIcon(f.ext)} ${escapeHtmlText(f.name.length > 28 ? f.name.slice(0, 26) + '…' : f.name)}</a>`
+                secLinks.innerHTML = list.map((f, idx) =>
+                    `<a href="${escapeHtmlText(f.url)}" target="_blank" rel="noopener" ${isEventDMImage(f) ? `onclick="return openEventDMViewer(${idx})"` : ''} class="px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded font-bold whitespace-nowrap" title="${escapeHtmlText(f.name)}">${eventDMIcon(f.ext)} ${escapeHtmlText(f.name.length > 28 ? f.name.slice(0, 26) + '…' : f.name)}</a>`
                 ).join('');
             }
         }
