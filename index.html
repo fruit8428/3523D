@@ -6175,9 +6175,15 @@
                 let baseLast5 = 88200;
                 let dayCounter = 2;
 
+                // 其他地區的名冊裡沒有上面這些 3523 社名：改成每 4 社挑 1 社當「未繳」，維持約 75% 已繳的示範比例
+                const demoAllClubNames = getPaymentDivisions().flatMap(d => d.clubs.map(c => c.name));
+                const useIndexUnpaid = !demoAllClubNames.some(n => unpaidClubNames.has(n));
+                let demoClubSeq = 0;
+
                 getPaymentDivisions().forEach(div => {
                     div.clubs.forEach((club, cIdx) => {
-                        const isUnpaid = unpaidClubNames.has(club.name);
+                        const isUnpaid = useIndexUnpaid ? (demoClubSeq % 4 === 1) : unpaidClubNames.has(club.name);
+                        demoClubSeq++;
                         baseLast5 += (cIdx * 7 + 13);
                         const last5Str = (baseLast5 % 100000).toString().padStart(5, '0');
                         const dayStr = (dayCounter < 10 ? '0' : '') + dayCounter;
@@ -6324,12 +6330,22 @@
         // 載入示範資料（展示用）：只補空缺，不覆蓋已存在的真實資料
         async function adminLoadDemoData() {
             if (!adminResetGuard()) return;
-            if (!confirm('🧪 載入示範資料？\n\n會補上示範社友（臺北市南區、台北逸仙、台北市西南區）、示範報名單（GMS 等），並為所有研討會/年會子活動生成示範繳費狀況。\n已有資料的社或子活動不會被覆蓋。')) return;
-            Object.entries(DEFAULT_MEMBERS_DB).forEach(([club, members]) => {
+            // 示範資料原本寫的是 3523 的社名；其他地區的名冊沒有這些社時，依序套用到該地區名冊的前幾個社
+            const demoRosterNames = getPaymentDivisions().flatMap(d => d.clubs.map(c => c.name));
+            const demoSourceNames = Object.keys(DEFAULT_MEMBERS_DB);
+            const demoNamesExist = demoSourceNames.every(n => demoRosterNames.includes(n));
+            const demoNameMap = {};
+            demoSourceNames.forEach((n, i) => { demoNameMap[n] = demoNamesExist ? n : (demoRosterNames[i] || n); });
+            const demoShownNames = demoSourceNames.map(n => demoNameMap[n].replace(/扶輪社$/, '')).join('、');
+            if (!confirm(`🧪 載入示範資料？\n\n會補上示範社友（${demoShownNames}）、示範報名單（GMS 等），並為所有研討會/年會子活動生成示範繳費狀況。\n已有資料的社或子活動不會被覆蓋。`)) return;
+            Object.entries(DEFAULT_MEMBERS_DB).forEach(([srcClub, members]) => {
+                const club = demoNameMap[srcClub];
                 if (!clubMemberDatabase[club] || clubMemberDatabase[club].length === 0) clubMemberDatabase[club] = JSON.parse(JSON.stringify(members));
             });
             Object.entries(DEFAULT_ORDERS).forEach(([se, orders]) => {
-                if (!registrationOrders[se] || registrationOrders[se].length === 0) registrationOrders[se] = JSON.parse(JSON.stringify(orders));
+                if (!registrationOrders[se] || registrationOrders[se].length === 0) {
+                    registrationOrders[se] = JSON.parse(JSON.stringify(orders)).map(o => ({ ...o, clubName: demoNameMap[o.clubName] || o.clubName }));
+                }
             });
             loadDemoPaymentRecords();
             await saveToStorage();
