@@ -3572,7 +3572,7 @@
                 participantFee: participantFee,
                 apportionmentFee: apportionmentFee,
                 grandTotal: grandTotal,
-                submittedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                submittedAt: taiwanNowStr(),
                 prizeSponsors: JSON.parse(JSON.stringify(currentFormPrizeSponsors)),
                 items: currentFormSelectedMembers.map(m => ({
                     ...JSON.parse(JSON.stringify(m)),
@@ -4643,7 +4643,7 @@
                     wsPrize['!cols'] = [{ wch: 6 }, { wch: 20 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 24 }, { wch: 14 }, { wch: 10 }, { wch: 18 }];
                     XLSX.utils.book_append_sheet(wb, wsPrize, "贊助獎彙整");
                 }
-                const dateStr = new Date().toISOString().slice(0, 10);
+                const dateStr = taiwanTodayStr();
                 XLSX.writeFile(wb, `${DISTRICT.code}地區報名名冊_合併全覽_${subEventName.replace(/[/\\s:]/g, '_')}_${dateStr}.xlsx`);
                 showToast("📗 合併 Excel 檔 (.xlsx) 已成功匯出！");
             } else {
@@ -5023,7 +5023,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            const dateStr = new Date().toISOString().slice(0, 10);
+            const dateStr = taiwanTodayStr();
             a.download = `${DISTRICT.code}地區報名名冊_${subEventName.replace(/[/\\s:]/g, '_')}_${dateStr}.csv`;
             document.body.appendChild(a);
             a.click();
@@ -5312,7 +5312,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `rotary_${DISTRICT.code}_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `rotary_${DISTRICT.code}_backup_${taiwanTodayStr()}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -7248,7 +7248,7 @@
                 }
             });
 
-            const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+            const nowStr = taiwanNowStr();
 
             const lineMessage = [
                 `【${DISTRICT.name}】`,
@@ -7360,7 +7360,7 @@
             ];
 
             XLSX.utils.book_append_sheet(wb, ws, "各分區各社繳費狀況");
-            const dateStr = new Date().toISOString().slice(0, 10);
+            const dateStr = taiwanTodayStr();
             XLSX.writeFile(wb, `${DISTRICT.code}地區_${eventTitle}_各社繳費狀況總表_${dateStr}.xlsx`);
             showToast(`📗 開會專用繳費狀況 Excel 檔已成功匯出！`);
         }
@@ -7381,7 +7381,7 @@
             const activeCatKey = getActivePaymentKey();
             const isConf = (activeCatKey.startsWith('conference'));
             const records = chairPaymentRecords[activeCatKey] || {};
-            const rec = records[clubName] || { status: 'UNPAID', amount: getApportionmentFee(), method: '銀行匯款', last5: '', date: new Date().toISOString().slice(0, 10), note: '' };
+            const rec = records[clubName] || { status: 'UNPAID', amount: getApportionmentFee(), method: '銀行匯款', last5: '', date: taiwanTodayStr(), note: '' };
 
             const div = divisionsData.find(d => d.id === divId);
 
@@ -7394,7 +7394,7 @@
             document.getElementById('editPayAmountInput').value = rec.amount !== undefined ? rec.amount : (getApportionmentFee());
             document.getElementById('editPayLast5Input').value = rec.last5 || '';
             document.getElementById('editPayMethodSelect').value = rec.method || '銀行匯款';
-            document.getElementById('editPayDateInput').value = rec.date || new Date().toISOString().slice(0, 10);
+            document.getElementById('editPayDateInput').value = rec.date || taiwanTodayStr();
             document.getElementById('editPayNoteInput').value = rec.note || '';
 
             document.getElementById('editClubPaymentModal').classList.remove('hidden');
@@ -7462,7 +7462,7 @@
                 amount: amount || 10000,
                 last5: '現場收訖',
                 method: '現場核對',
-                date: new Date().toISOString().slice(0, 10),
+                date: taiwanTodayStr(),
                 note: '主委開會現場標記已繳費'
             };
             savePaymentRecords();
@@ -7791,7 +7791,7 @@
                         url: (pub && pub.publicUrl) || '',
                         ext,
                         size: file.size,
-                        uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                        uploadedAt: taiwanNowStr(),
                         uploadedBy: (loggedInUser && loggedInUser.club) || ''
                     });
                     await saveToStorage();
@@ -7942,11 +7942,11 @@
                 ...prev,
                 status: 'PAID_EMAIL',
                 amount: Number(tx.amount) || prev.remitAmount || 0,
-                date: tx.tx_date || new Date().toISOString().slice(0, 10),
+                date: tx.tx_date || taiwanTodayStr(),
                 last5: tx.note || '',
                 method: '銀行匯款',
                 note: how || '上海商銀入帳通知自動核對相符',
-                verifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                verifiedAt: taiwanNowStr(),
                 txId: tx.id,
                 bankNote: tx.note || ''
             };
@@ -8300,7 +8300,7 @@
             const idle = el => el && document.activeElement !== el;
             if (idle(noteInput)) noteInput.value = (rec && rec.remitNote) || suggestRemitNote(selectedClubName);
             if (idle(amtInput)) amtInput.value = (rec && rec.remitAmount) || required || '';
-            if (idle(dateInput)) dateInput.value = (rec && rec.remitDate) || new Date().toISOString().slice(0, 10);
+            if (idle(dateInput)) dateInput.value = (rec && rec.remitDate) || taiwanTodayStr();
 
             const line = document.getElementById('remitStatusLine');
             const btn = document.getElementById('btnSubmitRemit');
@@ -8333,7 +8333,7 @@
             if (!selectedClubName) { alert('請先選擇本社。'); return; }
             const note = (document.getElementById('remitNoteInput')?.value || '').trim();
             const amount = parseFloat(document.getElementById('remitAmountInput')?.value) || 0;
-            const date = document.getElementById('remitDateInput')?.value || new Date().toISOString().slice(0, 10);
+            const date = document.getElementById('remitDateInput')?.value || taiwanTodayStr();
             if (!note) { alert('請填寫您在匯款備註寫的內容（例如：南區扶輪社），系統才能比對入帳。'); return; }
             if (!amount) { alert('請填寫匯款金額。'); return; }
             const key = getActivePaymentKey();
@@ -8350,7 +8350,7 @@
                 remitNote: note,
                 remitAmount: amount,
                 remitDate: date,
-                notifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                notifiedAt: taiwanNowStr(),
                 notifiedBy: (loggedInUser && loggedInUser.club) || selectedClubName,
                 note: `執秘回報已匯款（備註：${note}，NT$ ${amount.toLocaleString()}，${date}），等待銀行入帳核對`
             };
@@ -8402,6 +8402,15 @@
         // ================= TOAST NOTIFICATION HELPER =================
 
         let toastTimer = null;
+        // 畫面上顯示／存檔用的時間一律用台灣時間（UTC+8，台灣沒有日光節約時間），不受使用者裝置時區影響。
+        // 以前直接用 toISOString() 會得到世界標準時間，比台灣慢 8 小時，凌晨 0–8 點連日期都會少一天。
+        function taiwanNowStr() {   // 例：2026-11-12 10:12
+            return new Date(Date.now() + 8 * 3600 * 1000).toISOString().replace('T', ' ').substring(0, 16);
+        }
+        function taiwanTodayStr() { // 例：2026-11-12
+            return taiwanNowStr().substring(0, 10);
+        }
+
         function showToast(message, icon = "✅") {
             const toast = document.getElementById('toastNotification');
             const toastMsg = document.getElementById('toastMessage');
