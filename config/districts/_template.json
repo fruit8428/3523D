@@ -10,6 +10,7 @@
   "supabaseUrl": "https://xxxxxxxxxxxx.supabase.co",
   "supabaseAnonKey": "sb_publishable_xxxxxxxxxxxxxxxxxxxx",
   "ragAssistantUrl": "https://rotary-3481-ai.vercel.app",
+  "defaultClubPassword": "",
   "emailDomain": "rotary3481.org",
   "divisions": [
     {

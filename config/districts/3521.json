@@ -10,6 +10,7 @@
   "supabaseUrl": "https://dkzpznvhqzvpeiajyyab.supabase.co",
   "supabaseAnonKey": "sb_publishable_VwMeFn1S_uFTgyce5m3eFA_YVtUl7QD",
   "ragAssistantUrl": "",
+  "defaultClubPassword": "111111",
   "emailDomain": "rotary3521.org",
   "divisions": [
     {

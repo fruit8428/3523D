@@ -35,6 +35,9 @@
         // ================= AI 小幫手（Agentic RAG）=================
         // 執秘報名頁「🤖 AI 小幫手」按鈕要開啟的網址（來自地區設定檔 ragAssistantUrl）；留空則不顯示按鈕。
         const RAG_ASSISTANT_URL = DISTRICT.ragAssistantUrl || '';
+        // 各社的「內定（預設）密碼」（來自地區設定檔 defaultClubPassword）：還沒自行設定密碼的社用它登入，登入後可按「🔑 修改密碼」更改。
+        // 留空＝沿用舊流程（各社到「首次進入 (註冊)」自行設定密碼）。
+        const DEFAULT_CLUB_PASSWORD = DISTRICT.defaultClubPassword || '';
     </script>
 <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -272,6 +275,7 @@
                             <input type="password" id="loginPassword" required class="w-full border border-slate-300 rounded-lg p-3 pl-10 text-slate-700 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#0b2463] focus:outline-none font-medium" placeholder="請輸入您設定的密碼 (管理員請輸入管理員密碼)">
                             <button type="button" onclick="const p=document.getElementById('loginPassword'); p.type=p.type==='password'?'text':'password';" class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600">👁️</button>
                         </div>
+                        <p id="defaultPasswordHint" class="text-xs text-blue-600 mt-2 hidden font-bold">💡 第一次登入請輸入地區提供的預設密碼；登入後可按「🔑 修改密碼」改成自己的密碼。</p>
                         <p id="registerHint" class="text-xs text-amber-600 mt-2 hidden font-bold">💡 這是您第一次登入，請自行設定一組密碼。未來皆須使用此密碼登入。</p>
                         <p id="loginError" class="text-xs text-red-600 mt-2 hidden font-bold">❌ 密碼錯誤或尚未註冊，請重試或點擊「首次進入 (註冊)」設定密碼。</p>
                     </div>
@@ -440,6 +444,9 @@
                     </button>
                     <button id="ragAssistantBtn" onclick="openRagAssistant()" class="hidden px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white border border-violet-700 font-bold rounded-md transition flex items-center gap-1 shadow-sm" title="開啟 AI 小幫手，可詢問本社報名與繳費狀態、扶輪知識">
                         🤖 AI 小幫手
+                    </button>
+                    <button id="changePasswordBtn" onclick="changeMyClubPassword()" class="hidden px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold rounded-md transition flex items-center gap-1" title="修改本社的登入密碼">
+                        🔑 修改密碼
                     </button>
                     <button onclick="downloadICS()" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 font-bold rounded-md transition flex items-center gap-1">
                         📅 加入手機/電腦行事曆 (.ics)
@@ -2516,6 +2523,7 @@
             loadCategoryView();
             initCharts();
             initCollapsiblePanels();
+            applyDefaultPasswordUI();
             initQRCode();
             updateRolePermissionsUI();
             renderDivisionPaymentSection();
@@ -8317,13 +8325,14 @@
                 loggedInUser = { club: club, isSuperAdmin: false };
                 completeLogin();
             } else {
-                // Login
-                if (!appAuthData.clubPasswords[club]) {
+                // Login：該社還沒自行設定密碼時，用地區設定的預設密碼登入
+                const expectedPwd = appAuthData.clubPasswords[club] || DEFAULT_CLUB_PASSWORD;
+                if (!expectedPwd) {
                     errorEl.textContent = '❌ 此社尚未設定密碼，請點擊上方「首次進入 (註冊)」。';
                     errorEl.classList.remove('hidden');
                     return;
                 }
-                if (appAuthData.clubPasswords[club] !== pwd) {
+                if (expectedPwd !== pwd) {
                     errorEl.textContent = '❌ 密碼錯誤，請重試。';
                     errorEl.classList.remove('hidden');
                     return;
@@ -8359,6 +8368,45 @@
                 populateAdminPasswordClubs();
                 renderDivisionDirectory();
             }
+            // 「🔑 修改密碼」只給以社名登入的執秘；仍在用預設密碼的社，登入後提醒一次
+            const changePwdBtn = document.getElementById('changePasswordBtn');
+            if (changePwdBtn) changePwdBtn.classList.toggle('hidden', !!loggedInUser.isSuperAdmin);
+            if (!loggedInUser.isSuperAdmin && DEFAULT_CLUB_PASSWORD && !(appAuthData.clubPasswords || {})[loggedInUser.club]) {
+                showToast('您目前使用的是預設密碼，建議按「🔑 修改密碼」改成自己的密碼', '🔑');
+            }
+        }
+
+        // 有設定預設密碼的地區：登入畫面不需要「首次進入 (註冊)」分頁，改顯示預設密碼的說明
+        function applyDefaultPasswordUI() {
+            if (!DEFAULT_CLUB_PASSWORD) return;
+            const tReg = document.getElementById('tabRegister');
+            if (tReg) tReg.classList.add('hidden');
+            const hint = document.getElementById('defaultPasswordHint');
+            if (hint) hint.classList.remove('hidden');
+        }
+
+        // 執秘自行修改本社密碼：先驗證目前密碼，再輸入兩次新密碼；存檔完成才回報成功
+        async function changeMyClubPassword() {
+            if (!loggedInUser || loggedInUser.isSuperAdmin) {
+                alert('請以社名登入後再修改密碼。（最高管理員請到「最高權限管理」查詢或重置各社密碼）');
+                return;
+            }
+            const club = loggedInUser.club;
+            if (!appAuthData.clubPasswords) appAuthData.clubPasswords = {};
+            const currentPwd = appAuthData.clubPasswords[club] || DEFAULT_CLUB_PASSWORD;
+            const oldInput = prompt(`🔑 修改【${club}】的登入密碼\n\n請先輸入「目前的密碼」：`);
+            if (oldInput === null) return;
+            if (oldInput !== currentPwd) { alert('❌ 目前的密碼輸入錯誤，密碼沒有變更。'); return; }
+            const newPwd = (prompt('請輸入「新密碼」（至少 4 個字，不可含空白）：') || '').trim();
+            if (!newPwd) return;
+            if (newPwd.length < 4 || /\s/.test(newPwd)) { alert('❌ 新密碼至少要 4 個字，而且不可以有空白。密碼沒有變更。'); return; }
+            if (DEFAULT_CLUB_PASSWORD && newPwd === DEFAULT_CLUB_PASSWORD) { alert('❌ 新密碼不可以和預設密碼相同。密碼沒有變更。'); return; }
+            const again = prompt('請再輸入一次「新密碼」確認：');
+            if (again === null) return;
+            if (again.trim() !== newPwd) { alert('❌ 兩次輸入的新密碼不一致，密碼沒有變更。'); return; }
+            appAuthData.clubPasswords[club] = newPwd;
+            await saveToStorage();
+            showToast(`【${club}】密碼已更新，下次請用新密碼登入`, '🔑');
         }
 
         function applyPermissions() {
@@ -8452,8 +8500,8 @@
                 revealText.textContent = pwd;
                 resetBtn.classList.remove('hidden');
             } else {
-                statusText.innerHTML = '<span class="text-amber-600">⚠️ 尚未設定密碼</span>';
-                revealText.textContent = '（無）';
+                statusText.innerHTML = DEFAULT_CLUB_PASSWORD ? '<span class="text-blue-600">ℹ️ 尚未自行修改，使用預設密碼</span>' : '<span class="text-amber-600">⚠️ 尚未設定密碼</span>';
+                revealText.textContent = DEFAULT_CLUB_PASSWORD || '（無）';
                 resetBtn.classList.add('hidden');
             }
         }
@@ -8468,7 +8516,7 @@
                     saveToStorage();
                     renderAdminPasswordStatus();
                     alert(`✅ 已成功清除【${club}】的密碼！
-請通知該社執秘前往登入畫面的「首次進入(註冊)」重新設定密碼。`);
+${DEFAULT_CLUB_PASSWORD ? '該社已恢復為預設密碼，請通知執秘用預設密碼登入後再自行修改。' : '請通知該社執秘前往登入畫面的「首次進入(註冊)」重新設定密碼。'}`);
                 }
             }
         }

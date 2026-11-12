@@ -139,6 +139,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - `currentRole` 有四種值：`secretary`、`chair`、`super_admin`、`arch`（`arch` 只是檢視頁，不是登入身分）。
 - 登入流程：`handleLogin` → `completeLogin` → `applyPermissions`。
   最高管理員密碼寫死在 `handleLogin` 裡（測試腳本也用它登入）；一般社別密碼存在 `appAuthData.clubPasswords`，首次登入走「註冊」分頁自行設定。
+- 預設密碼（2026-11-12）：地區設定檔可填 `defaultClubPassword`（3521 為 `111111`，3523 未設定＝維持註冊流程）→ `DEFAULT_CLUB_PASSWORD`。有設定時：尚未自行改密碼的社用它登入、登入畫面隱藏「首次進入 (註冊)」分頁（`applyDefaultPasswordUI`）；執秘快捷列 `#changePasswordBtn` → `changeMyClubPassword()`（prompt 驗證舊密碼、輸入兩次新密碼）；最高管理員「重置密碼」＝刪除該社紀錄＝恢復預設密碼。
 - **角色是依「目前所在的大類與子活動」動態算出來的**：`applyPermissions` 檢查
   `eventChairs[catId]`（整個大類的主委）或 `eventChairs["catId::子活動名稱"]`（單一子活動的主委）。
   切換大類或子活動後要重新呼叫 `applyPermissions()`，否則權限不會更新。
