@@ -759,7 +759,7 @@
                         <div class="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">🏛️</div>
                         <div class="min-w-0">
                             <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">分區與扶輪社名錄管理</div>
-                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>檢視 13 分區與所屬扶輪社的標準名錄，新增、修改、刪除扶輪社或調整所屬分區，也可一鍵重置回標準 80 社名錄。</p>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>檢視 <span data-district-text="{divisionCount}">13</span> 分區與所屬扶輪社的標準名錄，新增、修改、刪除扶輪社或調整所屬分區，也可一鍵重置回標準 <span data-district-text="{clubCount}">80</span> 社名錄。</p>
                         </div>
                     </div>
                     <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
@@ -772,17 +772,17 @@
                         <h3 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2 flex-wrap" id="divisionDirectoryHeaderTitle">
                             <span data-district-text="📍 {code} 地區分區所屬扶輪社標準名單">📍 地區分區所屬扶輪社標準名單</span>
                             <span id="divisionTotalSummaryBadge" class="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
-                                (依地區排序，共 13 分區 80 社)
+                                (依地區排序，共 <span data-district-text="{divisionCount}">13</span> 分區 <span data-district-text="{clubCount}">80</span> 社)
                             </span>
                         </h3>
-                        <p class="text-xs text-slate-500 mt-1">完整提供地區 13 分區與所屬扶輪社標準名錄，支援「增加」、「修改」、「刪除」管理功能。</p>
+                        <p class="text-xs text-slate-500 mt-1">完整提供地區 <span data-district-text="{divisionCount}">13</span> 分區與所屬扶輪社標準名錄，支援「增加」、「修改」、「刪除」管理功能。</p>
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
                         <button onclick="openAddClubModal()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 transition" title="增加新扶輪社">
                             <span>➕</span><span>增加扶輪社</span>
                         </button>
                         <button onclick="resetDivisionsData()" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 rounded-lg text-xs font-medium whitespace-nowrap flex items-center gap-1 active:scale-95 transition" title="重置回初始標準 80 社名錄">
-                            <span>🔄</span><span>還原 80 社</span>
+                            <span>🔄</span><span>還原 <span data-district-text="{clubCount}">80</span> 社</span>
                         </button>
                     </div>
                 </div>
@@ -862,7 +862,7 @@
                     </button>
                     <button onclick="adminClearMemberDatabase()" class="text-left p-3 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 transition active:scale-[0.99]">
                         <div class="font-bold text-sm text-rose-700">🧹 清空全部社友庫</div>
-                        <div class="text-[11px] text-slate-600 mt-1">刪除 80 社全部社友名冊（含示範社友）。需輸入確認文字才會執行。</div>
+                        <div class="text-[11px] text-slate-600 mt-1">刪除 <span data-district-text="{clubCount}">80</span> 社全部社友名冊（含示範社友）。需輸入確認文字才會執行。</div>
                     </button>
                     <button onclick="adminLoadDemoData()" class="text-left p-3 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 transition active:scale-[0.99]">
                         <div class="font-bold text-sm text-slate-700">🧪 載入示範資料（展示用）</div>
@@ -1136,7 +1136,7 @@
                         <div class="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">💳</div>
                         <div class="min-w-0">
                             <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">各分區各社繳費狀況即時總表</div>
-                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>查看 13 分區 80 社的繳費進度，逐社「核訖已繳」或「標記未繳」，一鍵複製催繳名單到 LINE 群組，匯出 Excel、列印清單，開會時可切換全螢幕投影展示模式。</p>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>查看 <span data-district-text="{divisionCount}">13</span> 分區 <span data-district-text="{clubCount}">80</span> 社的繳費進度，逐社「核訖已繳」或「標記未繳」，一鍵複製催繳名單到 LINE 群組，匯出 Excel、列印清單，開會時可切換全螢幕投影展示模式。</p>
                         </div>
                     </div>
                     <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
@@ -1158,7 +1158,7 @@
                             </span>
                         </h3>
                         <p class="text-xs text-slate-500 mt-0.5">
-                            依全區 13 分區與 80 家扶輪社清楚編排，主委手動核訖各社匯款，開會時一秒展示各社繳費與催繳進度。
+                            依全區 <span data-district-text="{divisionCount}">13</span> 分區與 <span data-district-text="{clubCount}">80</span> 家扶輪社清楚編排，主委手動核訖各社匯款，開會時一秒展示各社繳費與催繳進度。
                         </p>
                     </div>
 
@@ -1176,7 +1176,7 @@
                 <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
                     <div class="bg-gradient-to-br from-indigo-50 to-blue-50/50 p-3 rounded-xl border border-indigo-100">
                         <span class="text-[11px] font-bold text-slate-600 block">全區總繳費社數</span>
-                        <div class="text-xl sm:text-2xl font-black text-indigo-700 mt-0.5" id="kpiPayClubsCount">0 / 80 社</div>
+                        <div class="text-xl sm:text-2xl font-black text-indigo-700 mt-0.5" id="kpiPayClubsCount">0 社</div>
                         <div class="w-full bg-slate-200 h-1.5 rounded-full mt-1.5 overflow-hidden">
                             <div id="kpiPayProgressBar" class="bg-indigo-600 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
                         </div>
@@ -1221,7 +1221,7 @@
 
                         <!-- Division Filter Dropdown -->
                         <select id="payDivisionFilterSelect" onchange="setPaymentDivisionFilter(this.value)" class="bg-slate-50 border border-slate-300 rounded-lg py-1 px-2 text-xs font-semibold text-slate-700">
-                            <option value="ALL">📍 全部 13 分區</option>
+                            <option value="ALL">📍 全部分區</option>
                         </select>
 
                         <!-- Search Input -->
@@ -5430,6 +5430,7 @@
                 code: DISTRICT.code || '', name: DISTRICT.name || '', nameEn: DISTRICT.nameEn || '',
                 rotaryYear: DISTRICT.rotaryYear || '', rotaryYearLong: DISTRICT.rotaryYearLong || '',
                 yearStart: String(DISTRICT.rotaryYearLong || '').slice(0, 4),
+                divisionCount: String(DISTRICT_PAYMENT_DIVISION_COUNT), clubCount: String(DISTRICT_PAYMENT_CLUB_COUNT), // 不含「地區團隊」
             };
             return String(tpl).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
         }
@@ -5846,12 +5847,12 @@
         }
 
         function resetDivisionsData() {
-            if (confirm("⚠️ 確定將地區分區與所屬扶輪社名冊還原為初始標準 13 分區 80 社？本機修改將被清除。")) {
+            if (confirm(`⚠️ 確定將地區分區與所屬扶輪社名冊還原為初始標準 ${DISTRICT_PAYMENT_DIVISION_COUNT} 分區 ${DISTRICT_PAYMENT_CLUB_COUNT} 社？本機修改將被清除。`)) {
                 divisionsData = JSON.parse(JSON.stringify(DEFAULT_DIVISIONS_DATA));
                 saveToStorage();
                 renderDivisionDirectory();
                 populateClubSelector();
-                showToast("🔄 已成功還原為標準 13 分區 80 社名單！");
+                showToast(`🔄 已成功還原為標準 ${DISTRICT_PAYMENT_DIVISION_COUNT} 分區 ${DISTRICT_PAYMENT_CLUB_COUNT} 社名單！`);
             }
         }
 
@@ -6685,7 +6686,7 @@
             // 更新分區下拉選單
             const divSelect = document.getElementById('payDivisionFilterSelect');
             if (divSelect && divSelect.options.length <= 1) {
-                divSelect.innerHTML = `<option value="ALL">📍 全部 13 分區</option>` + 
+                divSelect.innerHTML = `<option value="ALL">📍 全部 ${getPaymentDivisions().length} 分區</option>` + 
                     getPaymentDivisions().map(d => `<option value="${d.id}">第${d.id}分區 (${d.name})</option>`).join('');
             }
             if (divSelect) divSelect.value = paymentFilterDivision;
@@ -6911,6 +6912,8 @@
                         `;
                     } else if (isPaid) {
                         remittanceInfoHTML = `<span class="text-slate-500 text-[11px]">${rec.method || '已核帳'} (${rec.date || '入帳'})</span>`;
+                    } else if (rec.status === 'NOTIFIED') {
+                        remittanceInfoHTML = `<span class="text-amber-700 text-[11px] font-medium">執秘回報：${rec.remitDate || ''} 匯款 NT$ ${(Number(rec.remitAmount) || 0).toLocaleString()}${rec.remitNote ? `，備註「${rec.remitNote}」` : ''}</span>`;
                     } else {
                         remittanceInfoHTML = `<span class="text-rose-400 text-[11px] font-medium">尚未收到匯款或通知信</span>`;
                     }
@@ -7356,7 +7359,7 @@
                             <div class="flex items-center gap-3">
                                 <span class="text-2xl">📑</span>
                                 <div>
-                                    <h4 class="text-base font-black text-white">全區 13 分區 80 扶輪社總覽畫面已全數放行</h4>
+                                    <h4 class="text-base font-black text-white">全區 ${getPaymentDivisions().length} 分區 ${getPaymentDivisions().reduce((n, d) => n + d.clubs.length, 0)} 扶輪社總覽畫面已全數放行</h4>
                                     <p class="text-xs text-indigo-200">可自由滾動展示全體扶輪社繳費狀況；點選上方任一分區可切換回「獨立單頁」投影模式。</p>
                                 </div>
                             </div>
@@ -7456,7 +7459,7 @@
                 `【${DISTRICT.name}】`,
                 `🏛️ ${eventTitle} - 各分區各社繳費催繳提醒名單`,
                 `📅 統計時間：${nowStr}`,
-                `📊 全區 80 社繳費進度：已繳 ${totalClubsCount - totalUnpaidCount} 社｜尚待繳費：${totalUnpaidCount} 社`,
+                `📊 全區 ${totalClubsCount} 社繳費進度：已繳 ${totalClubsCount - totalUnpaidCount} 社｜尚待繳費：${totalUnpaidCount} 社`,
                 ``,
                 `【尚未繳費扶輪社明細 (依分區排序)】`,
                 unpaidListByDiv.join('\n'),

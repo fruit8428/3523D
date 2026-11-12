@@ -49,7 +49,7 @@ node test_supabase.js
 所有地區專屬內容都不寫在 `index.html`，而是：`config/districts/<代號>.json`（地區代號、名稱、年度、Logo、Supabase 連線、AI 小幫手網址、分區與社名冊）
 → `node scripts/build-config.js`（依 `DISTRICT_CODE` 環境變數，預設 3523；或 `DISTRICT_CONFIG_FILE` 指定檔案）→ 產生 `district-config.js`（定義 `window.DISTRICT`）。
 - **3523 版的 `district-config.js` 有進 git** 當預設值，所以 file://、GitHub Pages、現有 Vercel 都不需建置；改 3523 設定後要重新產生並一起 commit。其他地區在 Vercel 設 `DISTRICT_CODE` 即可。
-- `index.html` 讀取方式：JS 用 `DISTRICT.xxx`；HTML 靜態文字用 `data-district-text="{name}…"` / `data-district-html` 樣板，由 `applyDistrictBranding()` 在 DOMContentLoaded 最先填入（可用變數 `{code} {name} {nameEn} {rotaryYear} {rotaryYearLong} {yearStart}`）；Logo 用 `data-district-logo`。
+- `index.html` 讀取方式：JS 用 `DISTRICT.xxx`；HTML 靜態文字用 `data-district-text="{name}…"` / `data-district-html` 樣板，由 `applyDistrictBranding()` 在 DOMContentLoaded 最先填入（可用變數 `{code} {name} {nameEn} {rotaryYear} {rotaryYearLong} {yearStart} {divisionCount} {clubCount}`（後兩者為不含地區團隊的分區數／社數，畫面上不要寫死「13 分區 80 社」））；Logo 用 `data-district-logo`。
 - `DEFAULT_DIVISIONS_DATA` 來自 `DISTRICT.divisions`；但 `loadFromStorage` 讀到雲端已存的 `divisionsData` 時會覆蓋（既有行為，名冊可在 UI 編輯），設定檔只是新資料庫的初始值。
 - 儲存 key 名稱（`rotary_3523_spa_data_v3` 等 5 個）**刻意不改**：改了會讓 3523 現有資料變孤兒，各地區各自一個 Supabase 所以沒有衝突。
 - 新增地區專屬文字時不要寫死，用上面的機制；`config/districts/_template.json` 是新地區範本。
