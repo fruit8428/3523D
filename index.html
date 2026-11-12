@@ -6787,23 +6787,14 @@
         let apportionChartSort = 'division'; // 'division' 依分區順序｜'rate' 達成率低的排前面
         function setApportionChartSort(mode) { apportionChartSort = mode; renderApportionChart(); }
 
-        function renderApportionChart() {
-            const section = document.getElementById('apportionChartSection');
-            const body = document.getElementById('apportionChartBody');
-            if (!section || !body) return;
-            const show = !!loggedInUser && (currentRole === 'chair' || currentRole === 'super_admin') && document.body.getAttribute('data-mode') === 'apportionment';
-            section.classList.toggle('hidden', !show);
-            if (!show) return;
-
+        // 目前子活動的各分區繳款統計（畫面圖表與 PDF 匯出共用同一份計算）
+        function apportionPct(v) { return (v * 100).toFixed(v === 1 || v === 0 ? 0 : 1); }
+        function computeApportionStats() {
             const cat = categoriesData.find(c => c.id === currentCatId) || {};
             const subName = (cat.subEvents && cat.subEvents[currentSubEventIndex]) || cat.name || '';
-            const badge = document.getElementById('apportionChartBadge');
-            if (badge) badge.innerText = subName;
             const records = chairPaymentRecords[getActivePaymentKey()] || {};
             const required = getApportionmentFee() || 0;
-            const shortName = n => String(n).replace(/扶輪社$/, '');
-
-            let tClubs = 0, tPaid = 0, tNotified = 0, tAmt = 0;
+            let tClubs = 0, tPaid = 0, tAmt = 0;
             const rows = getPaymentDivisions().map(div => {
                 const paid = [], notified = [], unpaid = []; let amt = 0;
                 div.clubs.forEach(club => {
@@ -6812,14 +6803,151 @@
                     else unpaid.push(club.name);
                 });
                 const total = div.clubs.length;
-                tClubs += total; tPaid += paid.length; tNotified += notified.length; tAmt += amt;
+                tClubs += total; tPaid += paid.length; tAmt += amt;
                 return { div, total, paid, notified, unpaid, amt, rate: total ? paid.length / total : 0 };
             }).filter(r => r.total > 0);
             const ordered = apportionChartSort === 'rate' ? rows.slice().sort((a, b) => a.rate - b.rate || a.div.id - b.div.id) : rows;
-            const pct = v => (v * 100).toFixed(v === 1 || v === 0 ? 0 : 1);
-            const overall = tClubs ? tPaid / tClubs : 0;
-            const doneDivs = rows.filter(r => r.paid.length === r.total).length;
-            const expected = required * tClubs;
+            return { catName: cat.name || '', subName, required, rows, ordered, tClubs, tPaid, tAmt, overall: tClubs ? tPaid / tClubs : 0,
+                doneDivs: rows.filter(r => r.paid.length === r.total).length, expected: required * tClubs };
+        }
+
+        // ---------- 匯出 PDF（簡報用，A4 橫式單頁） ----------
+        // 做法：另外組一張固定 1123×794px（A4 橫式）的報表版面 → html2canvas 轉成圖 → jsPDF 包成 PDF 下載。
+        // 用轉圖的方式是因為 jsPDF 內建字型沒有中文；兩個元件第一次匯出時才從 cdnjs 載入。
+        let pdfExportLibsPromise = null;
+        function loadPdfExportLibs() {
+            if (window.html2canvas && window.jspdf) return Promise.resolve();
+            if (pdfExportLibsPromise) return pdfExportLibsPromise;
+            const load = src => new Promise((resolve, reject) => { const sc = document.createElement('script'); sc.src = src; sc.onload = resolve; sc.onerror = () => reject(new Error('無法下載 PDF 匯出元件')); document.head.appendChild(sc); });
+            pdfExportLibsPromise = Promise.all([
+                load('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
+                load('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+            ]).catch(e => { pdfExportLibsPromise = null; throw e; });
+            return pdfExportLibsPromise;
+        }
+
+        function buildApportionReportHTML() {
+            const st = computeApportionStats();
+            const E = escapeHtmlText, pct = apportionPct;
+            const shortName = n => String(n).replace(/扶輪社$/, '');
+            const NAVY = '#17458F', GOLD = '#F7A81B', INK = '#0F172A', INK2 = '#475569', MUTED = '#94A3B8', BAR = '#17458F', TRACK = '#E2E8F0', LINE = '#E2E8F0';
+            const n = st.ordered.length;
+            // 分區多時自動縮小列高與字級，盡量維持單頁。
+            // 注意：html2canvas 畫出來的文字會比瀏覽器低約 4–5px，下面色塊的 top:5px、標籤上下不對稱的 padding 都是在補償這個位移
+            const rowPad = n <= 10 ? 10 : n <= 13 ? 7.5 : 5;
+            const fs = n <= 13 ? 13 : 12;
+            const tile = (label, value, sub, accent) => `
+                <div style="flex:1;background:#fff;border:1px solid ${LINE};border-top:3px solid ${accent ? GOLD : NAVY};border-radius:8px;padding:11px 16px 12px;">
+                    <div style="font-size:11.5px;color:${INK2};font-weight:600;letter-spacing:.04em;">${label}</div>
+                    <div style="font-size:27px;font-weight:800;color:${INK};line-height:1.15;margin-top:1px;font-variant-numeric:tabular-nums;">${value}</div>
+                    <div style="font-size:11px;color:${INK2};margin-top:9px;">${sub}</div>
+                </div>`;
+            const rowsHtml = st.ordered.map((r, i) => {
+                const done = r.unpaid.length === 0;
+                return `
+                <div style="display:flex;align-items:center;padding:${rowPad}px 0;border-bottom:1px solid ${LINE};${i % 2 ? 'background:#F8FAFC;' : ''}">
+                    <div style="width:104px;padding-left:10px;font-size:${fs}px;font-weight:700;color:${INK};white-space:nowrap;">${E(r.div.name)}</div>
+                    <div style="width:250px;height:13px;background:${TRACK};border-radius:7px;overflow:hidden;position:relative;top:5px;">
+                        <div style="width:${(r.rate * 100).toFixed(2)}%;height:100%;background:${BAR};border-radius:7px;"></div>
+                    </div>
+                    <div style="width:64px;text-align:right;font-size:${fs + 1.5}px;font-weight:800;color:${INK};font-variant-numeric:tabular-nums;">${pct(r.rate)}%</div>
+                    <div style="width:62px;text-align:right;font-size:11px;color:${INK2};font-variant-numeric:tabular-nums;">${r.paid.length} / ${r.total} 社</div>
+                    <div style="width:96px;text-align:right;font-size:11px;color:${INK2};font-variant-numeric:tabular-nums;">NT$ ${r.amt.toLocaleString()}</div>
+                    <div style="flex:1;padding-left:22px;padding-right:10px;font-size:${fs - 1}px;line-height:1.45;color:${INK};">
+                        ${done ? `<span style="color:${INK2};font-weight:600;">✓ 全數繳清</span>`
+                               : `<span style="color:${MUTED};font-weight:600;">未繳 ${r.unpaid.length} 社｜</span><span style="font-weight:600;">${r.unpaid.map(x => E(shortName(x))).join('、')}</span>`}
+                    </div>
+                </div>`;
+            }).join('');
+            const head = (w, label, align, pl) => `<div style="${w ? `width:${w}px;` : 'flex:1;'}text-align:${align || 'left'};${pl ? `padding-left:${pl}px;` : ''}">${label}</div>`;
+            return `
+            <div id="apportionReportPage" style="width:1123px;min-height:794px;box-sizing:border-box;background:#fff;color:${INK};font-family:'Noto Sans TC','PingFang TC','Microsoft JhengHei','Heiti TC',sans-serif;display:flex;flex-direction:column;">
+                <div style="background:${NAVY};color:#fff;padding:22px 44px 18px;display:flex;align-items:center;justify-content:space-between;">
+                    <div style="display:flex;align-items:center;gap:16px;">
+                        ${DISTRICT.logo ? `<div style="width:52px;height:52px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;"><img src="${E(DISTRICT.logo)}" style="width:42px;height:42px;object-fit:contain;" crossorigin="anonymous"></div>` : ''}
+                        <div>
+                            <div style="font-size:12.5px;letter-spacing:.12em;opacity:.85;">${E(DISTRICT.name)}　${E(DISTRICT.rotaryYear || '')} 年度</div>
+                            <div style="font-size:27px;font-weight:800;letter-spacing:.03em;margin-top:2px;">各分區繳款達成率報告</div>
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="display:inline-block;background:${GOLD};color:${INK};font-size:14px;font-weight:800;line-height:1;padding:3px 14px 12px;border-radius:4px;">${E(st.subName)}</div>
+                        <div style="font-size:11.5px;opacity:.85;margin-top:7px;">資料時間　${taiwanNowStr()}</div>
+                    </div>
+                </div>
+                <div style="height:4px;background:${GOLD};"></div>
+                <div style="padding:20px 44px 0;display:flex;gap:14px;">
+                    ${tile('全區達成率', `${pct(st.overall)}%`, `已繳 ${st.tPaid} / ${st.tClubs} 社`, true)}
+                    ${tile('尚未繳款', `${st.tClubs - st.tPaid} 社`, st.tClubs === st.tPaid ? '全區皆已繳清' : `未繳率 ${pct(1 - st.overall)}%`)}
+                    ${tile('實收金額', `NT$ ${st.tAmt.toLocaleString()}`, st.expected ? `應收 NT$ ${st.expected.toLocaleString()}（每社 ${st.required.toLocaleString()}）` : '尚未設定每社應繳金額')}
+                    ${tile('全數繳清的分區', `${st.doneDivs} / ${st.rows.length}`, st.doneDivs === st.rows.length ? '所有分區皆已繳清' : `尚有 ${st.rows.length - st.doneDivs} 個分區未繳清`)}
+                </div>
+                <div style="padding:16px 44px 0;flex:1;">
+                    <div style="display:flex;align-items:center;font-size:10.5px;font-weight:700;color:${INK2};letter-spacing:.06em;padding:0 0 6px;border-bottom:2px solid ${NAVY};">
+                        ${head(104, '分區', 'left', 10)}${head(250, '達成率（已繳社數 ÷ 分區社數）')}${head(64, '達成率', 'right')}${head(62, '已繳', 'right')}${head(96, '分區實收', 'right')}${head(0, '尚未繳款的社', 'left', 22)}
+                    </div>
+                    ${rowsHtml}
+                </div>
+                <div style="padding:10px 44px 14px;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:${MUTED};">
+                    <div><span style="display:inline-block;width:10px;height:10px;background:${BAR};border-radius:2px;position:relative;top:5px;margin-right:5px;"></span>已繳款　<span style="display:inline-block;width:10px;height:10px;background:${TRACK};border:1px solid #CBD5E1;border-radius:2px;position:relative;top:5px;margin:0 5px 0 10px;"></span>尚未繳款　｜　排序：${apportionChartSort === 'rate' ? '達成率由低至高' : '依分區順序'}　｜　達成率以社數計算</div>
+                    <div>${E(DISTRICT.name)}活動整合報名系統　自動產製</div>
+                </div>
+            </div>`;
+        }
+
+        let apportionPdfExporting = false;
+        async function exportApportionChartPDF() {
+            if (apportionPdfExporting) return;
+            apportionPdfExporting = true;
+            const btn = document.getElementById('btnExportApportionPdf');
+            const oldLabel = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 產生 PDF 中…'; }
+            let holder = null;
+            try {
+                await loadPdfExportLibs();
+                holder = document.createElement('div');
+                // 放在畫面外（不能用 display:none，否則無法轉圖）
+                holder.style.cssText = 'position:fixed;left:-20000px;top:0;width:1123px;z-index:-1;';
+                holder.innerHTML = buildApportionReportHTML();
+                document.body.appendChild(holder);
+                const page = holder.firstElementChild;
+                // 等 Logo 圖片載入完成（失敗就不顯示，不影響匯出）
+                await Promise.all([...page.querySelectorAll('img')].map(img => img.complete ? Promise.resolve() : new Promise(res => { img.onload = res; img.onerror = () => { img.parentElement.style.display = 'none'; res(); }; })));
+                const canvas = await window.html2canvas(page, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false, windowWidth: 1123 });
+                const pdf = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+                const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
+                // 內容比一頁高時（未繳社很多）等比例縮小置中，維持單頁方便投影
+                const ratio = Math.min(pw / canvas.width, ph / canvas.height);
+                const w = canvas.width * ratio, h = canvas.height * ratio;
+                pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', (pw - w) / 2, 0, w, h);
+                const st = computeApportionStats();
+                pdf.setProperties({ title: `各分區繳款達成率 ${st.subName}` });
+                const safe = String(st.subName).replace(/[\\/:*?"<>|\s]+/g, '_');
+                pdf.save(`各分區繳款達成率_${safe}_${taiwanTodayStr()}.pdf`);
+                showToast('📄 PDF 已匯出，請到「下載」資料夾查看');
+            } catch (e) {
+                console.warn('匯出 PDF 失敗', e);
+                alert('⚠️ PDF 匯出失敗：' + (e && e.message ? e.message : '未知錯誤') + '\n\n請確認網路連線後再試一次。');
+            } finally {
+                if (holder) holder.remove();
+                apportionPdfExporting = false;
+                if (btn) { btn.disabled = false; btn.innerHTML = oldLabel; }
+            }
+        }
+
+        function renderApportionChart() {
+            const section = document.getElementById('apportionChartSection');
+            const body = document.getElementById('apportionChartBody');
+            if (!section || !body) return;
+            const show = !!loggedInUser && (currentRole === 'chair' || currentRole === 'super_admin') && document.body.getAttribute('data-mode') === 'apportionment';
+            section.classList.toggle('hidden', !show);
+            if (!show) return;
+
+            const { subName, required, rows, ordered, tClubs, tPaid, tAmt, overall, doneDivs, expected } = computeApportionStats();
+            const badge = document.getElementById('apportionChartBadge');
+            if (badge) badge.innerText = subName;
+            const shortName = n => String(n).replace(/扶輪社$/, '');
+            const pct = apportionPct;
             const sortBtn = (mode, label) => `<button type="button" onclick="setApportionChartSort('${mode}')" class="px-2.5 py-1 text-xs font-bold rounded-md ${apportionChartSort === mode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:bg-white/60'}">${label}</button>`;
             const tile = (label, value, sub) => `<div class="rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3"><div class="text-[11px] font-semibold text-slate-500">${label}</div><div class="text-lg sm:text-2xl font-black text-slate-900 mt-0.5 leading-tight">${value}</div><div class="text-[11px] text-slate-500 mt-0.5">${sub}</div></div>`;
 
@@ -6835,7 +6963,10 @@
                         <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm" style="background:#4338CA"></span>已繳款</span>
                         <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm border border-slate-300" style="background:#E2E8F0"></span>尚未繳款</span>
                     </div>
-                    <div class="inline-flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5" role="group" aria-label="排序方式">${sortBtn('division', '依分區順序')}${sortBtn('rate', '達成率低的在前')}</div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="inline-flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5" role="group" aria-label="排序方式">${sortBtn('division', '依分區順序')}${sortBtn('rate', '達成率低的在前')}</div>
+                        <button type="button" id="btnExportApportionPdf" onclick="exportApportionChartPDF()" class="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition whitespace-nowrap">📄 匯出 PDF（簡報用）</button>
+                    </div>
                 </div>
                 <div class="mt-2 divide-y divide-slate-100 border-t border-slate-100">`;
 
