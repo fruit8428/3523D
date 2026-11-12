@@ -2420,16 +2420,27 @@
                     lastUpdated: new Date().toISOString()
                 };
                 if (supabaseClient) {
-                    await supabaseClient.from('app_storage').upsert({ key: LOCAL_STORAGE_KEY, value: data });
+                    liveSyncPendingSaves++;
+                    liveSyncSaveSeq++;
+                    try {
+                        const { error } = await supabaseClient.from('app_storage').upsert({ key: LOCAL_STORAGE_KEY, value: data });
+                        if (error) throw error;
+                    } finally {
+                        liveSyncPendingSaves--;
+                    }
+                    liveSyncStamp = data.lastUpdated;
+                    notifyLiveSyncPeers('main');
                 } else {
                     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
                 }
+                return true;
             } catch (e) {
                 console.warn("無法寫入 Storage", e);
+                return false;
             }
         }
 
-                async function loadFromStorage() {
+                async function loadFromStorage(guard) {
             try {
                 let stored = null;
                 if (supabaseClient) {
@@ -2438,8 +2449,11 @@
                 } else {
                     stored = localStorage.getItem(LOCAL_STORAGE_KEY);
                 }
+                // 即時同步用：下載期間本機若有新的存檔，這份遠端資料已過時，不可套用
+                if (guard && !guard()) return false;
                 if (stored) {
                     const parsed = JSON.parse(stored);
+                    liveSyncStamp = parsed.lastUpdated || '';
                     if (parsed.categoriesData) {
                         categoriesData = parsed.categoriesData.map(c => {
                             if (c.id === 'ryla' || c.id === 'polio') {
@@ -2516,6 +2530,128 @@
             }
         }
 
+        // ================= 即時同步（多裝置同時使用） =================
+        // 任何一台裝置存檔後，其他開著的畫面不必重新整理就會自動更新。兩條路並行：
+        //  (1) Supabase Realtime「廣播」：存檔後發一個訊號，其他裝置約 1 秒內收到並重新抓資料；
+        //  (2) 每 15 秒檢查一次雲端資料的 lastUpdated（廣播漏掉或斷線時的備援），回到分頁時也會檢查。
+        // 廣播只是「有人改了」的訊號，資料本體一律重新從 app_storage 讀，所以不需要在資料庫開 Realtime 複寫。
+        let liveSyncStamp = '';          // 本機目前資料對應的雲端版本（lastUpdated）
+        let liveSyncPendingSaves = 0;    // 進行中的存檔數；存檔中不套用遠端資料
+        let liveSyncSaveSeq = 0;         // 每次存檔 +1，用來判斷下載期間本機是否又存過檔
+        let liveSyncBusy = null;         // 進行中的同步（Promise），避免重複下載
+        let liveSyncChannel = null;
+        let liveSyncRenderPending = false;
+        let liveSyncTick = 0;
+
+        function notifyLiveSyncPeers(kind) {
+            try {
+                if (liveSyncChannel) liveSyncChannel.send({ type: 'broadcast', event: 'changed', payload: { kind: kind, stamp: liveSyncStamp } });
+            } catch (e) { /* 廣播失敗沒關係，其他裝置 15 秒內會自己發現 */ }
+        }
+
+        // 目前子活動「各社報名表送出時間」的快照，用來找出剛送出／更新報名的社
+        function liveSyncOrderSnapshot() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const sub = cat && cat.subEvents ? cat.subEvents[currentSubEventIndex] : null;
+            const snap = {};
+            ((sub && registrationOrders[sub]) || []).forEach(o => { snap[o.clubName] = JSON.stringify(o); });
+            return snap;
+        }
+
+        // 重新抓取雲端資料並更新畫面。force=true 時不比對版本直接抓（收到廣播、送出報名前）。
+        function pullRemoteState(force) {
+            if (!supabaseClient) return Promise.resolve(false);
+            if (liveSyncBusy) return liveSyncBusy;
+            liveSyncBusy = (async () => {
+                try {
+                    if (liveSyncPendingSaves > 0) return false;
+                    if (!force) {
+                        const { data, error } = await supabaseClient.from('app_storage').select('stamp:value->>lastUpdated').eq('key', LOCAL_STORAGE_KEY).maybeSingle();
+                        if (error || !data || (data.stamp || '') === liveSyncStamp) return false;
+                    }
+                    const seq = liveSyncSaveSeq;
+                    const guard = () => liveSyncSaveSeq === seq && liveSyncPendingSaves === 0;
+                    const before = liveSyncOrderSnapshot();
+                    const catsBefore = JSON.stringify(categoriesData);
+                    const applied = await loadFromStorage(guard);
+                    if (applied === false) return false;
+                    await loadPaymentRecords(guard);
+                    const after = liveSyncOrderSnapshot();
+                    const changedClubs = Object.keys(after).filter(c => after[c] !== before[c] && c !== selectedClubName);
+                    refreshUIAfterLiveSync(catsBefore !== JSON.stringify(categoriesData));
+                    if (changedClubs.length && loggedInUser && (currentRole === 'chair' || currentRole === 'super_admin')) {
+                        showToast(`${changedClubs.slice(0, 3).join('、')}${changedClubs.length > 3 ? ` 等 ${changedClubs.length} 社` : ''} 剛送出報名表，畫面已更新`, '🔔');
+                    }
+                    return true;
+                } catch (e) {
+                    console.warn('即時同步失敗', e);
+                    return false;
+                } finally {
+                    liveSyncBusy = null;
+                }
+            })();
+            return liveSyncBusy;
+        }
+
+        // 使用者正在主委後台／管理頁輸入，或有彈出視窗開著時，先不重畫（避免打到一半的字被洗掉），稍後再補畫
+        function liveSyncUserIsEditing() {
+            const el = document.activeElement;
+            if (el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) && el.closest('#viewChair, #viewSuperAdmin')) return true;
+            return !!document.querySelector('[id$="Modal"]:not(.hidden)');
+        }
+
+        function refreshUIAfterLiveSync(categoriesChanged) {
+            if (!loggedInUser) return; // 尚未登入：登入時本來就會整個畫一次
+            if (liveSyncUserIsEditing()) {
+                liveSyncRenderPending = liveSyncRenderPending || { cats: false };
+                if (categoriesChanged) liveSyncRenderPending.cats = true;
+                return;
+            }
+            const cats = categoriesChanged || (liveSyncRenderPending && liveSyncRenderPending.cats);
+            liveSyncRenderPending = false;
+            try {
+                if (cats) renderNavTabs();
+                if (currentRole === 'chair' || currentRole === 'super_admin') {
+                    updateChairDashboard();
+                    renderDivisionPaymentSection();
+                }
+                updateRolePermissionsUI(); // 活動 DM、匯款資訊、銀行入帳區塊
+                const adminView = document.getElementById('viewSuperAdmin');
+                if (currentRole === 'super_admin' && adminView && !adminView.classList.contains('hidden')) {
+                    if (typeof renderAdminPasswordStatus === 'function') renderAdminPasswordStatus();
+                    if (typeof renderAdminChairAssignment === 'function') renderAdminChairAssignment();
+                }
+            } catch (e) {
+                console.warn('即時同步重畫失敗', e);
+            }
+        }
+
+        function initLiveSync() {
+            if (!supabaseClient) return;
+            try {
+                liveSyncChannel = supabaseClient.channel('rotary-live-sync');
+                liveSyncChannel.on('broadcast', { event: 'changed' }, (msg) => {
+                    const p = (msg && msg.payload) || {};
+                    if (p.kind === 'main' && p.stamp && p.stamp === liveSyncStamp) return;
+                    pullRemoteState(true);
+                }).subscribe();
+            } catch (e) {
+                console.warn('即時同步頻道建立失敗，改用定時檢查', e);
+                liveSyncChannel = null;
+            }
+            setInterval(() => {
+                if (document.hidden) return;
+                liveSyncTick++;
+                if (liveSyncRenderPending) refreshUIAfterLiveSync(false);
+                if (liveSyncTick % 5 === 0) {
+                    // 每 15 秒比對版本；主委／管理員每 60 秒強制抓一次（繳費紀錄另存一筆，沒有版本可比）
+                    const force = (liveSyncTick % 20 === 0) && (currentRole === 'chair' || currentRole === 'super_admin');
+                    pullRemoteState(force);
+                }
+            }, 3000);
+            document.addEventListener('visibilitychange', () => { if (!document.hidden) pullRemoteState(false); });
+        }
+
         // ================= INITIALIZATION & NAVIGATION =================
 
         document.addEventListener('DOMContentLoaded', async () => {
@@ -2529,6 +2665,7 @@
             await loadPaymentRecords();
             await loadBankData(); // 入帳紀錄與抓取狀態，並自動比對執秘已回報的匯款
             await loadEmailInboxLogs();
+            initLiveSync(); // 其他裝置存檔後，本畫面自動更新
             // 注意：不再於啟動時自動生成示範繳費資料；要看示範請由最高管理員按「載入示範資料」
             populateLoginClubs();
             renderNavTabs();
@@ -3518,14 +3655,36 @@
             updateLinePreviewText();
         }
 
-        function submitRegistration() {
+        let registrationSubmitting = false;
+        async function submitRegistration() {
+            if (registrationSubmitting) return; // 防止連點重複送出
+            registrationSubmitting = true;
+            const submitBtn = document.getElementById('submitRegBtn');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('opacity-60'); }
+            try {
+                await submitRegistrationInner();
+            } finally {
+                registrationSubmitting = false;
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('opacity-60'); }
+            }
+        }
+
+        async function submitRegistrationInner() {
             if (isEventLockedToday) {
                 alert('⚠️ 本活動今日已封存唯讀，無法送出變更！');
                 return;
             }
 
+            // 整包資料是「最後寫入者獲勝」：送出前先抓一次雲端最新資料，
+            // 才不會把其他社在這段時間剛送出的報名表蓋掉（表單勾選內容是另外存的，不受影響）
+            await pullRemoteState(true);
+
             const cat = categoriesData.find(c => c.id === currentCatId);
-            const subEventName = cat.subEvents[currentSubEventIndex];
+            const subEventName = cat && cat.subEvents ? cat.subEvents[currentSubEventIndex] : null;
+            if (!subEventName) {
+                alert('⚠️ 這個活動剛被管理員調整，請重新選擇活動後再送出。');
+                return;
+            }
 
             const isApportionment = cat && ((cat.name && (cat.name.includes('分攤金') || cat.name.includes('配合款'))) || (subEventName.includes('分攤金') || subEventName.includes('配合款')));
 
@@ -3589,10 +3748,16 @@
             // 研討會/年會：送出報名表「不會」自動把該社標記為已繳費。
             // 繳費狀態一律由主委在「各分區各社繳費狀況即時總表」手動核訖，或貼上真實銀行入帳通知後核對。
 
-            saveToStorage();
+            const saved = await saveToStorage();
+            if (!saved) {
+                alert('⚠️ 報名表沒有成功存到雲端（可能是網路不穩）。\n\n您勾選的內容還在畫面上，請確認網路後再按一次「送出本社報名表」。');
+                return;
+            }
             showToast(`✅ ${selectedClubName} 成功送出《${subEventName}》報名表！`);
             updateLinePreviewText();
-            if (currentRole === 'chair') updateChairDashboard();
+            // 本機畫面直接更新，不需重新整理
+            if (currentRole === 'chair' || currentRole === 'super_admin') updateChairDashboard();
+            updateRolePermissionsUI();
         }
 
         // ================= EXCEL IMPORT / EXPORT HANDLERS =================
@@ -6134,7 +6299,7 @@
             }
         }
 
-        async function loadPaymentRecords() {
+        async function loadPaymentRecords(guard) {
             try {
                 let stored = null;
                 if (supabaseClient) {
@@ -6143,6 +6308,7 @@
                 } else {
                     stored = localStorage.getItem(PAYMENT_RECORDS_STORAGE_KEY);
                 }
+                if (guard && !guard()) return;
                 if (stored) {
                     chairPaymentRecords = JSON.parse(stored);
                 }
@@ -6154,7 +6320,14 @@
         async function savePaymentRecords() {
             try {
                 if (supabaseClient) {
-                    await supabaseClient.from('app_storage').upsert({ key: PAYMENT_RECORDS_STORAGE_KEY, value: chairPaymentRecords });
+                    liveSyncPendingSaves++;
+                    liveSyncSaveSeq++;
+                    try {
+                        await supabaseClient.from('app_storage').upsert({ key: PAYMENT_RECORDS_STORAGE_KEY, value: chairPaymentRecords });
+                    } finally {
+                        liveSyncPendingSaves--;
+                    }
+                    notifyLiveSyncPeers('payment');
                 } else {
                     localStorage.setItem(PAYMENT_RECORDS_STORAGE_KEY, JSON.stringify(chairPaymentRecords));
                 }

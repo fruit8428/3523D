@@ -132,6 +132,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - **示範資料不會自動生成**：`loadDemoPaymentRecords()`、`DEFAULT_MEMBERS_DB`、`DEFAULT_ORDERS` 只有最高管理員在「正式上線前資料歸零」卡片按「載入示範資料」才會寫入；`selectClub` 與新增社都只建立空名冊。清空功能 `adminClearPaymentData` / `adminClearRegistrationOrders` / `adminClearMemberDatabase` 皆限 `super_admin`，清空後要同時寫回主 key 與獨立 key。
 - 執秘送出研討會/年會報名表**不會**自動標記已繳費；繳費狀態只由主委在繳費表手動核訖或貼上銀行通知核對。繳費表的應繳金額一律用 `getApportionmentFee()`（各社應繳金額），不再寫死 10000/20000。
 - 整包覆寫代表「最後寫入者獲勝」，沒有合併邏輯。
+- 即時同步（2026-11-12）：`saveToStorage` / `savePaymentRecords` 存檔後用 Supabase Realtime **廣播**（頻道 `rotary-live-sync`，`notifyLiveSyncPeers`）通知其他裝置，收到的裝置 `pullRemoteState(true)` 重新讀 `app_storage` 再 `refreshUIAfterLiveSync()` 重畫（主委後台報名表、繳費表、DM、匯款區塊），不需重新整理；備援是每 15 秒比對 `value->>lastUpdated`（`liveSyncStamp`）、主委每 60 秒強制抓一次、回到分頁時檢查。廣播只是訊號，資料庫不需開 Realtime 複寫。存檔進行中（`liveSyncPendingSaves`）或下載期間本機又存過檔（`liveSyncSaveSeq`）就不套用遠端資料；使用者正在後台輸入或有 Modal 開著時延後重畫（`liveSyncUserIsEditing`）。`submitRegistration` 送出前會先 `pullRemoteState(true)` 再寫入並 `await saveToStorage()`（回傳 false＝存檔失敗會 alert），避免蓋掉別社剛送出的報名；**其他寫入路徑仍是整包覆寫**，只是本機資料最多落後約 15 秒。
 - 所有會寫入的操作必須 `await saveToStorage()` **之後**才關閉 modal 或重新渲染，否則使用者快速重整會遺失資料（commit 61ef719 修過這個問題）。
 - `loadFromStorage` 內有資料遷移邏輯（補齊新欄位預設值、強制加入「地區年會」大類等），新增狀態欄位時要在這裡補預設值，否則舊資料載入會 `undefined`。
 
