@@ -2289,6 +2289,22 @@
             ]
         };
 
+        // 上面的示範社友／示範報名單寫的是 3523 的社名。其他地區的名冊沒有這些社時，
+        // 依序改套到該地區名冊的前幾個社，避免全新資料庫一開始就出現名冊裡不存在的社。
+        (function remapDemoDataToDistrict() {
+            const roster = (DISTRICT.divisions || []).filter(d => d.name !== '地區團隊').flatMap(d => (d.clubs || []).map(c => c.name));
+            const src = Object.keys(DEFAULT_MEMBERS_DB);
+            if (!roster.length || src.every(n => roster.includes(n))) return;
+            const map = {};
+            src.forEach((n, i) => { map[n] = roster[i] || n; });
+            src.forEach(n => {
+                if (map[n] === n) return;
+                DEFAULT_MEMBERS_DB[map[n]] = DEFAULT_MEMBERS_DB[n];
+                delete DEFAULT_MEMBERS_DB[n];
+            });
+            Object.values(DEFAULT_ORDERS).forEach(list => list.forEach(o => { if (map[o.clubName]) o.clubName = map[o.clubName]; }));
+        })();
+
         // Application State
         let currentRole = 'secretary'; // 'secretary' | 'chair' | 'arch'
         let currentCatId = 'seminars';
