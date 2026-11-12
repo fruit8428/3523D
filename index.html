@@ -2221,12 +2221,41 @@
                 name: '🏛️ 地區年會',
                 themeColor: 'indigo',
                 hexColor: '#4F46E5',
-                allowSponsors: true,
+                allowSponsors: false, // 年會比照研討會：每社應繳金額，不用贊助社／協辦社
                 allowAddSubEvents: true,
                 desc: `${DISTRICT.code} 地區年度社友代表大會暨年會慶典，全體 ${DISTRICT_PAYMENT_DIVISION_COUNT} 分區 ${DISTRICT_PAYMENT_CLUB_COUNT} 社出席與繳費報名。`,
                 subEvents: [
                     '1. 地區年會大會 (全體代表大會)',
-                    '2. 地區年會歡迎晚宴暨頒獎典禮'
+                    '2. 地區年會歡迎晚宴暨頒獎典禮',
+                    '3.地區年會分攤金'
+                ]
+            },
+            // 以下兩個主選單的畫面模式靠「名稱」判斷（含「分攤金／配合款」＝分攤金模式、含「社慶」＝社慶模式），見 applyCurrentEventMode
+            {
+                id: 'apportionment',
+                name: '地辦分攤金/配合款',
+                themeColor: 'blue',
+                hexColor: '#1A56DB',
+                allowSponsors: false,
+                allowAddSubEvents: true,
+                desc: '地區辦公室分攤金與地區服務配合款，各社填寫金額並回報匯款。',
+                subEvents: [
+                    '1.上半年地辦分攤金',
+                    '2.下半年地辦分攤金',
+                    '3.上半年度地區服務配合款',
+                    '4.下半年度地區服務配合款'
+                ]
+            },
+            {
+                id: 'anniversary',
+                name: '社慶',
+                themeColor: 'blue',
+                hexColor: '#1A56DB',
+                allowSponsors: true,
+                allowAddSubEvents: true,
+                desc: '各社社慶：友社報名出席與花款統一辦理。每個社慶由最高管理員新增為一個子活動，並指派主辦社為主委。',
+                subEvents: [
+                    '○○社社慶（範例）'
                 ]
             }
         ];
