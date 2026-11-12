@@ -907,6 +907,25 @@
                 </div>
             </div>
 
+            <!-- 分攤金／配合款：各分區繳款達成率圖表（只在分攤金模式、主委身分顯示；預設展開） -->
+            <div data-panel="apportionChart" data-panel-default="open" id="apportionChartSection" class="hidden bg-white rounded-xl shadow-sm border-2 border-indigo-200/90 p-4 sm:p-5">
+                <button type="button" onclick="togglePanel('apportionChart')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_apportionChart">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">📊</div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">各分區繳款達成率 <span id="apportionChartBadge" class="ml-1 text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded-full align-middle"></span></div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>一眼看出每個分區已經有幾成的社繳款，以及各分區還沒繳款的是哪幾個社。資料與下方「各分區各社繳費狀況即時總表」同步。</p>
+                        </div>
+                    </div>
+                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
+                        <span id="panelToggleText_apportionChart">展開</span><span id="panelChevron_apportionChart" class="inline-block transition-transform duration-200">▼</span>
+                    </span>
+                </button>
+                <div id="panelBody_apportionChart" class="hidden mt-4 pt-4 border-t border-slate-100">
+                    <div id="apportionChartBody"></div>
+                </div>
+            </div>
+
             <!-- Top Chair Controls & Event Configurator -->
             <div data-panel="chairConfig" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
                 <!-- 面板標題列（永遠顯示）：白話說明點開能做什麼，方便每年換屆的新主委 -->
@@ -6655,6 +6674,7 @@
         // ================= 各分區各社繳費狀況列表主渲染引擎 =================
 
         function renderDivisionPaymentSection() {
+            renderApportionChart(); // 分攤金模式的分區達成率圖表，與繳費總表同步重畫
             const section = document.getElementById('chairDivisionPaymentSection');
             if (!section) return;
 
@@ -6770,6 +6790,93 @@
             } else {
                 container.innerHTML = renderPaymentCardsViewHTML(records, isConf);
             }
+        }
+
+        // ================= 分攤金／配合款：各分區繳款達成率圖表 =================
+        // 橫條＝該分區「已繳社數 ÷ 分區社數」；淺色段＝執秘已回報匯款、等銀行入帳核對（還不算已繳）。
+        // 右側列出該分區尚未繳款的社名。資料來源與繳費總表相同（chairPaymentRecords[getActivePaymentKey()]）。
+        let apportionChartSort = 'division'; // 'division' 依分區順序｜'rate' 達成率低的排前面
+        function setApportionChartSort(mode) { apportionChartSort = mode; renderApportionChart(); }
+
+        function renderApportionChart() {
+            const section = document.getElementById('apportionChartSection');
+            const body = document.getElementById('apportionChartBody');
+            if (!section || !body) return;
+            const show = (currentRole === 'chair') && document.body.getAttribute('data-mode') === 'apportionment';
+            section.classList.toggle('hidden', !show);
+            if (!show) return;
+
+            const cat = categoriesData.find(c => c.id === currentCatId) || {};
+            const subName = (cat.subEvents && cat.subEvents[currentSubEventIndex]) || cat.name || '';
+            const badge = document.getElementById('apportionChartBadge');
+            if (badge) badge.innerText = subName;
+            const records = chairPaymentRecords[getActivePaymentKey()] || {};
+            const required = getApportionmentFee() || 0;
+            const shortName = n => String(n).replace(/扶輪社$/, '');
+
+            let tClubs = 0, tPaid = 0, tNotified = 0, tAmt = 0;
+            const rows = getPaymentDivisions().map(div => {
+                const paid = [], notified = [], unpaid = []; let amt = 0;
+                div.clubs.forEach(club => {
+                    const rec = records[club.name] || { status: 'UNPAID' };
+                    if (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT') { paid.push(club.name); amt += Number(rec.amount) || 0; }
+                    else if (rec.status === 'NOTIFIED') notified.push(club.name);
+                    else unpaid.push(club.name);
+                });
+                const total = div.clubs.length;
+                tClubs += total; tPaid += paid.length; tNotified += notified.length; tAmt += amt;
+                return { div, total, paid, notified, unpaid, amt, rate: total ? paid.length / total : 0 };
+            }).filter(r => r.total > 0);
+            const ordered = apportionChartSort === 'rate' ? rows.slice().sort((a, b) => a.rate - b.rate || a.div.id - b.div.id) : rows;
+            const pct = v => (v * 100).toFixed(v === 1 || v === 0 ? 0 : 1);
+            const overall = tClubs ? tPaid / tClubs : 0;
+            const doneDivs = rows.filter(r => r.paid.length === r.total).length;
+            const expected = required * tClubs;
+            const sortBtn = (mode, label) => `<button type="button" onclick="setApportionChartSort('${mode}')" class="px-2.5 py-1 text-xs font-bold rounded-md ${apportionChartSort === mode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:bg-white/60'}">${label}</button>`;
+            const tile = (label, value, sub) => `<div class="rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3"><div class="text-[11px] font-semibold text-slate-500">${label}</div><div class="text-lg sm:text-2xl font-black text-slate-900 mt-0.5 leading-tight">${value}</div><div class="text-[11px] text-slate-500 mt-0.5">${sub}</div></div>`;
+
+            let html = `
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+                    ${tile('全區達成率', `${pct(overall)}%`, `已繳 ${tPaid} / ${tClubs} 社`)}
+                    ${tile('尚未繳款', `${tClubs - tPaid} 社`, tNotified ? `其中 ${tNotified} 社已回報匯款、待核對` : '皆尚未回報匯款')}
+                    ${tile('實收金額', `NT$ ${tAmt.toLocaleString()}`, expected ? `應收 NT$ ${expected.toLocaleString()}（每社 ${required.toLocaleString()}）` : '尚未設定每社應繳金額')}
+                    ${tile('全數繳清的分區', `${doneDivs} / ${rows.length}`, doneDivs === rows.length ? '所有分區皆已繳清' : `還有 ${rows.length - doneDivs} 個分區未繳清`)}
+                </div>
+                <div class="flex flex-wrap items-center justify-between gap-2 mt-4">
+                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600">
+                        <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm" style="background:#4338CA"></span>已繳款</span>
+                        <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm" style="background:#A5B4FC"></span>執秘已回報匯款，待核對</span>
+                        <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm border border-slate-300" style="background:#E2E8F0"></span>尚未繳款</span>
+                    </div>
+                    <div class="inline-flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5" role="group" aria-label="排序方式">${sortBtn('division', '依分區順序')}${sortBtn('rate', '達成率低的在前')}</div>
+                </div>
+                <div class="mt-2 divide-y divide-slate-100 border-t border-slate-100">`;
+
+            ordered.forEach(r => {
+                const paidW = r.rate * 100, notiW = r.notified.length / r.total * 100;
+                const tip = `${r.div.name}：已繳 ${r.paid.length} 社、已回報待核對 ${r.notified.length} 社、未繳 ${r.unpaid.length} 社，分區實收 NT$ ${r.amt.toLocaleString()}`;
+                const chips = r.notified.map(n => `<span title="${escapeHtmlText(n)}：執秘已回報匯款，等待銀行入帳核對" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-indigo-200 bg-indigo-50 text-slate-800 text-[11px] font-semibold whitespace-nowrap">📨 ${escapeHtmlText(shortName(n))}<span class="text-slate-500 font-normal">已回報</span></span>`)
+                    .concat(r.unpaid.map(n => `<span title="${escapeHtmlText(n)}：尚未繳款" class="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-300 bg-white text-slate-800 text-[11px] font-semibold whitespace-nowrap">${escapeHtmlText(shortName(n))}</span>`)).join('');
+                html += `
+                    <div class="py-2.5 grid grid-cols-1 lg:grid-cols-12 gap-x-5 gap-y-1.5 items-center" data-apportion-row="${r.div.id}">
+                        <div class="lg:col-span-5 flex items-center gap-3 min-w-0" title="${escapeHtmlText(tip)}">
+                            <div class="w-[5.5rem] shrink-0 text-xs sm:text-sm font-bold text-slate-800 truncate">${escapeHtmlText(r.div.name)}</div>
+                            <div class="flex-1 h-3.5 rounded-full overflow-hidden flex" style="background:#E2E8F0" role="img" aria-label="${escapeHtmlText(tip)}">
+                                ${paidW > 0 ? `<div style="width:${paidW}%;background:#4338CA;${notiW > 0 ? 'border-right:2px solid #fff;' : ''}"></div>` : ''}
+                                ${notiW > 0 ? `<div style="width:${notiW}%;background:#A5B4FC"></div>` : ''}
+                            </div>
+                            <div class="w-[5.5rem] shrink-0 text-right leading-tight">
+                                <div class="text-sm font-black text-slate-900 tabular-nums">${pct(r.rate)}%</div>
+                                <div class="text-[10px] text-slate-500 tabular-nums">${r.paid.length} / ${r.total} 社</div>
+                            </div>
+                        </div>
+                        <div class="lg:col-span-7 flex flex-wrap items-center gap-1.5 min-w-0 pl-[6.25rem] lg:pl-0">
+                            ${chips ? `<span class="text-[11px] font-bold text-slate-500 shrink-0">未繳 ${r.notified.length + r.unpaid.length} 社：</span>${chips}` : `<span class="text-[11px] font-bold text-slate-600">✓ 本分區全數繳清</span>`}
+                        </div>
+                    </div>`;
+            });
+            html += `</div>`;
+            body.innerHTML = html;
         }
 
         // 表格視圖生成 HTML
@@ -8600,7 +8707,8 @@
             document.querySelectorAll('[data-panel]').forEach(el => {
                 let saved = null;
                 try { saved = localStorage.getItem(PANEL_STATE_PREFIX + el.dataset.panel); } catch (e) { saved = null; }
-                togglePanel(el.dataset.panel, saved === '1');
+                // data-panel-default="open" 的面板：使用者沒動過時預設展開
+                togglePanel(el.dataset.panel, saved === '1' || (saved === null && el.dataset.panelDefault === 'open'));
             });
         }
 
