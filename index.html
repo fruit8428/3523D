@@ -431,6 +431,25 @@
         </div>
 
         <!-- ================= VIEW 1: SECRETARY WORKSPACE (執秘端) ================= -->
+            <!-- 分攤金／配合款：各分區繳款達成率圖表（只在分攤金模式、主委或最高管理員顯示；預設展開；刻意放在執秘報名表上方，登入後不用往下捲就看得到） -->
+            <div data-panel="apportionChart" data-panel-default="open" id="apportionChartSection" class="hidden bg-white rounded-xl shadow-sm border-2 border-indigo-200/90 p-4 sm:p-5 mb-5">
+                <button type="button" onclick="togglePanel('apportionChart')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_apportionChart">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">📊</div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">各分區繳款達成率 <span id="apportionChartBadge" class="ml-1 text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded-full align-middle"></span></div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>一眼看出每個分區已經有幾成的社繳款，以及各分區還沒繳款的是哪幾個社。資料與下方「各分區各社繳費狀況即時總表」同步。</p>
+                        </div>
+                    </div>
+                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
+                        <span id="panelToggleText_apportionChart">展開</span><span id="panelChevron_apportionChart" class="inline-block transition-transform duration-200">▼</span>
+                    </span>
+                </button>
+                <div id="panelBody_apportionChart" class="hidden mt-4 pt-4 border-t border-slate-100">
+                    <div id="apportionChartBody"></div>
+                </div>
+            </div>
+
         <section id="viewSecretary" class="space-y-5">
             <!-- Secretary Quick Bar & Club Selector -->
             <div class="bg-blue-50 border border-blue-200 rounded-xl p-3.5 sm:p-4 text-blue-900 text-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
@@ -904,25 +923,6 @@
                     <span class="text-xs font-semibold text-slate-500" id="kpiFourthCardTitle">全場高爾夫差點</span>
                     <div class="text-lg sm:text-xl font-bold text-blue-600 mt-1" id="kpiGolfSummary">--</div>
                     <span class="text-[10px] text-slate-400" id="kpiGolfSub">選手差點即時計算</span>
-                </div>
-            </div>
-
-            <!-- 分攤金／配合款：各分區繳款達成率圖表（只在分攤金模式、主委身分顯示；預設展開） -->
-            <div data-panel="apportionChart" data-panel-default="open" id="apportionChartSection" class="hidden bg-white rounded-xl shadow-sm border-2 border-indigo-200/90 p-4 sm:p-5">
-                <button type="button" onclick="togglePanel('apportionChart')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_apportionChart">
-                    <div class="flex items-start gap-3 min-w-0">
-                        <div class="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">📊</div>
-                        <div class="min-w-0">
-                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">各分區繳款達成率 <span id="apportionChartBadge" class="ml-1 text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded-full align-middle"></span></div>
-                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>一眼看出每個分區已經有幾成的社繳款，以及各分區還沒繳款的是哪幾個社。資料與下方「各分區各社繳費狀況即時總表」同步。</p>
-                        </div>
-                    </div>
-                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
-                        <span id="panelToggleText_apportionChart">展開</span><span id="panelChevron_apportionChart" class="inline-block transition-transform duration-200">▼</span>
-                    </span>
-                </button>
-                <div id="panelBody_apportionChart" class="hidden mt-4 pt-4 border-t border-slate-100">
-                    <div id="apportionChartBody"></div>
                 </div>
             </div>
 
@@ -6681,7 +6681,7 @@
             // 依附圖45指示：如果是運動賽事,因為不需要，就不用顯示
             const isSports = isCurrentEventSports();
             const showFee = isSports || isAnniversaryMode();
-            const shouldShow = (currentRole === 'chair') && !isSports;
+            const shouldShow = (currentRole === 'chair' || currentRole === 'super_admin') && !isSports; // 最高管理員也要看得到繳費總表
             section.classList.toggle('hidden', !shouldShow);
             if (!shouldShow) return;
 
@@ -6802,7 +6802,7 @@
             const section = document.getElementById('apportionChartSection');
             const body = document.getElementById('apportionChartBody');
             if (!section || !body) return;
-            const show = (currentRole === 'chair') && document.body.getAttribute('data-mode') === 'apportionment';
+            const show = !!loggedInUser && (currentRole === 'chair' || currentRole === 'super_admin') && document.body.getAttribute('data-mode') === 'apportionment';
             section.classList.toggle('hidden', !show);
             if (!show) return;
 

@@ -154,7 +154,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - `isCurrentEventSports()` / `isCurrentEventGolf()`：運動賽事顯示差點欄位與參賽/用餐費用，高爾夫另有平均差點計算。
 - 「地辦分攤金」類活動是以**名稱**判斷，不是用 id：大類名稱或**目前選到的子活動**名稱包含 `分攤金` 或 `配合款` 即視為分攤金模式（判斷式在 `applyCurrentEventMode`、`updateTotalFeeSummaryDisplay`、`submitRegistration` 各出現一次，修改時要三處一起改）。只看「目前子活動」是刻意的：地區年會底下同時有「大會」「晚宴」與「年會分攤金」，若看整個大類會把大會、晚宴也誤判成分攤金而隱藏報名表。`applyCurrentEventMode()` 在 `loadCategoryView` 與 `changeSubEvent` 都會呼叫，切換子活動時模式會重算。
 - `DEFAULT_CATEGORIES`（全新資料庫的初始主選單）含「地辦分攤金/配合款」「社慶」與年會的「3.地區年會分攤金」（2026-11-12 補上，比照 3523 後台手動新增的內容；3523 既有資料的 id 是 `custom_…`，不受影響）。社慶模式同樣以名稱含「社慶」判斷，每個社慶是一個子活動、主辦社指派為該子活動主委。
-- 分攤金模式的主委後台多一張「各分區繳款達成率」面板（`#apportionChartSection`，`renderApportionChart()`，由 `renderDivisionPaymentSection()` 開頭呼叫，所以繳費表任何異動都會同步）：純 HTML/CSS 橫條（不用 Chart.js），每分區一列＝已繳社數比例＋已回報待核對（淺色段）＋未繳社名；只在 `currentRole === 'chair'` 且 `data-mode === 'apportionment'` 顯示。面板加 `data-panel-default="open"` 表示使用者沒動過時預設展開（`initCollapsiblePanels`）。
+- 分攤金模式的主委後台多一張「各分區繳款達成率」面板（`#apportionChartSection`，`renderApportionChart()`，由 `renderDivisionPaymentSection()` 開頭呼叫，所以繳費表任何異動都會同步）：純 HTML/CSS 橫條（不用 Chart.js），每分區一列＝已繳社數比例＋已回報待核對（淺色段）＋未繳社名；主委與最高管理員在 `data-mode === 'apportionment'` 時顯示；HTML 放在 `#viewSecretary` **上方**（不在 `viewChair` 裡），因為主委後台排在執秘報名表下面、要捲很遠才看得到。繳費總表同樣開放給最高管理員。面板加 `data-panel-default="open"` 表示使用者沒動過時預設展開（`initCollapsiblePanels`）。
 - `cat.allowSponsors` 控制贊助社/協辦社區塊；`cat.allowAddSubEvents === false`（RYLA、End Polio）則隱藏子活動增刪按鈕。
 
 ### UI 慣例
