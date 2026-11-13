@@ -683,6 +683,8 @@
                                 </table>
                             </div>
                         </div>
+                        <!-- 社長當選人研討會（PELS）：每位報名者的出席方式與旅平險資料 -->
+                        <div id="pelsDetailBox" class="hidden mb-4"></div>
                     </div>
 
                     <!-- Submit Action Area -->
@@ -997,6 +999,30 @@
                     </div>
                 </div>
 
+                <!-- 社長當選人研討會（PELS）：依出席方式收費，取代「每社應繳金額」 -->
+                <div id="chairPelsFeeInputs" class="hidden mt-3 pt-3 border-t border-dashed border-slate-200">
+                    <div class="text-xs font-bold text-slate-800 mb-2">🏨 依出席方式收費（本活動不使用「每社應繳金額」，各社應繳＝報名者費用加總）</div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="bg-blue-50/70 p-2.5 rounded-lg border border-blue-200">
+                            <label for="cfgFeePelsShared" class="block text-xs font-bold text-blue-900 mb-1">1. 本人單獨出席－2人1房：每人應繳費用 (NT$)</label>
+                            <input type="number" id="cfgFeePelsShared" min="0" step="100" class="w-full bg-white border border-blue-300 rounded p-1.5 text-xs font-bold text-slate-800 focus:ring-1 focus:ring-blue-500">
+                        </div>
+                        <div class="bg-blue-50/70 p-2.5 rounded-lg border border-blue-200">
+                            <label for="cfgFeePelsFamily" class="block text-xs font-bold text-blue-900 mb-1">2. 本人與眷屬共同出席－2人房：應繳費用 (NT$)</label>
+                            <input type="number" id="cfgFeePelsFamily" min="0" step="100" class="w-full bg-white border border-blue-300 rounded p-1.5 text-xs font-bold text-slate-800 focus:ring-1 focus:ring-blue-500">
+                        </div>
+                        <div class="bg-blue-50/70 p-2.5 rounded-lg border border-blue-200">
+                            <label for="cfgFeePelsSingle" class="block text-xs font-bold text-blue-900 mb-1">3. 本人單獨出席－指定住單人房：應繳費用 (NT$)</label>
+                            <input type="number" id="cfgFeePelsSingle" min="0" step="100" class="w-full bg-white border border-blue-300 rounded p-1.5 text-xs font-bold text-slate-800 focus:ring-1 focus:ring-blue-500">
+                        </div>
+                        <div class="bg-amber-50/70 p-2.5 rounded-lg border border-amber-200">
+                            <label for="cfgFeePelsAbsent" class="block text-xs font-bold text-amber-900 mb-1">4. 不克參加（需補課）請假理由：應繳費用 (NT$)</label>
+                            <input type="number" id="cfgFeePelsAbsent" min="0" step="100" class="w-full bg-white border border-amber-300 rounded p-1.5 text-xs font-bold text-slate-800 focus:ring-1 focus:ring-amber-500">
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-slate-500 mt-1.5">修改後請按上方「儲存設定」。報名者另須填寫旅平險資料（姓名、身分證字號、民國出生年月日、手機），個資不會顯示在報名名冊，只能在下方「旅平險名單」以個資檢視密碼匯出。</p>
+                </div>
+
                 <!-- Participant Fee Settings (參賽/只用餐費用設定 - 金額由主委設定) -->
                 <div id="chairParticipantFeeInputs" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 pt-3 border-t border-dashed border-slate-200">
                     <div class="bg-blue-50/70 p-2.5 rounded-lg border border-blue-200">
@@ -1265,6 +1291,25 @@
                     <!-- Populated dynamically by JS -->
                 </div>
                 </div><!-- /panelBody -->
+            </div>
+
+            <!-- 社長當選人研討會（PELS）：出席方式總覽與旅平險名單 -->
+            <div data-panel="pelsInsurance" data-panel-default="open" id="pelsInsuranceSection" class="hidden bg-white rounded-xl shadow-sm border-2 border-blue-200/90 p-4 sm:p-5">
+                <button type="button" onclick="togglePanel('pelsInsurance')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_pelsInsurance">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">🛡️</div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">出席方式總覽與旅平險名單</div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>查看各社報名者選的出席方式（2人1房／攜眷／單人房／不克參加）、費用與請假理由，並以「個資檢視密碼」匯出投保用的旅平險名單（身分證字號、生日、手機）。</p>
+                        </div>
+                    </div>
+                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
+                        <span id="panelToggleText_pelsInsurance">展開</span><span id="panelChevron_pelsInsurance" class="inline-block transition-transform duration-200">▼</span>
+                    </span>
+                </button>
+                <div id="panelBody_pelsInsurance" class="hidden mt-4 pt-4 border-t border-slate-100">
+                    <div id="pelsInsuranceBody"></div>
+                </div>
             </div>
 
             <!-- Detailed Club Registration Table in Chair View -->
@@ -2163,7 +2208,7 @@
                 subEvents: [
                     '1. 獎助金管理研討會 (GMS)',
                     '2. 地區團隊學習研討會 (DTLS)',
-                    '3. 社長當選人訓練研討會 (PETS)',
+                    '3. 社長當選人學習研討會 (PELS)',
                     '4. 地區訓練講習會 (DTA)',
                     '5. 社訓練師訓練研討會 (CTTS)',
                     '6. 地區扶輪基金會研討會 (DRFS)',
@@ -2758,6 +2803,7 @@
             if (typeof renderEventDMList === 'function') renderEventDMList(); // 活動 DM 清單依子活動與角色重新渲染
             if (typeof renderRemitInfoBox === 'function') renderRemitInfoBox(); // 執秘端匯款資訊
             if (typeof renderChairBankMailSection === 'function') renderChairBankMailSection(); // 主委端帳號／信箱／入帳紀錄
+            if (typeof renderPelsInsuranceSection === 'function') renderPelsInsuranceSection(); // 社長當選人研討會：出席方式總覽與旅平險名單
             // 主選單與子活動的增刪只開放給最高管理員（活動主委、執秘都看不到）
             const isAdmin = (currentRole === 'super_admin');
             const cat = categoriesData.find(c => c.id === currentCatId);
@@ -3018,6 +3064,8 @@
         // 取得社友出席費用 (參賽 預設1200 / 只用餐 預設1000，由主委設定)
         function getMemberFee(m) {
             if (!m) return 0;
+            // 社長當選人研討會：依每位報名者選的出席方式收費
+            if (isPelsMode()) return getPelsFee(m.pelsOption || 'SHARED');
             // 社慶模式：每位出席社友一律帶入主委後台設定的「社慶餐費」
             if (isAnniversaryMode()) {
                 return getAnnivMealFee();
@@ -3060,14 +3108,14 @@
         // 即時更新報名表底部費用統計與應繳總計 (出席費用 + 贊助金額)
         function updateTotalFeeSummaryDisplay() {
             const isSports = isCurrentEventSports();
-            const showFee = isSports || isAnniversaryMode();
+            const showFee = isSports || isAnniversaryMode() || isPelsMode();
             const totalParticipantFee = showFee ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             const sponsorInfo = getCurrentSponsorshipInfo();
             
             const cat = categoriesData.find(c => c.id === currentCatId);
             const subEventName = (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : '';
             const isApportionment = cat && ((cat.name && (cat.name.includes('分攤金') || cat.name.includes('配合款'))) || (subEventName.includes('分攤金') || subEventName.includes('配合款')));
-            const isSeminar = cat && !cat.allowSponsors && !isApportionment;
+            const isSeminar = cat && !cat.allowSponsors && !isApportionment && !isPelsMode(); // PELS 依出席方式收費，不是每社固定金額
             
             const appBox = document.getElementById('apportionmentInputBox');
             if (appBox) {
@@ -3325,7 +3373,8 @@
         function renderSelectedMembersTable() {
             const isGolf = isCurrentEventGolf();
             const isSports = isCurrentEventSports();
-            const showFee = isSports || isAnniversaryMode();
+            const showFee = isSports || isAnniversaryMode() || isPelsMode();
+            renderPelsDetailBox();
 
             const thPart = document.getElementById('thParticipation');
             if (thPart) thPart.classList.toggle('hidden', !isSports);
@@ -3536,10 +3585,293 @@
             setInput('cfgFeeOrganizer', getOrganizerFee());
             setInput('cfgFeeSponsor', getSponsorFee());
             setInput('cfgFeeApportionment', getApportionmentFee());
+            PELS_OPTIONS.forEach(o => setInput(o.cfgId, getPelsFee(o.id)));
             setText('feeFlowerText', getFlowerFee());
             setText('feeCoHostText', getCoHostFee());
             setText('feeOrganizerText', getOrganizerFee());
             setText('feeSponsorText', getSponsorFee());
+        }
+
+        // ================= 社長當選人研討會（PELS）：依出席方式收費＋旅平險個資 =================
+        // 以「子活動名稱含 PELS 或 社長當選人」判斷（與分攤金、社慶一樣靠名稱）。
+        // 這個活動不用「每社應繳金額」，改成每位報名者選一種出席方式，各有主委設定的費用（subEventFees 的 feePels*）。
+        // 旅平險個資（身分證字號、民國生日、手機）**絕對不可以放進 registrationOrders／app_storage**（那是公開可讀的），
+        // 只透過 Supabase 函式寫進 insured_persons 表（supabase/sql/insured_persons.sql），報名資料裡只留 insuranceFilled 這種「已填」旗標。
+        const PELS_OPTIONS = [
+            { id: 'SHARED', feeKey: 'feePelsShared', cfgId: 'cfgFeePelsShared', label: '本人單獨出席－2人1房', short: '2人1房' },
+            { id: 'FAMILY', feeKey: 'feePelsFamily', cfgId: 'cfgFeePelsFamily', label: '本人與眷屬共同出席－2人房', short: '攜眷2人房' },
+            { id: 'SINGLE', feeKey: 'feePelsSingle', cfgId: 'cfgFeePelsSingle', label: '本人單獨出席－指定住單人房', short: '單人房' },
+            { id: 'ABSENT', feeKey: 'feePelsAbsent', cfgId: 'cfgFeePelsAbsent', label: '不克參加（需補課）', short: '不克參加' }
+        ];
+        function isPelsSubEventName(name) { return /PELS|社長當選人/i.test(String(name || '')); }
+        function isPelsMode() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            return !!cat && isPelsSubEventName((cat.subEvents || [])[currentSubEventIndex]);
+        }
+        function getPelsFee(optId) {
+            const o = PELS_OPTIONS.find(x => x.id === optId) || PELS_OPTIONS[0];
+            return getSubEventFee(o.feeKey, 0);
+        }
+        function pelsOptionLabel(optId) { return (PELS_OPTIONS.find(x => x.id === optId) || PELS_OPTIONS[0]).label; }
+        function pelsMemberKey(m) { return `${m.name || ''}|${m.nickname || ''}`; }
+        // 某社在「目前活動」繳費表上的應繳金額：PELS＝該社報名表總計，其餘＝主委設定的每社應繳金額
+        function getClubRequiredAmount(clubName) {
+            if (!isPelsMode()) return getApportionmentFee();
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const sub = cat.subEvents[currentSubEventIndex];
+            const order = ((registrationOrders || {})[sub] || []).find(o => o.clubName === clubName);
+            return order ? (Number(order.grandTotal) || 0) : 0;
+        }
+
+        // 執秘正在輸入、尚未送出的個資：只存在這個分頁的記憶體，不寫入任何公開資料
+        let pelsPrivateDraft = {};
+        function pelsDraftOf(m) { const k = pelsMemberKey(m); if (!pelsPrivateDraft[k]) pelsPrivateDraft[k] = {}; return pelsPrivateDraft[k]; }
+        function setPelsOption(idx, optId) {
+            const m = currentFormSelectedMembers[idx]; if (!m) return;
+            m.pelsOption = optId;
+            renderSelectedMembersTable(); // 會重畫費用、合計與本區塊
+            updateLinePreviewText();
+        }
+        function setPelsReason(idx, val) { const m = currentFormSelectedMembers[idx]; if (m) m.pelsLeaveReason = val; }
+        function setPelsField(idx, field, val) { const m = currentFormSelectedMembers[idx]; if (m) pelsDraftOf(m)[field] = String(val || '').trim(); }
+        function reenterPelsInsurance(idx, who) {
+            const m = currentFormSelectedMembers[idx]; if (!m) return;
+            if (who === 'family') m.insuranceFamilyFilled = false; else m.insuranceFilled = false;
+            renderPelsDetailBox();
+        }
+
+        function renderPelsDetailBox() {
+            const box = document.getElementById('pelsDetailBox');
+            if (!box) return;
+            const on = isPelsMode() && currentFormSelectedMembers.length > 0;
+            box.classList.toggle('hidden', !on);
+            if (!on) { box.innerHTML = ''; return; }
+            const E = escapeHtmlText;
+            const inputCls = 'w-full bg-white border border-slate-300 rounded p-1.5 text-xs focus:ring-1 focus:ring-blue-500';
+            const personFields = (idx, prefix, who, d, withName) => `
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1.5">
+                    ${withName ? `<label class="block col-span-2 sm:col-span-1"><span class="text-[11px] text-slate-600 font-semibold">眷屬姓名</span><input type="text" autocomplete="off" value="${E(d[prefix + 'Name'] || '')}" oninput="setPelsField(${idx}, '${prefix}Name', this.value)" class="${inputCls}"></label>` : ''}
+                    <label class="block ${withName ? '' : 'col-span-2 sm:col-span-1'}"><span class="text-[11px] text-slate-600 font-semibold">身分證字號</span><input type="text" autocomplete="off" maxlength="10" placeholder="A123456789" value="${E(d[prefix + 'Id'] || '')}" oninput="setPelsField(${idx}, '${prefix}Id', this.value)" class="${inputCls} font-mono uppercase"></label>
+                    <div class="block"><span class="text-[11px] text-slate-600 font-semibold">出生年月日（民國）</span>
+                        <div class="flex items-center gap-1">
+                            <input type="number" inputmode="numeric" min="1" max="150" placeholder="年" aria-label="${who}出生年（民國）" value="${E(d[prefix + 'By'] || '')}" oninput="setPelsField(${idx}, '${prefix}By', this.value)" class="${inputCls} text-center px-0.5">
+                            <input type="number" inputmode="numeric" min="1" max="12" placeholder="月" aria-label="${who}出生月" value="${E(d[prefix + 'Bm'] || '')}" oninput="setPelsField(${idx}, '${prefix}Bm', this.value)" class="${inputCls} text-center px-0.5">
+                            <input type="number" inputmode="numeric" min="1" max="31" placeholder="日" aria-label="${who}出生日" value="${E(d[prefix + 'Bd'] || '')}" oninput="setPelsField(${idx}, '${prefix}Bd', this.value)" class="${inputCls} text-center px-0.5">
+                        </div></div>
+                    <label class="block"><span class="text-[11px] text-slate-600 font-semibold">手機號碼</span><input type="tel" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="0912345678" value="${E(d[prefix + 'Phone'] || '')}" oninput="setPelsField(${idx}, '${prefix}Phone', this.value)" class="${inputCls} font-mono"></label>
+                </div>`;
+            const filledNote = (idx, who, label) => `<div class="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded p-2"><span>✅ ${label}的旅平險資料已送出（為保護個資，不再顯示內容）</span><button type="button" onclick="reenterPelsInsurance(${idx}, '${who}')" class="px-2 py-0.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded font-bold">重新填寫</button></div>`;
+            box.innerHTML = `
+                <div class="p-3 sm:p-3.5 bg-blue-50/60 border border-blue-200 rounded-xl">
+                    <h4 class="text-xs font-bold text-blue-900 flex items-center gap-1.5">🏨 出席方式與旅平險資料 <span class="font-normal text-slate-600">（每位報名者都要填）</span></h4>
+                    <p class="text-[11px] text-slate-600 mt-0.5">＊個資僅用於旅平險。身分證字號、生日與手機另外加密保存，不會出現在報名名冊，也不會顯示給其他社。</p>
+                    <div class="space-y-2.5 mt-2.5">
+                    ${currentFormSelectedMembers.map((m, idx) => {
+                        const opt = m.pelsOption || 'SHARED';
+                        const d = pelsDraftOf(m);
+                        const absent = opt === 'ABSENT';
+                        return `
+                        <div class="bg-white border border-slate-200 rounded-lg p-2.5" data-pels-card="${idx}">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="text-sm font-bold text-slate-900">${E(m.name || '')}<span class="ml-1.5 text-[11px] font-semibold text-slate-500">${E(m.role || '')}${m.nickname ? '・' + E(m.nickname) : ''}</span></div>
+                                <div class="text-xs font-bold text-slate-700">費用：<span class="font-mono text-blue-700">NT$ ${getPelsFee(opt).toLocaleString()}</span></div>
+                            </div>
+                            <label class="block mt-1.5"><span class="text-[11px] text-slate-600 font-semibold">出席方式</span>
+                                <select onchange="setPelsOption(${idx}, this.value)" class="${inputCls} font-bold">
+                                    ${PELS_OPTIONS.map((o, i) => `<option value="${o.id}" ${o.id === opt ? 'selected' : ''}>${i + 1}. ${o.label}（NT$ ${getPelsFee(o.id).toLocaleString()}）</option>`).join('')}
+                                </select></label>
+                            ${absent ? `
+                                <label class="block mt-1.5"><span class="text-[11px] text-amber-800 font-bold">請假理由（必填，需另行補課）</span>
+                                    <input type="text" maxlength="100" value="${E(m.pelsLeaveReason || '')}" oninput="setPelsReason(${idx}, this.value)" placeholder="例如：出國洽公" class="${inputCls} border-amber-300"></label>
+                                <p class="text-[10px] text-slate-500 mt-1">不克參加者不需填寫旅平險資料。</p>` : `
+                                <div class="mt-2 text-[11px] font-bold text-slate-700">本人（${E(m.name || '')}）</div>
+                                ${m.insuranceFilled ? filledNote(idx, 'self', '本人') : personFields(idx, 'self', '本人', d, false)}
+                                ${opt === 'FAMILY' ? `
+                                    <div class="mt-2.5 text-[11px] font-bold text-slate-700">眷屬</div>
+                                    ${m.insuranceFamilyFilled ? filledNote(idx, 'family', '眷屬') : personFields(idx, 'fam', '眷屬', d, true)}` : ''}`}
+                        </div>`;
+                    }).join('')}
+                    </div>
+                </div>`;
+        }
+
+        // 身分證字號檢查：本國身分證做檢查碼驗證；新式居留證（第二碼 8、9）與舊式居留證（第二碼 A–D）只檢查格式
+        function isValidTwId(id) {
+            id = String(id || '').toUpperCase();
+            if (/^[A-Z][A-D89]\d{8}$/.test(id)) return true;
+            if (!/^[A-Z][12]\d{8}$/.test(id)) return false;
+            const code = 'ABCDEFGHJKLMNPQRSTUVXYWZIO'.indexOf(id[0]) + 10;
+            let sum = Math.floor(code / 10) + (code % 10) * 9;
+            for (let i = 1; i <= 8; i++) sum += Number(id[i]) * (9 - i);
+            return (sum + Number(id[9])) % 10 === 0;
+        }
+        function pelsBirthStr(y, m, d) {
+            const yy = Number(y), mm = Number(m), dd = Number(d);
+            if (!Number.isInteger(yy) || !Number.isInteger(mm) || !Number.isInteger(dd) || yy < 1 || mm < 1 || mm > 12 || dd < 1) return null;
+            const dt = new Date(Date.UTC(yy + 1911, mm - 1, dd));
+            if (dt.getUTCMonth() !== mm - 1 || dt.getUTCDate() !== dd) return null;           // 例如 2/30
+            if (dt.getTime() > Date.now()) return null;                                        // 未來日期
+            return `${String(yy).padStart(3, '0')}/${String(mm).padStart(2, '0')}/${String(dd).padStart(2, '0')}`;
+        }
+        function pelsPersonError(d, prefix, who) {
+            if (!isValidTwId(d[prefix + 'Id'])) return `${who}的身分證字號格式不正確（1 個英文字母＋9 個數字）。`;
+            if (!pelsBirthStr(d[prefix + 'By'], d[prefix + 'Bm'], d[prefix + 'Bd'])) return `${who}的出生年月日不正確，請填民國年（例如 65 年 3 月 9 日）。`;
+            if (!/^09\d{8}$/.test(String(d[prefix + 'Phone'] || '').replace(/[\s-]/g, ''))) return `${who}的手機號碼請填 09 開頭共 10 碼。`;
+            return '';
+        }
+        function validatePelsForm() {
+            for (const m of currentFormSelectedMembers) {
+                const opt = m.pelsOption || 'SHARED';
+                m.pelsOption = opt;
+                const d = pelsDraftOf(m);
+                if (opt === 'ABSENT') {
+                    if (!String(m.pelsLeaveReason || '').trim()) return `${m.name}：選擇「不克參加」請填寫請假理由。`;
+                    continue;
+                }
+                if (!m.insuranceFilled) { const e = pelsPersonError(d, 'self', `${m.name} 本人`); if (e) return e; }
+                if (opt === 'FAMILY' && !m.insuranceFamilyFilled) {
+                    if (!String(d.famName || '').trim()) return `${m.name}：請填寫眷屬姓名。`;
+                    const e = pelsPersonError(d, 'fam', `${m.name} 的眷屬`); if (e) return e;
+                }
+            }
+            return '';
+        }
+        // 把本次新填的個資寫進受保護的資料表；成功回傳 ''，失敗回傳給使用者看的訊息
+        async function savePelsInsurance() {
+            if (!supabaseClient) return '目前無法連線雲端。旅平險資料含身分證字號，不能只存在這台裝置，請連上網路後再送出。';
+            const rows = [], keep = [];
+            const phone = v => String(v || '').replace(/[\s-]/g, '');
+            currentFormSelectedMembers.forEach(m => {
+                const opt = m.pelsOption || 'SHARED', k = pelsMemberKey(m), d = pelsDraftOf(m);
+                if (opt === 'ABSENT') return;
+                keep.push(`${k}|self`);
+                if (!m.insuranceFilled) rows.push({ member_key: k, person_role: 'self', full_name: m.name, id_no: String(d.selfId).toUpperCase(), birth_roc: pelsBirthStr(d.selfBy, d.selfBm, d.selfBd), phone: phone(d.selfPhone), attend_option: opt });
+                if (opt === 'FAMILY') {
+                    keep.push(`${k}|family`);
+                    if (!m.insuranceFamilyFilled) rows.push({ member_key: k, person_role: 'family', full_name: String(d.famName).trim(), id_no: String(d.famId).toUpperCase(), birth_roc: pelsBirthStr(d.famBy, d.famBm, d.famBd), phone: phone(d.famPhone), attend_option: opt });
+                }
+            });
+            try {
+                const { error } = await supabaseClient.rpc('save_insured_persons', { p_event_key: getActivePaymentKey(), p_club: selectedClubName, p_rows: rows, p_keep: keep });
+                if (error) {
+                    if (/could not find the function|schema cache|does not exist/i.test(error.message || '')) return '雲端尚未建立「旅平險個資保存空間」，請最高管理員依 README 執行 supabase/sql/insured_persons.sql 後再送出。';
+                    return error.message || '未知錯誤';
+                }
+            } catch (e) { return (e && e.message) || '網路連線失敗'; }
+            // 已安全保存：報名資料只記「已填」，並清掉記憶體中的個資
+            currentFormSelectedMembers.forEach(m => {
+                const opt = m.pelsOption || 'SHARED';
+                m.insuranceFilled = opt !== 'ABSENT';
+                m.insuranceFamilyFilled = opt === 'FAMILY';
+                if (opt !== 'ABSENT') delete m.pelsLeaveReason;
+                delete pelsPrivateDraft[pelsMemberKey(m)];
+            });
+            return '';
+        }
+
+        // ---------- 主委端：出席方式總覽與旅平險名單 ----------
+        function renderPelsInsuranceSection() {
+            const section = document.getElementById('pelsInsuranceSection');
+            const body = document.getElementById('pelsInsuranceBody');
+            if (!section || !body) return;
+            const show = !!loggedInUser && (currentRole === 'chair' || currentRole === 'super_admin') && isPelsMode();
+            section.classList.toggle('hidden', !show);
+            if (!show) return;
+            const E = escapeHtmlText;
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const orders = registrationOrders[cat.subEvents[currentSubEventIndex]] || [];
+            const counts = {}; PELS_OPTIONS.forEach(o => counts[o.id] = 0);
+            let total = 0, missing = 0;
+            const rowsHtml = orders.flatMap(o => (o.items || []).map(it => {
+                const opt = it.pelsOption || 'SHARED';
+                counts[opt]++; total += Number(it.fee) || 0;
+                const need = opt !== 'ABSENT';
+                const ok = need ? (it.insuranceFilled && (opt !== 'FAMILY' || it.insuranceFamilyFilled)) : true;
+                if (!ok) missing++;
+                return `<tr class="border-t border-slate-100">
+                    <td class="p-1.5 font-bold whitespace-nowrap">${E(o.clubName)}</td>
+                    <td class="p-1.5 whitespace-nowrap">${E(it.name || '')}<span class="text-slate-400 ml-1">${E(it.role || '')}</span></td>
+                    <td class="p-1.5">${E(pelsOptionLabel(opt))}${opt === 'ABSENT' && it.pelsLeaveReason ? `<div class="text-[10px] text-amber-800">請假理由：${E(it.pelsLeaveReason)}</div>` : ''}</td>
+                    <td class="p-1.5 font-mono text-right whitespace-nowrap">NT$ ${(Number(it.fee) || 0).toLocaleString()}</td>
+                    <td class="p-1.5 whitespace-nowrap">${!need ? '<span class="text-slate-400">不需投保</span>' : ok ? '<span class="font-bold text-emerald-700">✅ 已填</span>' : '<span class="font-bold text-rose-700">⚠️ 未填</span>'}</td>
+                </tr>`;
+            })).join('');
+            body.innerHTML = `
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-2">
+                    ${PELS_OPTIONS.map(o => `<div class="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2"><div class="text-[11px] font-semibold text-slate-500">${o.short}</div><div class="text-lg font-black text-slate-900">${counts[o.id]} 人</div><div class="text-[10px] text-slate-500">每筆 NT$ ${getPelsFee(o.id).toLocaleString()}</div></div>`).join('')}
+                    <div class="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2"><div class="text-[11px] font-semibold text-slate-500">應收合計</div><div class="text-lg font-black text-slate-900">NT$ ${total.toLocaleString()}</div><div class="text-[10px] text-slate-500">${orders.length} 社已報名</div></div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 mt-3">
+                    <button type="button" onclick="exportPelsInsuranceExcel()" class="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition">🛡️ 匯出旅平險名單 (Excel)</button>
+                    <button type="button" onclick="changePiiViewPassword()" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold">🔑 設定／變更個資檢視密碼</button>
+                    <button type="button" onclick="deletePelsInsuranceData()" class="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold">🗑️ 活動結束：刪除本活動全部個資</button>
+                </div>
+                <p class="text-[10px] text-slate-500 mt-1.5">身分證字號、生日、手機不會顯示在畫面上，只能用「個資檢視密碼」匯出成 Excel 交給保險公司。這組密碼與登入密碼不同，請只告訴需要辦理保險的人；投保完成後請刪除個資並妥善處理匯出的檔案。${missing ? `<b class="text-rose-700">目前有 ${missing} 位尚未填寫保險資料。</b>` : ''}</p>
+                <div class="overflow-x-auto mt-3">
+                    ${orders.length === 0 ? '<div class="text-[11px] text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-lg p-3 text-center">目前尚無任何扶輪社送出報名表</div>' : `
+                    <table class="w-full text-[11px] min-w-[560px]">
+                        <thead><tr class="bg-slate-50 text-slate-600 text-left"><th class="p-1.5">社別</th><th class="p-1.5">報名者</th><th class="p-1.5">出席方式</th><th class="p-1.5 text-right">費用</th><th class="p-1.5">旅平險資料</th></tr></thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>`}
+                </div>`;
+        }
+        function piiErrorText(error) {
+            const msg = (error && error.message) || '';
+            if (/PII_PASSWORD_NOT_SET/.test(msg)) return '尚未設定個資檢視密碼，請先按「設定／變更個資檢視密碼」。';
+            if (/PII_PASSWORD_WRONG/.test(msg)) return '個資檢視密碼不正確。';
+            if (/PII_PASSWORD_TOO_SHORT/.test(msg)) return '新密碼至少要 8 個字。';
+            if (/could not find the function|schema cache|does not exist/i.test(msg)) return '雲端尚未建立「旅平險個資保存空間」，請最高管理員依 README 執行 supabase/sql/insured_persons.sql。';
+            return msg || '未知錯誤';
+        }
+        function pelsChairGuard() {
+            if (currentRole !== 'chair' && currentRole !== 'super_admin') { alert('⚠️ 權限限制：只有活動主委或最高管理員可以操作旅平險名單。'); return false; }
+            if (!supabaseClient) { alert('❌ 目前無法連線雲端。'); return false; }
+            return true;
+        }
+        async function changePiiViewPassword() {
+            if (!pelsChairGuard()) return;
+            const { data: isSet, error: e0 } = await supabaseClient.rpc('pii_password_is_set');
+            if (e0) { alert('❌ ' + piiErrorText(e0)); return; }
+            let oldPwd = null;
+            if (isSet) { oldPwd = prompt('請輸入「目前的」個資檢視密碼：'); if (oldPwd === null) return; }
+            const p1 = prompt(isSet ? '請輸入「新的」個資檢視密碼（至少 8 個字）：' : '第一次使用，請設定個資檢視密碼（至少 8 個字）。\n這組密碼用來匯出身分證字號等個資，請勿與登入密碼相同：');
+            if (p1 === null) return;
+            if (p1.length < 8) { alert('密碼至少要 8 個字。'); return; }
+            const p2 = prompt('請再輸入一次新密碼確認：');
+            if (p2 === null) return;
+            if (p1 !== p2) { alert('兩次輸入的密碼不一致，沒有變更。'); return; }
+            const { error } = await supabaseClient.rpc('set_pii_view_password', { p_old: oldPwd, p_new: p1 });
+            if (error) { alert('❌ ' + piiErrorText(error)); return; }
+            showToast('🔑 個資檢視密碼已設定');
+        }
+        async function exportPelsInsuranceExcel() {
+            if (!pelsChairGuard()) return;
+            if (typeof XLSX === 'undefined') { alert('⚠️ 正在載入 Excel 處理模組，請稍候重試！'); return; }
+            const pwd = prompt('請輸入個資檢視密碼，以匯出旅平險名單：');
+            if (pwd === null) return;
+            const key = getActivePaymentKey();
+            const { data, error } = await supabaseClient.rpc('read_insured_persons', { p_event_key: key, p_password: pwd });
+            if (error) { alert('❌ ' + piiErrorText(error)); return; }
+            if (!data || data.length === 0) { alert('目前沒有任何旅平險資料。'); return; }
+            const title = paymentEventTitle();
+            const rows = [[`${DISTRICT.name} ${title} 旅平險名單（個資僅用於旅平險）`], [`匯出時間：${taiwanNowStr()}`], [],
+                ['序號', '扶輪社', '身分', '姓名', '身分證字號', '出生年月日（民國）', '手機號碼', '出席方式', '隨同社友']];
+            data.forEach((r, i) => rows.push([i + 1, r.club_name, r.person_role === 'family' ? '眷屬' : '本人', r.full_name, r.id_no, r.birth_roc, r.phone, pelsOptionLabel(r.attend_option), r.person_role === 'family' ? String(r.member_key).split('|')[0] : '']));
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            ws['!cols'] = [{ wch: 6 }, { wch: 18 }, { wch: 6 }, { wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 28 }, { wch: 12 }];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '旅平險名單');
+            XLSX.writeFile(wb, `${DISTRICT.code}地區_${String(title).replace(/[\\/:*?"<>|\s]+/g, '_')}_旅平險名單_${taiwanTodayStr()}.xlsx`);
+            showToast(`🛡️ 已匯出 ${data.length} 位的旅平險名單，檔案含個資請妥善保管`);
+        }
+        async function deletePelsInsuranceData() {
+            if (!pelsChairGuard()) return;
+            if (!confirm('⚠️ 確定刪除這個活動「全部」的旅平險個資（身分證字號、生日、手機）？\n\n刪除後無法復原，也無法再匯出名單。報名表本身不受影響。')) return;
+            const pwd = prompt('請輸入個資檢視密碼以確認刪除：');
+            if (pwd === null) return;
+            const { data, error } = await supabaseClient.rpc('delete_insured_persons', { p_event_key: getActivePaymentKey(), p_password: pwd });
+            if (error) { alert('❌ ' + piiErrorText(error)); return; }
+            showToast(`🗑️ 已刪除 ${data || 0} 筆旅平險個資`);
         }
 
         // ================= 贊助獎（PRIZE SPONSOR）=================
@@ -3732,6 +4064,13 @@
             if (!isPrizeSponsorEnabled()) currentFormPrizeSponsors = [];
             const prizeErr = validatePrizeSponsors();
             if (prizeErr) { alert('🎁 ' + prizeErr); return; }
+            // 社長當選人研討會：檢查出席方式與旅平險資料，並先把個資寫進受保護的資料表（不進公開的報名資料）
+            if (isPelsMode()) {
+                const pelsErr = validatePelsForm();
+                if (pelsErr) { alert('🛡️ ' + pelsErr); return; }
+                const pelsSaveErr = await savePelsInsurance();
+                if (pelsSaveErr) { alert('⚠️ 旅平險資料沒有成功保存，報名表尚未送出。\n\n' + pelsSaveErr); return; }
+            }
 
             let amount = 0;
             if (chairConfig.sponsorshipEnabled) {
@@ -3745,11 +4084,11 @@
                 registrationOrders[subEventName] = [];
             }
 
-            const participantFee = (isCurrentEventSports() || isAnniversaryMode()) ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
+            const participantFee = (isCurrentEventSports() || isAnniversaryMode() || isPelsMode()) ? calculateTotalParticipantsFee(currentFormSelectedMembers) : 0;
             const existingIdx = registrationOrders[subEventName].findIndex(o => o.clubName === selectedClubName);
             
             // isApportionment already declared above
-            const isSeminar = cat && !cat.allowSponsors && !isApportionment;
+            const isSeminar = cat && !cat.allowSponsors && !isApportionment && !isPelsMode();
             
             let apportionmentFee = 0;
             if (isApportionment) {
@@ -3792,6 +4131,7 @@
             showToast(`✅ ${selectedClubName} 成功送出《${subEventName}》報名表！`);
             updateLinePreviewText();
             // 本機畫面直接更新，不需重新整理
+            if (isPelsMode()) renderPelsDetailBox(); // 個資欄位改顯示「已送出」
             if (currentRole === 'chair' || currentRole === 'super_admin') updateChairDashboard();
             updateRolePermissionsUI();
         }
@@ -4134,6 +4474,11 @@
             // 社慶餐費設定只在社慶模式顯示
             const annivFeeInputs = document.getElementById('chairAnnivFeeInputs');
             if (annivFeeInputs) annivFeeInputs.classList.toggle('hidden', val !== 'anniversary');
+            // 社長當選人研討會：顯示四種出席方式的費用欄位，隱藏「每社應繳金額」那一排
+            const pelsOn = isPelsMode();
+            const pelsFeeInputs = document.getElementById('chairPelsFeeInputs');
+            if (pelsFeeInputs) pelsFeeInputs.classList.toggle('hidden', !pelsOn);
+            if (sponsorFeeInputs) sponsorFeeInputs.classList.toggle('hidden', pelsOn);
             const annivMealInput = document.getElementById('cfgFeeAnnivMeal');
             if (annivMealInput && document.activeElement !== annivMealInput) annivMealInput.value = getAnnivMealFee();
             
@@ -4201,6 +4546,7 @@
 
             // 所有費用都依「目前子活動」分別儲存，不同子活動互不影響
             setSubEventFee('feeApportionment', parseFloat(document.getElementById('cfgFeeApportionment').value) || 0);
+            if (isPelsMode()) PELS_OPTIONS.forEach(o => { const el = document.getElementById(o.cfgId); if (el) setSubEventFee(o.feeKey, parseFloat(el.value) || 0); });
             setSubEventFee('feeCoHost', parseFloat(document.getElementById('cfgFeeCoHost').value) || 0);
             setSubEventFee('feeOrganizer', parseFloat(document.getElementById('cfgFeeOrganizer').value) || 0);
             setSubEventFee('feeSponsor', parseFloat(document.getElementById('cfgFeeSponsor').value) || 0);
@@ -5350,6 +5696,13 @@
                 const prizeGuestStr = prizeGuests.length ? ` / 🎁贊助獎用餐 ${prizeGuests.length}` : '';
                 lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length + prizeGuests.length} 位 (🏃參賽 ${competeCount} / 🍽️只用餐 ${mealOnlyCount}${prizeGuestStr} | 葷食 ${meatCount} / 素食 ${veganCount})`);
                 lines.push(`💰 出席費用：NT$ ${totalFee.toLocaleString()}${prizeGuests.length ? '（贊助獎用餐者免餐費）' : ''}`);
+            } else if (isPelsMode()) {
+                // 社長當選人研討會：列出每位的出席方式與費用（不含任何旅平險個資）
+                currentFormSelectedMembers.forEach((m, i) => {
+                    const opt = m.pelsOption || 'SHARED';
+                    lines.push(`   ${i + 1}. ${m.name}：${pelsOptionLabel(opt)} NT$ ${getPelsFee(opt).toLocaleString()}${opt === 'ABSENT' && m.pelsLeaveReason ? `（請假理由：${m.pelsLeaveReason}）` : ''}`);
+                });
+                lines.push(`💳 應繳總計：NT$ ${calculateTotalParticipantsFee(currentFormSelectedMembers).toLocaleString()} 元`);
             } else if (showFee) {
                 lines.push(`👥 出席總計：共 ${currentFormSelectedMembers.length} 位 (葷食 ${meatCount} / 素食 ${veganCount})`);
                 lines.push(`🍽️ 餐費合計：NT$ ${totalFee.toLocaleString()} (每人 $${getMemberFee({}).toLocaleString()})`);
@@ -7082,7 +7435,7 @@
                     const rec = records[club.name] || { status: 'UNPAID', amount: 0, method: '待匯款', last5: '', date: '' };
                     const isPaid = (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT');
                     const attendeesCount = getClubAttendeesCount(club.name);
-                    const standardRequired = getApportionmentFee();
+                    const standardRequired = getClubRequiredAmount(club.name);
 
                     let statusBadgeHTML = '';
                     if (rec.status === 'PAID_EMAIL') {
@@ -7762,7 +8115,7 @@
                     const rec = records[club.name] || { status: 'UNPAID', amount: 0, method: '待匯款', last5: '', date: '', note: '' };
                     const isPaid = (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT');
                     const attendeesCount = getClubAttendeesCount(club.name);
-                    const standardRequired = getApportionmentFee();
+                    const standardRequired = getClubRequiredAmount(club.name);
 
                     let statusText = "待匯款 / 未繳費";
                     if (rec.status === 'PAID_EMAIL') statusText = "已繳費 (Email自動核對)";
@@ -8287,7 +8640,7 @@
                 const inp = document.getElementById('secApportionmentInput');
                 return inp ? (parseFloat(inp.value) || 0) : 0;
             }
-            if (isPaymentTrackingCategory(currentCatId)) return getApportionmentFee() || 0;
+            if (isPaymentTrackingCategory(currentCatId) && !isPelsMode()) return getApportionmentFee() || 0;
             const cat = categoriesData.find(c => c.id === currentCatId);
             const subName = (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : '';
             const order = ((registrationOrders || {})[subName] || []).find(o => o.clubName === selectedClubName);
@@ -8362,6 +8715,7 @@
             const cfgFee = Number(((chairConfig.subEventFees || {})[key] || {}).feeApportionment) || 0; // 只認主委明確設定過的金額
             const isApp = /分攤金|配合款/.test(cat.name || '') || /分攤金|配合款/.test(sub);
             if (isApp) return (order && Number(order.apportionmentFee) > 0) ? Number(order.apportionmentFee) : cfgFee;
+            if (isPelsSubEventName(sub)) return (order && Number(order.grandTotal) > 0) ? Number(order.grandTotal) : 0; // PELS＝該社報名者費用加總
             if (isPaymentTrackingCategory(catId)) return cfgFee;
             return (order && Number(order.grandTotal) > 0) ? Number(order.grandTotal) : 0; // 運動賽事、社慶…＝該社報名表總計
         }
