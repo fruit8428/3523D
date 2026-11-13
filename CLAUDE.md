@@ -162,6 +162,10 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - **旅平險個資絕對不可進 `app_storage`**（anon 可讀＝公開）：身分證字號／民國生日／手機只在 `pelsPrivateDraft`（記憶體）暫存，送出時 `savePelsInsurance()` 呼叫 RPC `save_insured_persons` 寫入 `insured_persons` 表（RLS 開啟、無 policy、anon 無任何權限；SQL 在 `supabase/sql/insured_persons.sql`），訂單 item 只留 `insuranceFilled`／`insuranceFamilyFilled` 旗標。主委端 `renderPelsInsuranceSection()`（面板 `#pelsInsuranceSection`）以「個資檢視密碼」呼叫 `read_insured_persons`／`delete_insured_persons`；密碼只以 bcrypt 雜湊存在 `app_secrets`，由 `set_pii_view_password` 設定，**不可寫進前端程式**（最高管理員密碼就是寫在前端所以不能拿來保護個資）。寫入函式沒有驗證身分（與整個系統一樣），有心人可覆蓋或刪除資料但讀不到。
 - `cat.allowSponsors` 控制贊助社/協辦社區塊；`cat.allowAddSubEvents === false`（RYLA、End Polio）則隱藏子活動增刪按鈕。
 
+### 貼上 LINE 接龍（2026-11-14）
+
+社友庫右上角「💬 貼上 LINE 接龍」→ `#lineRelayModal`。`parseLineRelay(text, members)` 是純函式：逐行去掉編號後用 `relayNorm`（全形轉半形、小寫、去空白）比對社友的中文姓名／Nick Name／去掉扶輪職稱的 Nick Name（`relayNickBase`），長字串優先、英文要完整單字；回傳 `{matched, unmatched, skipped, ambiguous, notes}`。`applyLineRelay()` 只把人加進 `currentFormSelectedMembers`（欄位要與 `toggleMemberSelection` 新增時一致），**不會自動送出**。PELS 仍需逐人填出席方式與旅平險資料。
+
 ### UI 慣例
 
 - 主委後台（`viewChair`）與最高權限頁（`viewSuperAdmin`）的每張卡片都是「可收合面板」：卡片外層有 `data-panel="id"`，內容包在 `#panelBody_<id>`（預設 `hidden`），標題列由 `togglePanel(id)` 切換並記在 localStorage（`rotary_3523_panel_open_<id>`）；`initCollapsiblePanels()` 在 DOMContentLoaded 還原狀態。新增卡片時比照加上標題列與一句「點開可以：…」的白話說明。KPI 四格固定在 `viewChair` 最上方，不收合。

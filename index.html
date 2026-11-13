@@ -502,7 +502,10 @@
                             </h3>
                             <p class="text-[11px] text-slate-500" id="masterDbSubDesc">已整合<strong>高爾夫差點</strong>，預先維護一勞永逸</p>
                         </div>
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-wrap justify-end">
+                            <button onclick="openLineRelayModal()" class="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95" title="把 LINE 群組的報名接龍整段貼上，系統自動勾選名單">
+                                💬 貼上 LINE 接龍
+                            </button>
                             <button onclick="openExcelModal()" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95">
                                 📊 匯入/匯出 Excel
                             </button>
@@ -1485,6 +1488,24 @@
     </main>
 
     <!-- ================= MODAL: EXCEL IMPORT / EXPORT ================= -->
+    <!-- ================= MODAL：貼上 LINE 接龍，自動勾選報名名單 ================= -->
+    <div id="lineRelayModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl p-4 sm:p-6 max-h-[92vh] overflow-y-auto">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-3">
+                <h3 class="font-bold text-slate-900 text-base">💬 貼上 LINE 接龍，自動勾選報名名單</h3>
+                <button onclick="closeLineRelayModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1 leading-none" aria-label="關閉">&times;</button>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed">在 LINE 群組長按接龍訊息 →「複製」，回到這裡貼上。系統會用 <b id="lineRelayClubName"></b> 社友庫裡的<b>中文姓名</b>或 <b>Nick Name</b> 比對每一行，找到的社友會自動勾選到報名表。</p>
+            <textarea id="lineRelayInput" rows="8" placeholder="例如：&#10;GMS 研討會報名接龍&#10;1. P Ken&#10;2. Steel&#10;3. Builder +1&#10;4. 李快樂（只用餐）" class="w-full mt-2 bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm font-mono focus:bg-white focus:ring-2 focus:ring-green-500"></textarea>
+            <div class="flex flex-wrap items-center gap-2 mt-2">
+                <button type="button" onclick="analyzeLineRelay()" class="px-3.5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95">🔍 辨識名單</button>
+                <button type="button" onclick="pasteLineRelayFromClipboard()" class="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold">📋 從剪貼簿貼上</button>
+                <span class="text-[11px] text-slate-500">「+1」「夫婦」「伉儷」會一併勾選該社友的寶(尊)眷；含「取消」「請假」的那一行會略過。</span>
+            </div>
+            <div id="lineRelayResult" class="mt-3"></div>
+        </div>
+    </div>
+
     <div id="excelModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
         <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm p-5 sm:p-6">
             <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
@@ -4211,6 +4232,166 @@
             if (isPelsMode()) renderPelsDetailBox(); // 個資欄位改顯示「已送出」
             if (currentRole === 'chair' || currentRole === 'super_admin') updateChairDashboard();
             updateRolePermissionsUI();
+        }
+
+        // ================= 貼上 LINE 接龍，自動勾選報名名單 =================
+        // 執秘把社內 LINE 群組的報名接龍整段貼上 → parseLineRelay() 逐行用社友庫的中文姓名／Nick Name 比對
+        // → 預覽（找到／找不到／略過）→ applyLineRelay() 把找到的社友勾進報名表。不會自動送出，執秘確認後自己按送出。
+        let lineRelayParsed = null;
+        function openLineRelayModal() {
+            if (isEventLockedToday) { alert('⚠️ 本活動今日已封存（唯讀狀態），無法增刪人員！'); return; }
+            document.getElementById('lineRelayClubName').innerText = selectedClubName;
+            document.getElementById('lineRelayResult').innerHTML = '';
+            lineRelayParsed = null;
+            document.getElementById('lineRelayModal').classList.remove('hidden');
+            setTimeout(() => { const t = document.getElementById('lineRelayInput'); if (t) t.focus(); }, 50);
+        }
+        function closeLineRelayModal() { document.getElementById('lineRelayModal').classList.add('hidden'); }
+        async function pasteLineRelayFromClipboard() {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (!text) { showToast('剪貼簿是空的，請先到 LINE 複製接龍訊息', 'ℹ️'); return; }
+                document.getElementById('lineRelayInput').value = text;
+                analyzeLineRelay();
+            } catch (e) {
+                alert('瀏覽器不允許直接讀取剪貼簿。請在上方的框框裡長按（或按右鍵）選「貼上」。');
+            }
+        }
+        // 比對用的正規化：全形轉半形、轉小寫、去掉空白
+        function relayNorm(str) {
+            return String(str || '').replace(/[！-～]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).replace(/　/g, ' ').toLowerCase().replace(/\s+/g, '');
+        }
+        // 扶輪常見的職稱前綴（PDG Ken、PP Steel、P Ken…）：接龍時常省略或寫法不同，所以另外用「去掉職稱的 Nick Name」再比一次
+        function relayNickBase(nick) {
+            const m = String(nick || '').trim().match(/^(PDG|DGE|DGN|DGND|DG|IPDG|IPP|PP|PE|PN|CP|AG|DS|VP|P)\s+(.+)$/i);
+            return m ? m[2] : '';
+        }
+        function parseLineRelay(text, members) {
+            const isLatin = ch => /[a-z0-9]/.test(ch || '');
+            // 每位社友可用來比對的字串；同一個字串對到兩位以上社友＝無法判斷是誰
+            const keyMap = new Map();
+            const addKey = (raw, member) => {
+                const k = relayNorm(raw);
+                if (k.length < 2) return;
+                if (!keyMap.has(k)) keyMap.set(k, []);
+                if (!keyMap.get(k).includes(member)) keyMap.get(k).push(member);
+            };
+            members.forEach(m => { addKey(m.name, m); addKey(m.nickname, m); addKey(relayNickBase(m.nickname), m); });
+            const keys = [...keyMap.keys()].sort((a, b) => b.length - a.length); // 長的先比，「Builder 夫人」才不會被「Builder」搶走
+            const matched = [], unmatched = [], skipped = [], ambiguous = [], notes = [];
+            const seen = new Set();
+            // 在一行文字裡找出所有對得上的社友（長的字串先比，比到就把那一段遮掉）
+            const findHits = (work) => {
+                const hits = [];
+                for (const k of keys) {
+                    let from = 0, idx;
+                    while ((idx = work.indexOf(k, from)) !== -1) {
+                        // 英文 Nick Name 要是完整的字：前後不能還連著英文或數字（避免 "Ken" 對到 "Kenny"）
+                        const boundaryOk = !isLatin(k[0]) || !isLatin(work[idx - 1]);
+                        const boundaryOk2 = !isLatin(k[k.length - 1]) || !isLatin(work[idx + k.length]);
+                        if (boundaryOk && boundaryOk2) {
+                            hits.push({ list: keyMap.get(k), key: k });
+                            work = work.slice(0, idx) + '\u0001'.repeat(k.length) + work.slice(idx + k.length);
+                            break;
+                        }
+                        from = idx + 1;
+                    }
+                }
+                return hits;
+            };
+            String(text || '').split(/\r?\n/).forEach(rawLine => {
+                const line = rawLine.trim();
+                if (!line) return;
+                const numbered = /^\s*(\d{1,3}\s*[.、．)）:：]|[①-⑳]|\d{1,3}️?⃣|[-•●▪◆✅☑✔]\s*)/.test(line);
+                const body = line.replace(/^\s*(\d{1,3}\s*[.、．)）:：]|[①-⑳]|(\d️?⃣)+|[-•●▪◆✅☑✔])\s*/, '');
+                if (/取消|請假|不克|無法參加|不參加/.test(body)) {
+                    if (numbered || body.length <= 30) skipped.push(line);
+                    // 前面已經接龍、後面又寫取消的人，要從名單拿掉（連同隨同出席的寶尊眷）
+                    findHits(relayNorm(body)).forEach(h => {
+                        if (h.list.length !== 1) return;
+                        const id = h.list[0].id;
+                        for (let j = matched.length - 1; j >= 0; j--) {
+                            const mm = matched[j].member;
+                            if (mm.id === id || (matched[j].viaSpouse && mm.spouseOfId === id)) { seen.delete(mm.id); matched.splice(j, 1); }
+                        }
+                    });
+                    return;
+                }
+                const hits = findHits(relayNorm(body));
+                if (hits.length === 0) { if (numbered) unmatched.push(line); return; }
+                const mealOnly = /只用餐|僅用餐|只吃飯|只參加餐|餐敘/.test(body);
+                const withSpouse = /[+＋]\s*1|[+＋&＆]\s*(夫人|寶眷|尊眷|眷屬|眷|太太|先生|另一半)|夫婦|伉儷|攜眷|偕眷|賢伉儷|兩位|2\s*位|二位/.test(body);
+                hits.forEach(h => {
+                    if (h.list.length > 1) { ambiguous.push({ line, names: h.list.map(m => `${m.name}${m.nickname ? '（' + m.nickname + '）' : ''}`) }); return; }
+                    const m = h.list[0];
+                    const add = (mem, viaSpouse) => { if (seen.has(mem.id)) return; seen.add(mem.id); matched.push({ member: mem, line, mealOnly, viaSpouse: !!viaSpouse }); };
+                    add(m);
+                    if (withSpouse && !m.spouseOfId) {
+                        const sp = members.find(x => x.spouseOfId === m.id);
+                        if (sp) add(sp, true);
+                        else notes.push(`「${line}」有攜眷，但社友庫裡找不到 ${m.name} 的寶(尊)眷資料，請先用「新增社友」建立後再勾選。`);
+                    }
+                });
+            });
+            return { matched, unmatched, skipped, ambiguous, notes };
+        }
+        function analyzeLineRelay() {
+            const text = document.getElementById('lineRelayInput').value;
+            const box = document.getElementById('lineRelayResult');
+            if (!text.trim()) { box.innerHTML = '<div class="text-xs text-rose-700 font-bold">請先貼上 LINE 接龍的文字。</div>'; return; }
+            const members = clubMemberDatabase[selectedClubName] || [];
+            if (members.length === 0) { box.innerHTML = '<div class="text-xs text-rose-700 font-bold">本社社友庫還是空的，請先用「匯入/匯出 Excel」或「新增社友」建立名冊，系統才有辦法比對。</div>'; return; }
+            const r = parseLineRelay(text, members);
+            lineRelayParsed = r;
+            const E = escapeHtmlText;
+            const isSel = m => currentFormSelectedMembers.some(sm => sm.name === m.name && sm.nickname === m.nickname);
+            const newCount = r.matched.filter(x => !isSel(x.member)).length;
+            const sports = isCurrentEventSports();
+            const list = (title, cls, items) => items.length ? `<div class="mt-2.5"><div class="text-xs font-bold ${cls}">${title}</div><ul class="mt-1 space-y-0.5 text-[11px] text-slate-700">${items.join('')}</ul></div>` : '';
+            box.innerHTML = `
+                <div class="grid grid-cols-3 gap-2 text-center">
+                    <div class="rounded-lg border border-emerald-200 bg-emerald-50 py-2"><div class="text-lg font-black text-emerald-800">${r.matched.length}</div><div class="text-[11px] font-semibold text-emerald-800">找到的社友</div></div>
+                    <div class="rounded-lg border ${r.unmatched.length + r.ambiguous.length ? 'border-rose-300 bg-rose-50' : 'border-slate-200 bg-slate-50'} py-2"><div class="text-lg font-black ${r.unmatched.length + r.ambiguous.length ? 'text-rose-700' : 'text-slate-500'}">${r.unmatched.length + r.ambiguous.length}</div><div class="text-[11px] font-semibold text-slate-700">需要人工處理</div></div>
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 py-2"><div class="text-lg font-black text-slate-500">${r.skipped.length}</div><div class="text-[11px] font-semibold text-slate-700">略過（取消／請假）</div></div>
+                </div>
+                ${list('✅ 找到的社友（將勾選到報名表）', 'text-emerald-800', r.matched.map(x => `<li class="flex flex-wrap items-baseline gap-x-2 border-b border-slate-100 py-0.5"><b class="text-slate-900">${E(x.member.name)}</b><span class="text-slate-500">${E(x.member.role || '')}${x.member.nickname ? '・' + E(x.member.nickname) : ''}</span>${x.viaSpouse ? '<span class="text-blue-700 font-semibold">隨同出席</span>' : ''}${sports && x.mealOnly ? '<span class="text-amber-700 font-semibold">只用餐</span>' : ''}${isSel(x.member) ? '<span class="text-slate-400">已在報名表</span>' : ''}<span class="text-slate-400 ml-auto truncate max-w-[45%]" title="${E(x.line)}">← ${E(x.line)}</span></li>`))}
+                ${list('⚠️ 找不到對應社友的行（請確認姓名／Nick Name 是否與社友庫相同，或手動勾選）', 'text-rose-700', r.unmatched.map(l => `<li class="py-0.5">${E(l)}</li>`))}
+                ${list('⚠️ 同名無法判斷是哪一位（請手動勾選）', 'text-rose-700', r.ambiguous.map(a => `<li class="py-0.5">${E(a.line)} → 可能是：${a.names.map(E).join('、')}</li>`))}
+                ${list('ℹ️ 提醒', 'text-amber-800', r.notes.map(n => `<li class="py-0.5">${E(n)}</li>`))}
+                ${list('略過的行', 'text-slate-500', r.skipped.map(l => `<li class="py-0.5 text-slate-500">${E(l)}</li>`))}
+                ${r.matched.length ? `
+                <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-3">
+                    <label class="inline-flex items-center gap-1.5 text-xs text-slate-700 font-semibold"><input type="checkbox" id="lineRelayReplace" class="w-4 h-4"> 先清空報名表目前已勾選的 ${currentFormSelectedMembers.length} 位，只留接龍名單</label>
+                    <button type="button" onclick="applyLineRelay()" class="ml-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow active:scale-95">✅ 帶入報名表（新增 ${newCount} 位）</button>
+                </div>
+                <p class="text-[10px] text-slate-500 mt-1.5">帶入後請檢查右側報名表${sports ? '（參賽／只用餐）' : ''}，確認無誤再按「送出本社報名表」。系統不會自動送出。</p>` : ''}`;
+        }
+        function applyLineRelay() {
+            if (!lineRelayParsed || lineRelayParsed.matched.length === 0) return;
+            if (isEventLockedToday) { alert('⚠️ 本活動今日已封存（唯讀狀態），無法增刪人員！'); return; }
+            const replace = !!(document.getElementById('lineRelayReplace') || {}).checked;
+            if (replace) currentFormSelectedMembers = [];
+            const sports = isCurrentEventSports();
+            let added = 0;
+            lineRelayParsed.matched.forEach(x => {
+                const t = x.member;
+                let cur = currentFormSelectedMembers.find(sm => sm.name === t.name && sm.nickname === t.nickname);
+                if (!cur) {
+                    // 與 toggleMemberSelection 新增時的欄位一致
+                    cur = { role: t.role, nickname: t.nickname, name: t.name, diet: t.diet, veganNote: t.veganNote, handicap: t.handicap !== undefined ? t.handicap : '', participation: '參賽' };
+                    currentFormSelectedMembers.push(cur);
+                    added++;
+                }
+                if (sports && x.mealOnly) { cur.participation = '只用餐'; delete cur.fee; }
+            });
+            renderMemberMasterTable();
+            renderSelectedMembersTable();
+            updateLinePreviewText();
+            closeLineRelayModal();
+            const rest = lineRelayParsed.unmatched.length + lineRelayParsed.ambiguous.length;
+            showToast(`💬 已依接龍勾選 ${lineRelayParsed.matched.length} 位（新增 ${added} 位）${rest ? `，另有 ${rest} 行需人工處理` : ''}。確認後請按「送出本社報名表」`);
+            const tbl = document.getElementById('selectedParticipantsBox');
+            if (tbl && tbl.scrollIntoView) tbl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
 
         // ================= EXCEL IMPORT / EXPORT HANDLERS =================
