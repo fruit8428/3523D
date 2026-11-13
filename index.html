@@ -1003,6 +1003,7 @@
                 <!-- 社長當選人研討會（PELS）：依出席方式收費，取代「每社應繳金額」 -->
                 <div id="chairPelsFeeInputs" class="hidden mt-3 pt-3 border-t border-dashed border-slate-200">
                     <div class="text-xs font-bold text-slate-800 mb-2">🏨 依出席方式收費（本活動不使用「每社應繳金額」，各社應繳＝報名者費用加總）</div>
+                    <div id="pelsFeeUnsetHint" class="hidden mb-2 p-2 bg-amber-50 border-2 border-amber-300 rounded-lg text-xs font-bold text-amber-900">⏳ 費用尚未設定：目前四個金額都是 0，各社執秘暫時無法報名。請填入金額後按「儲存主委設定」，就會開放報名。</div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div class="bg-blue-50/70 p-2.5 rounded-lg border border-blue-200">
                             <label for="cfgFeePelsShared" class="block text-xs font-bold text-blue-900 mb-1">1. 本人單獨出席－2人1房：每人應繳費用 (NT$)</label>
@@ -3652,6 +3653,8 @@
             setInput('cfgFeeSponsor', getSponsorFee());
             setInput('cfgFeeApportionment', getApportionmentFee());
             PELS_OPTIONS.forEach(o => setInput(o.cfgId, getPelsFee(o.id)));
+            const pelsUnsetHint = document.getElementById('pelsFeeUnsetHint');
+            if (pelsUnsetHint) pelsUnsetHint.classList.toggle('hidden', !isPelsMode() || isPelsFeeConfigured());
             setText('feeFlowerText', getFlowerFee());
             setText('feeCoHostText', getCoHostFee());
             setText('feeOrganizerText', getOrganizerFee());
@@ -3678,6 +3681,8 @@
             const o = PELS_OPTIONS.find(x => x.id === optId) || PELS_OPTIONS[0];
             return getSubEventFee(o.feeKey, 0);
         }
+        // 主委是否已設定 PELS 費用：四種出席方式的費用全部是 0（或從未設定）視為「尚未設定」，此時不開放報名
+        function isPelsFeeConfigured() { return PELS_OPTIONS.some(o => getPelsFee(o.id) > 0); }
         function pelsOptionLabel(optId) { return (PELS_OPTIONS.find(x => x.id === optId) || PELS_OPTIONS[0]).label; }
         function pelsMemberKey(m) { return `${m.name || ''}|${m.nickname || ''}`; }
         // 某社在「目前活動」繳費表上的應繳金額：PELS＝該社報名表總計，其餘＝主委設定的每社應繳金額
@@ -3709,6 +3714,11 @@
         function renderPelsDetailBox() {
             const box = document.getElementById('pelsDetailBox');
             if (!box) return;
+            if (isPelsMode() && !isPelsFeeConfigured()) {
+                box.classList.remove('hidden');
+                box.innerHTML = `<div class="p-3 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs text-amber-900"><div class="font-bold text-sm">⏳ 主委尚未設定費用，暫不開放報名</div><p class="mt-1 leading-relaxed">這個活動依出席方式收費，需等活動主委在後台填好四種出席方式的費用後才能報名。請稍後再回來，或聯絡活動主委。</p></div>`;
+                return;
+            }
             const on = isPelsMode() && currentFormSelectedMembers.length > 0;
             box.classList.toggle('hidden', !on);
             if (!on) { box.innerHTML = ''; return; }
@@ -4132,6 +4142,7 @@
             if (prizeErr) { alert('🎁 ' + prizeErr); return; }
             // 社長當選人研討會：檢查出席方式與旅平險資料，並先把個資寫進受保護的資料表（不進公開的報名資料）
             if (isPelsMode()) {
+                if (!isPelsFeeConfigured()) { alert('⏳ 主委尚未設定這個活動的費用，暫不開放報名。\n\n請等活動主委在後台填好四種出席方式的費用後再送出。'); return; }
                 const pelsErr = validatePelsForm();
                 if (pelsErr) { alert('🛡️ ' + pelsErr); return; }
                 const pelsSaveErr = await savePelsInsurance();
