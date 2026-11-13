@@ -2654,12 +2654,22 @@
                     const seq = liveSyncSaveSeq;
                     const guard = () => liveSyncSaveSeq === seq && liveSyncPendingSaves === 0;
                     const before = liveSyncOrderSnapshot();
+                    const keyBefore = getActivePaymentKey();
                     const catsBefore = JSON.stringify(categoriesData);
+                    const feesBefore = JSON.stringify((chairConfig.subEventFees || {})[getActivePaymentKey()] || {});
                     const applied = await loadFromStorage(guard);
                     if (applied === false) return false;
                     await loadPaymentRecords(guard);
                     const after = liveSyncOrderSnapshot();
-                    const changedClubs = Object.keys(after).filter(c => after[c] !== before[c] && c !== selectedClubName);
+                    const changedClubs = keyBefore !== getActivePaymentKey() ? [] : Object.keys(after).filter(c => after[c] !== before[c] && c !== selectedClubName);
+                    // 主委剛改了這個活動的費用：執秘開著的報名表立刻換成新金額（正在填欄位時先不重畫，避免打斷輸入）
+                    if (feesBefore !== JSON.stringify((chairConfig.subEventFees || {})[getActivePaymentKey()] || {}) && loggedInUser) {
+                        if (isCurrentEventSports()) currentFormSelectedMembers.forEach(m => { delete m.fee; });
+                        refreshSubEventFeeInputs();
+                        const ae = document.activeElement;
+                        if (!(ae && ['INPUT', 'TEXTAREA', 'SELECT'].includes(ae.tagName) && ae.closest('#viewSecretary'))) renderSelectedMembersTable();
+                        else updateTotalFeeSummaryDisplay();
+                    }
                     refreshUIAfterLiveSync(catsBefore !== JSON.stringify(categoriesData));
                     if (changedClubs.length && loggedInUser && (currentRole === 'chair' || currentRole === 'super_admin')) {
                         showToast(`${changedClubs.slice(0, 3).join('、')}${changedClubs.length > 3 ? ` 等 ${changedClubs.length} 社` : ''} 剛送出報名表，畫面已更新`, '🔔');
@@ -2923,7 +2933,7 @@
             const toggleSel = document.getElementById('cfgSponsorToggle');
             if (toggleSel) toggleSel.value = currentMode;
             refreshSubEventFeeInputs();
-            toggleSponsorConfig(currentMode);
+            toggleSponsorConfig(currentMode, true); // true＝只是切換畫面，不存檔
         }
 
         function loadCategoryView() {
@@ -3207,6 +3217,61 @@
             renderSelectedMembersTable();
             updateTotalFeeSummaryDisplay();
             updateLinePreviewText();
+            // 這個函式每按一個鍵就會跑一次；等主委停止輸入 1 秒後，才重算已送出的報名表（避免把打到一半的數字寫進各社報名表）
+            clearTimeout(liveFeeRecalcTimer);
+            liveFeeRecalcTimer = setTimeout(async () => {
+                const recalc = recalcSubmittedOrdersForCurrentEvent();
+                if (recalc.changed === 0) return;
+                await saveToStorage();
+                showToast('💾 費用已更新' + recalcResultText(recalc));
+                updateChairDashboard(); renderDivisionPaymentSection(); updateRolePermissionsUI();
+            }, 1000);
+        }
+        let liveFeeRecalcTimer = null;
+
+        // ---------- 主委改費用後，自動重算「目前活動」所有已送出的報名表 ----------
+        // 報名表送出時會把當時的費用存成快照（item.fee、sponsorAmount、grandTotal…）。主委之後調整費用，
+        // 這裡用與 submitRegistrationInner 相同的算法把快照換成新金額。分攤金（執秘自己填的金額）不動。
+        // 回傳 { changed: 金額有變的社數, paidChanged: 其中已繳費的社名 }
+        function recalcSubmittedOrdersForCurrentEvent() {
+            const result = { changed: 0, paidChanged: [] };
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const subName = cat && cat.subEvents ? cat.subEvents[currentSubEventIndex] : null;
+            const orders = subName ? (registrationOrders[subName] || []) : [];
+            if (orders.length === 0) return result;
+            const isSports = isCurrentEventSports(), isAnniv = isAnniversaryMode(), isPels = isPelsMode();
+            const showFee = isSports || isAnniv || isPels;
+            const isApportionment = (cat.name && (cat.name.includes('分攤金') || cat.name.includes('配合款'))) || subName.includes('分攤金') || subName.includes('配合款');
+            const isSeminar = !cat.allowSponsors && !isApportionment && !isPels;
+            const payRecs = chairPaymentRecords[getActivePaymentKey()] || {};
+            orders.forEach(o => {
+                const before = Number(o.grandTotal) || 0;
+                if (showFee) {
+                    (o.items || []).forEach(it => {
+                        it.fee = isPels ? getPelsFee(it.pelsOption || 'SHARED')
+                               : isAnniv ? getAnnivMealFee()
+                               : (it.participation === '只用餐' ? getMealOnlyFee() : getCompeteFee());
+                    });
+                    o.participantFee = (o.items || []).reduce((sum, it) => sum + (Number(it.fee) || 0), 0);
+                }
+                if (chairConfig.sponsorshipEnabled) {
+                    o.sponsorAmount = o.sponsorTier === 'CO_HOST' ? getCoHostFee() : o.sponsorTier === 'ORGANIZER' ? getOrganizerFee()
+                                    : o.sponsorTier === 'SPONSOR' ? getSponsorFee() : o.sponsorTier === 'FLOWER' ? getFlowerFee() : 0;
+                }
+                if (isSeminar) o.apportionmentFee = getApportionmentFee() || 0;
+                o.grandTotal = (Number(o.sponsorAmount) || 0) + (Number(o.participantFee) || 0) + (Number(o.apportionmentFee) || 0);
+                if (Math.abs(o.grandTotal - before) >= 0.5) {
+                    result.changed++;
+                    if (isRecordPaid(payRecs[o.clubName])) result.paidChanged.push(o.clubName);
+                }
+            });
+            // 本機開著的報名表也換成新費用（運動賽事的 fee 是快照，要清掉才會照新設定計算）
+            if (isSports) currentFormSelectedMembers.forEach(m => { delete m.fee; });
+            return result;
+        }
+        function recalcResultText(r) {
+            if (!r || r.changed === 0) return '';
+            return `\n已自動更新 ${r.changed} 社已送出報名表的金額。` + (r.paidChanged.length ? `其中 ${r.paidChanged.length} 社已繳費（${r.paidChanged.slice(0, 3).map(n => n.replace(/扶輪社$/, '')).join('、')}${r.paidChanged.length > 3 ? '…' : ''}），金額有變請留意差額。` : '');
         }
 
         // ================= SECRETARY & MEMBER MASTER LOGIC =================
@@ -4447,7 +4512,10 @@
 
         // ================= CHAIR DASHBOARD & CHARTS =================
 
-        function toggleSponsorConfig(val) {
+        // fromNavigation＝true：切換大類／子活動時由 applyCurrentEventMode 呼叫，只換畫面不存檔。
+        // 以前這裡每次都 saveToStorage()，等於任何人只要點一下選單就把自己記憶中的整包資料寫回雲端，
+        // 資料稍舊的裝置會因此蓋掉別人剛送出的報名或主委剛改的費用。只有主委手動改下拉選單時才需要存檔。
+        function toggleSponsorConfig(val, fromNavigation) {
             document.body.setAttribute('data-mode', val);
             const enabled = (val === 'sports' || val === 'anniversary');
             chairConfig.sponsorshipEnabled = enabled;
@@ -4530,7 +4598,7 @@
                 cat.allowSponsors = enabled;
             }
             
-            saveToStorage();
+            if (!fromNavigation) saveToStorage();
             if(typeof updateTotalFeeSummaryDisplay === 'function') updateTotalFeeSummaryDisplay();
             if(typeof updateLinePreviewText === 'function') updateLinePreviewText();
         }
@@ -4563,8 +4631,11 @@
             // 更新執秘端贊助門檻卡片上的金額
             refreshSubEventFeeInputs();
 
+            // 費用有變時，把這個活動「已送出」的報名表金額一併重算，各社不必重新送出
+            const recalc = recalcSubmittedOrdersForCurrentEvent();
             saveToStorage();
-            showToast('💾 主委設定已成功更新！');
+            showToast('💾 主委設定已成功更新！' + recalcResultText(recalc));
+            if (recalc.changed > 0) { renderDivisionPaymentSection(); updateRolePermissionsUI(); }
             renderSelectedMembersTable();
             updateTotalFeeSummaryDisplay();
             updateLinePreviewText();
