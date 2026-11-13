@@ -617,6 +617,7 @@
                                     <div class="flex items-center gap-1.5 flex-wrap">帳號：<b id="remitAccountNo" class="text-slate-900 font-mono text-sm"></b>
                                         <button type="button" onclick="copyRemitAccount()" class="px-2 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-800 border border-sky-300 rounded text-[11px] font-bold">📋 複製帳號</button></div>
                                     <div>本活動應繳：<b id="remitRequiredAmount" class="text-rose-700 font-mono"></b></div>
+                                    <div id="remitRequiredNote" class="hidden text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded p-1.5"></div>
                                     <div class="mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 leading-relaxed">
                                         ⚠️ <b>匯款備註請填寫貴社全名</b>（例如：<b>南區扶輪社</b>），系統才能自動核對入帳。若銀行 App 沒有備註欄，入帳後請通知活動主委人工指定。
                                     </div>
@@ -8643,12 +8644,21 @@
             if (isPaymentTrackingCategory(currentCatId) && !isPelsMode()) return getApportionmentFee() || 0;
             const cat = categoriesData.find(c => c.id === currentCatId);
             const subName = (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : '';
-            const order = ((registrationOrders || {})[subName] || []).find(o => o.clubName === selectedClubName);
-            if (order && Number(order.grandTotal) > 0) return Number(order.grandTotal);
+            // 以「畫面上報名表目前的總計」為準（執秘改了人數或出席方式會立刻反映）；表單沒有金額時才用已送出的報名表
             const disp = document.getElementById('regGrandTotalDisplay');
             const label = document.getElementById('regGrandTotalLabel');
-            if (disp && label && !label.classList.contains('hidden')) return parseFloat(String(disp.innerText).replace(/[^0-9.]/g, '')) || 0;
-            return 0;
+            if (disp && label && !label.classList.contains('hidden')) {
+                const formTotal = parseFloat(String(disp.innerText).replace(/[^0-9.]/g, '')) || 0;
+                if (formTotal > 0) return formTotal;
+            }
+            return getSubmittedOrderTotal() || 0;
+        }
+        // 本社在目前活動「已送出」的報名表總計；尚未送出回傳 null（主委端的應繳金額與自動核對入帳都是看這個數字）
+        function getSubmittedOrderTotal() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const subName = (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) ? cat.subEvents[currentSubEventIndex] : '';
+            const order = ((registrationOrders || {})[subName] || []).find(o => o.clubName === selectedClubName);
+            return order ? (Number(order.grandTotal) || 0) : null;
         }
         // 備註正規化：全形轉半形、去空白與符號、臺→台、小寫
         function normalizeRemitNote(str) {
@@ -9125,6 +9135,17 @@
             set('remitAccountNo', acct.accountNo);
             const required = getRequiredRemitAmount();
             set('remitRequiredAmount', required ? `NT$ ${required.toLocaleString()}` : '依主委公告');
+            // 金額來自報名表的活動（運動賽事、社慶、PELS…）：表單與已送出的報名表不一致時要提醒，否則主委端看到的仍是舊金額
+            const noteEl = document.getElementById('remitRequiredNote');
+            if (noteEl) {
+                const byForm = document.body.getAttribute('data-mode') !== 'apportionment' && !(isPaymentTrackingCategory(currentCatId) && !isPelsMode());
+                const submitted = byForm ? getSubmittedOrderTotal() : null;
+                let msg = '';
+                if (byForm && required > 0 && submitted === null) msg = '⚠️ 報名表尚未送出，請先按「送出本社報名表」再匯款。';
+                else if (byForm && submitted !== null && Math.abs(submitted - required) >= 0.5) msg = `⚠️ 報名表修改後尚未送出（已送出的金額是 NT$ ${submitted.toLocaleString()}）。請按「送出本社報名表」，主委端才會更新為 NT$ ${required.toLocaleString()}。`;
+                noteEl.innerText = msg;
+                noteEl.classList.toggle('hidden', !msg);
+            }
 
             const key = getActivePaymentKey();
             const rec = (chairPaymentRecords[key] || {})[selectedClubName];
