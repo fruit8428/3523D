@@ -4257,14 +4257,18 @@
                 alert('瀏覽器不允許直接讀取剪貼簿。請在上方的框框裡長按（或按右鍵）選「貼上」。');
             }
         }
-        // 比對用的正規化：全形轉半形、轉小寫、去掉空白
+        // 比對用的正規化：全形轉半形、轉小寫；連字號／點／底線當成空白（C-Wang＝C Wang）；
+        // 英文單字之間保留一個空白（這樣「PAG LED」裡的 LED 才是獨立的字），中文字旁邊的空白去掉（Builder 夫人＝Builder夫人）
         function relayNorm(str) {
-            return String(str || '').replace(/[！-～]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).replace(/　/g, ' ').toLowerCase().replace(/\s+/g, '');
+            return String(str || '').replace(/[！-～]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).replace(/\u3000/g, ' ').toLowerCase()
+                .replace(/[-_.‧·・]+/g, ' ').replace(/\s+/g, ' ')
+                .replace(/([^\x00-\x7f])\s+/g, '$1').replace(/\s+([^\x00-\x7f])/g, '$1').trim();
         }
+        const RELAY_TITLE_RE = /^(IPDG|PDG|DGND|DGE|DGN|DG|PAG|AG|PDS|DS|IPP|PVP|PP|PE|PN|VP|CP|CS|RTN|P)$/i; // 扶輪常見職稱
         // 扶輪常見的職稱前綴（PDG Ken、PP Steel、P Ken…）：接龍時常省略或寫法不同，所以另外用「去掉職稱的 Nick Name」再比一次
         function relayNickBase(nick) {
-            const m = String(nick || '').trim().match(/^(PDG|DGE|DGN|DGND|DG|IPDG|IPP|PP|PE|PN|CP|AG|DS|VP|P)\s+(.+)$/i);
-            return m ? m[2] : '';
+            const parts = String(nick || '').trim().split(/\s+/);
+            return (parts.length >= 2 && RELAY_TITLE_RE.test(parts[0])) ? parts.slice(1).join(' ') : '';
         }
         function parseLineRelay(text, members) {
             const isLatin = ch => /[a-z0-9]/.test(ch || '');
@@ -4272,7 +4276,7 @@
             const keyMap = new Map();
             const addKey = (raw, member) => {
                 const k = relayNorm(raw);
-                if (k.length < 2) return;
+                if (k.replace(/ /g, '').length < 2) return;
                 if (!keyMap.has(k)) keyMap.set(k, []);
                 if (!keyMap.get(k).includes(member)) keyMap.get(k).push(member);
             };
@@ -4296,6 +4300,13 @@
                         }
                         from = idx + 1;
                     }
+                }
+                if (hits.length > 0) return hits;
+                // 沒比到時再試一次「不管空白」：社友庫登記 CWang、接龍寫 C-Wang；或職稱黏在一起（PAGLED）
+                const compact = work.replace(/ /g, '');
+                for (const k of keys) {
+                    const kc = k.replace(/ /g, '');
+                    if (compact === kc || (compact.endsWith(kc) && RELAY_TITLE_RE.test(compact.slice(0, compact.length - kc.length)))) { hits.push({ list: keyMap.get(k), key: k }); break; }
                 }
                 return hits;
             };
