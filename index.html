@@ -10177,6 +10177,12 @@
             // Set up initial state based on permissions
             applyPermissions();
             
+            // 最高管理員登入時若有選社別：社友庫與報名表先顯示那個社（之後仍可用「綁定本社」下拉切換到別社）。
+            // 以前管理員登入一律停在名冊的第一個社，選了松山社登入卻看到南區社的社友庫。只在登入當下做一次。
+            if (loggedInUser.isSuperAdmin && loggedInUser.club && divisionsData.some(d => (d.clubs || []).some(c => (typeof c === 'object' ? c.name : c) === loggedInUser.club))) {
+                selectedClubName = loggedInUser.club;
+            }
+
             // Re-render UI pieces that depend on role/permissions
             renderNavTabs();
             populateClubSelector();
