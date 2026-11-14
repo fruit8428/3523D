@@ -172,12 +172,12 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 
 規格與第二階段（LINE 自助報到）方向在 `報到.md`。
 - **三個檔案**：`checkin-core.js`（`window.CheckinCore`：`buildRoster` → `mergeCheckins` → `computeStats`，人數只能用這一套算，不要在別處另寫）、`checkin.html`（櫃台頁，網址 `checkin.html?e=<encodeURIComponent(大類id::子活動名稱)>`）、`index.html` 的主委面板（`data-panel="checkin"`，`renderCheckinPanel()` 由 `updateRolePermissionsUI()` 呼叫，只用已抓到的 `checkinState` 重畫；換活動或 `refreshCheckinPanel()` 才連網，用 `checkinFetchSeq` 丟棄過期結果）。
-- **資料表**（`supabase/sql/event_checkins.sql`，3521 已執行）：`checkin_events`（報到中與否、報到密碼 bcrypt；RLS 無 policy）與 `event_checkins`（一人一筆，anon 只能 SELECT）。寫入一律走 RPC：`checkin_set_event`／`checkin_verify`／`checkin_mark`／`checkin_cancel`／`checkin_reset`／`checkin_event_status`，要帶報到密碼且活動在「報到中」。取消報到只改 `status='cancelled'` 不刪列（其他櫃台才同步得到）。錯誤代碼 `CHECKIN_*` 由 `checkinErrorText()`／`errText()` 轉中文。
+- **資料表**（`supabase/sql/event_checkins.sql`，3521 已執行）：`checkin_events`（報到中與否、報到密碼 bcrypt；RLS 無 policy）與 `event_checkins`（一人一筆，anon 只能 SELECT）。寫入一律走 RPC：`checkin_set_event`／`checkin_verify`／`checkin_mark`／`checkin_cancel`／`checkin_reset`／`checkin_event_status`，要帶報到密碼且活動在「報到中」。取消報到只改 `status='cancelled'` 不刪列（其他櫃台才同步得到）。現場加報分「已到」（`checkin_mark`，`is_walk_in=true`）與「還沒到」（`checkin_add_walkin` → `status='pending'`；人到了再 `checkin_mark` 變 `in`，保留加報標記與備註；「移除」＝`checkin_cancel`）。**SQL 有更新時要先在資料庫重跑再部署前端**（新前端呼叫舊資料庫沒有的函式會顯示「尚未建立報到資料表」）。錯誤代碼 `CHECKIN_*` 由 `checkinErrorText()`／`errText()` 轉中文。
 - **報到紀錄不可放進 `app_storage`**（整包覆寫，多櫃台會互蓋）。**`checkin.html` 絕不寫 `app_storage`**；主委面板的任何操作也不可呼叫 `saveToStorage()`。面板裡不要放 `<input>`（會讓 `liveSyncUserIsEditing()` 暫停即時同步重畫）。
 - **認人用 `person_key`＝`姓名|Nick Name`**（同一社內），不用社友 id（匯入 Excel 會整批重編）。
 - **應到名單規則**：來源是 `registrationOrders[子活動名稱]` 的 `items`；PELS 的 `ABSENT` 不列入、`FAMILY` 只點本人（眷屬是受保護個資）；運動賽事另加贊助獎用餐來賓；「參賽／只用餐」標籤只有運動賽事顯示（其他活動的 item 也帶預設值「參賽」）；分攤金／配合款不提供報到（`CheckinCore.isApportionEvent`，判斷式與 `applyCurrentEventMode` 相同）。
 - **兩個 Realtime 廣播頻道**：`rotary-checkin`（payload `{key, kind}`，kind＝`mark`／`cancel`／`status`／`reset`；主委面板與所有櫃台都訂閱）與既有的 `rotary-live-sync`（櫃台頁收到後重讀應到名單）。備援：櫃台每 8 秒抓變動（順便 `checkin_verify`，主委換密碼後舊密碼的櫃台會被退回輸入畫面）、每 2 分鐘整批重抓；主委面板展開時每 20 秒抓一次。報到紀錄讀取要 `.range()` 分頁（一次上限 1000 筆）。
-- 統計欄位：`expected`＝應到、`arrived`＝名單內已到、`extra`＝現場加報、`present`＝`arrived+extra`。**畫面與 Excel 的「實到」一律顯示 `present`**（使用者要求與現場人數一致），未到＝`expected−arrived`、出席率＝`arrived÷expected`。各社 `people[]` 是整張名單（含加報），統計分頁以紅色標示已報到（使用者指定的顏色）。
+- 統計欄位：`expected`＝應到、`arrived`＝名單內已到、`extra`＝現場加報已到、`extraPending`＝加報未到、`walkTotal`＝兩者合計、`present`＝`arrived+extra`、`absent`＝`expected−arrived+extraPending`（恆等式：應到＋加報＝實到＋未到）。**畫面與 Excel 的「實到」一律顯示 `present`**（使用者要求與現場人數一致），未到顯示 `absent`、出席率＝`arrived÷expected`。各社 `people[]` 是整張名單（含加報），統計分頁以紅色標示已報到（使用者指定的顏色）。
 - 報到密碼記在 localStorage `rotary_checkin_pw::<活動key>`，主委面板與報到頁共用（同一台裝置主委開報到頁免輸入）。
 - 測試：內嵌 script 抽出來 `node -c`；資料庫與瀏覽器實測先在 3521 展示站做，測完清空 `event_checkins`／`checkin_events` 的測試列。`.vercelignore` 的 `check_*.js` 不會排除 `checkin-core.js`（沒有底線），改排除規則時要留意。
 

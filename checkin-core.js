@@ -115,15 +115,17 @@
      * 回傳的每一筆 entry＝應到名單的人 + checkin（已報到的那筆紀錄，未到則為 null）。
      * 報到紀錄裡有、但應到名單裡沒有的人，會附加在後面：
      *   isWalkIn＝現場加報；isOrphan＝報到後該社又把他從報名表移除。
+     * 現場加報有兩種：已到（status 'in'，checkin 有值）與尚未到場（status 'pending'，checkin 為 null、pendingRow 有值）。
      */
     function mergeCheckins(roster, rows, divisionsData) {
         const active = new Map();
-        (rows || []).forEach(r => { if (r && r.status === 'in') active.set(r.club_name + '\u0001' + r.person_key, r); });
+        (rows || []).forEach(r => { if (r && (r.status === 'in' || r.status === 'pending')) active.set(r.club_name + '\u0001' + r.person_key, r); });
         const entries = (roster.persons || []).map(p => {
             const uid = p.club + '\u0001' + p.key;
             const row = active.get(uid) || null;
             if (row) active.delete(uid);
-            return Object.assign({}, p, { checkin: row, isWalkIn: false, isOrphan: false, note: '' });
+            // 名單內的人若留有「加報未到」的紀錄（加報後該社才補送報名表），視為一般未到
+            return Object.assign({}, p, { checkin: row && row.status === 'in' ? row : null, pendingRow: null, isWalkIn: false, isOrphan: false, note: '' });
         });
         const clubIdx = buildClubIndex(divisionsData);
         let seq = entries.length;
@@ -135,7 +137,8 @@
                     club: r.club_name, divId: div.divId, divName: div.divName, divOrder: div.divOrder, clubOrder: div.clubOrder,
                     key: r.person_key, name: r.full_name || '', nickname: r.nickname || '', role: '',
                     diet: '', veganNote: '', participation: '', pelsOption: '', companions: 0, isPrizeGuest: false, seq: seq++,
-                    checkin: r, isWalkIn: !!r.is_walk_in, isOrphan: !r.is_walk_in, note: r.note || ''
+                    checkin: r.status === 'in' ? r : null, pendingRow: r.status === 'pending' ? r : null,
+                    isWalkIn: !!r.is_walk_in || r.status === 'pending', isOrphan: !r.is_walk_in && r.status !== 'pending', note: r.note || ''
                 });
             });
         entries.sort((a, b) => (a.divOrder - b.divOrder) || (a.clubOrder - b.clubOrder) || a.club.localeCompare(b.club, 'zh-Hant') || (a.seq - b.seq));
@@ -143,12 +146,14 @@
     }
 
     // 統計：全體、各分區、各社。
-    //   expected＝應到（報名名單內的人）、arrived＝名單內已到、extra＝現場加報（含報到後被移出名單的人）、
+    //   expected＝應到（報名名單內的人）、arrived＝名單內已到、extra＝現場加報且已到（含報到後被移出名單的人）、
+    //   extraPending＝現場加報但尚未到場、walkTotal＝extra + extraPending、
     //   present＝現場實際人數（arrived + extra）。畫面上的「實到」一律用 present，才會與現場人數一致；
-    //   「未到」＝expected − arrived、出席率＝arrived ÷ expected（只看有報名的人來了多少）。
+    //   absent（未到）＝(expected − arrived) + extraPending、出席率＝arrived ÷ expected（只看有報名的人來了多少）。
+    //   全體／各分區／各社都有這些欄位。
     //   各社另有 people[]（整張名單含加報，依名單順序）給「各社名單」顯示已到／未到。
     function computeStats(entries) {
-        const blank = () => ({ expected: 0, arrived: 0, extra: 0, companions: 0 });
+        const blank = () => ({ expected: 0, arrived: 0, extra: 0, extraPending: 0, companions: 0 });
         const total = Object.assign(blank(), { meat: 0, vegan: 0, dietUnknown: 0 });
         const divMap = new Map(), clubMap = new Map();
         (entries || []).forEach(e => {
@@ -162,6 +167,9 @@
                 else c.absentNames.push(e.name || e.nickname);
             } else if (e.checkin) {
                 total.extra++; d.extra++; c.extra++;
+            } else {
+                total.extraPending++; d.extraPending++; c.extraPending++;
+                c.absentNames.push((e.name || e.nickname) + '（加報）');
             }
             c.people.push({ name: e.name || e.nickname, arrived: !!e.checkin, walkIn: !listed });
             if (e.checkin) {
@@ -169,11 +177,11 @@
                 if (e.diet === 'VEGAN') total.vegan++; else if (e.diet === 'MEAT') total.meat++; else total.dietUnknown++;
             }
         });
-        total.absent = total.expected - total.arrived;
-        total.present = total.arrived + total.extra;
+        const finish = g => { g.present = g.arrived + g.extra; g.absent = g.expected - g.arrived + g.extraPending; g.walkTotal = g.extra + g.extraPending; };
+        finish(total);
         total.rate = total.expected ? Math.round(total.arrived * 1000 / total.expected) / 10 : 0;
-        divMap.forEach(d => { d.present = d.arrived + d.extra; });
-        clubMap.forEach(c => { c.present = c.arrived + c.extra; });
+        divMap.forEach(finish);
+        clubMap.forEach(finish);
         const byOrder = (a, b) => (a.divOrder - b.divOrder) || ((a.clubOrder || 0) - (b.clubOrder || 0));
         return {
             total,

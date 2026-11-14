@@ -16,6 +16,7 @@
 --   checkin_set_event     主委：開始／結束報到、設定報到密碼
 --   checkin_verify        工作人員進入報到頁時檢查密碼
 --   checkin_mark          報到（重複點同一個人不會產生第二筆）
+--   checkin_add_walkin    現場加報但人還沒到（例：社友先幫忙報名）：先加入名單，狀態為 pending，人到了再按報到
 --   checkin_cancel        取消誤點的報到（紀錄保留、狀態改為已取消）
 --   checkin_reset         清空某活動全部報到紀錄（活動前測試完要歸零時用）
 --
@@ -44,7 +45,7 @@ create table if not exists public.event_checkins (
     nickname      text not null default '',
     is_walk_in    boolean not null default false,   -- true＝現場加報（不在報名名單內）
     note          text,                             -- 現場加報的備註，例：代理某某出席、來賓
-    status        text not null default 'in' check (status in ('in', 'cancelled')),
+    status        text not null default 'in',       -- in＝已報到；cancelled＝已取消；pending＝現場加報但尚未到場
     method        text not null default 'desk',     -- desk＝櫃台點名；line＝LINE 自助報到（第二階段）
     checked_by    text,                             -- 操作的櫃台／工作人員名稱
     checked_in_at timestamptz not null default now(),
@@ -52,6 +53,9 @@ create table if not exists public.event_checkins (
     unique (event_key, club_name, person_key)
 );
 create index if not exists event_checkins_event_updated_idx on public.event_checkins (event_key, updated_at);
+-- status 多一種 pending＝現場加報但尚未到場（2026-11-14 新增；舊資料庫重跑這份 SQL 會自動更新限制條件）
+alter table public.event_checkins drop constraint if exists event_checkins_status_check;
+alter table public.event_checkins add constraint event_checkins_status_check check (status in ('in', 'cancelled', 'pending'));
 alter table public.event_checkins enable row level security;
 revoke all on public.event_checkins from anon, authenticated;
 grant select on public.event_checkins to anon, authenticated;   -- 只開放讀取，寫入一律走函式
@@ -123,6 +127,7 @@ begin
 end $$;
 
 -- 報到。同一個人重複點不會產生第二筆，也不會改掉第一次的報到時間；被取消後再點則視為重新報到。
+-- 原本是「現場加報但尚未到場」（pending）的人：改成已到，保留現場加報的標記與備註。
 create or replace function public.checkin_mark(
     p_event_key text, p_password text, p_club text, p_person_key text,
     p_full_name text, p_nickname text, p_is_walk_in boolean, p_note text, p_by text
@@ -136,12 +141,36 @@ begin
     insert into public.event_checkins (event_key, club_name, person_key, full_name, nickname, is_walk_in, note, checked_by)
     values (p_event_key, p_club, p_person_key, p_full_name, coalesce(p_nickname, ''), coalesce(p_is_walk_in, false), nullif(p_note, ''), nullif(p_by, ''))
     on conflict (event_key, club_name, person_key) do update
-       set checked_in_at = case when event_checkins.status = 'cancelled' then now() else event_checkins.checked_in_at end,
-           checked_by    = case when event_checkins.status = 'cancelled' then excluded.checked_by else event_checkins.checked_by end,
+       set checked_in_at = case when event_checkins.status <> 'in' then now() else event_checkins.checked_in_at end,
+           checked_by    = case when event_checkins.status <> 'in' then excluded.checked_by else event_checkins.checked_by end,
            is_walk_in    = case when event_checkins.status = 'cancelled' then excluded.is_walk_in else event_checkins.is_walk_in end,
            note          = case when event_checkins.status = 'cancelled' then excluded.note else event_checkins.note end,
            status        = 'in',
            updated_at    = now()
+    returning * into r;
+    return to_jsonb(r);
+end $$;
+
+-- 現場加報但人還沒到：先加入名單（status = pending），人到了再用 checkin_mark 報到。
+-- 已經報到（in）或已在加報名單（pending）的人不會被改動；之前被取消的人則重新加入。
+create or replace function public.checkin_add_walkin(
+    p_event_key text, p_password text, p_club text, p_person_key text,
+    p_full_name text, p_nickname text, p_note text, p_by text
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r public.event_checkins%rowtype;
+begin
+    if not public._checkin_password_ok(p_event_key, p_password) then raise exception 'CHECKIN_PASSWORD_WRONG'; end if;
+    if not coalesce((select is_open from public.checkin_events where event_key = p_event_key), false) then raise exception 'CHECKIN_CLOSED'; end if;
+    if coalesce(p_club, '') = '' or coalesce(p_person_key, '') = '' or coalesce(p_full_name, '') = '' then raise exception 'CHECKIN_MISSING_PERSON'; end if;
+    insert into public.event_checkins (event_key, club_name, person_key, full_name, nickname, is_walk_in, note, status, checked_by)
+    values (p_event_key, p_club, p_person_key, p_full_name, coalesce(p_nickname, ''), true, nullif(p_note, ''), 'pending', nullif(p_by, ''))
+    on conflict (event_key, club_name, person_key) do update
+       set is_walk_in = case when event_checkins.status = 'cancelled' then true else event_checkins.is_walk_in end,
+           note       = case when event_checkins.status = 'cancelled' then excluded.note else event_checkins.note end,
+           checked_by = case when event_checkins.status = 'cancelled' then excluded.checked_by else event_checkins.checked_by end,
+           status     = case when event_checkins.status = 'cancelled' then 'pending' else event_checkins.status end,
+           updated_at = now()
     returning * into r;
     return to_jsonb(r);
 end $$;
@@ -176,6 +205,7 @@ grant execute on function public.checkin_event_status(text) to anon, authenticat
 grant execute on function public.checkin_set_event(text, boolean, text) to anon, authenticated;
 grant execute on function public.checkin_verify(text, text) to anon, authenticated;
 grant execute on function public.checkin_mark(text, text, text, text, text, text, boolean, text, text) to anon, authenticated;
+grant execute on function public.checkin_add_walkin(text, text, text, text, text, text, text, text) to anon, authenticated;
 grant execute on function public.checkin_cancel(text, text, text, text, text) to anon, authenticated;
 grant execute on function public.checkin_reset(text, text) to anon, authenticated;
 notify pgrst, 'reload schema';
