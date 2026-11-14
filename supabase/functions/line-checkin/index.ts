@@ -5,6 +5,8 @@
 // 需要的 secrets：
 //   LINE_LOGIN_CHANNEL_ID   LINE Login 頻道的 Channel ID（LIFF 所屬的頻道；不是密碼，但必須由伺服器端固定）
 //   DEFAULT_CLUB_PASSWORD   （選填）地區的各社預設密碼，與地區設定檔的 defaultClubPassword 相同
+//   LINE_MESSAGING_ACCESS_TOKEN、LINE_PUSH_PASSWORD   （選填）LINE 推播用：官方帳號 Messaging API 的 Channel access token
+//                           與推播密碼。兩個都有設定，這個地區才算「開放推播」；系統管理者要關閉時把它們刪掉即可。
 // =====================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { AppError, handle, type Deps } from "./lib.ts";
@@ -20,8 +22,31 @@ const CORS = {
 };
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { ...CORS, "Content-Type": "application/json" } });
 
+const PUSH_TOKEN = (Deno.env.get("LINE_MESSAGING_ACCESS_TOKEN") || "").trim();
+const lineApi = async (path: string, init?: RequestInit) => {
+  const res = await fetch("https://api.line.me" + path, { ...init, headers: { ...(init && init.headers), Authorization: `Bearer ${PUSH_TOKEN}`, "Content-Type": "application/json" } });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`LINE ${res.status} ${text.slice(0, 200)}`);
+  return text ? JSON.parse(text) : {};
+};
+
 const deps: Deps = {
   admin,
+  push: {
+    token: PUSH_TOKEN,
+    password: (Deno.env.get("LINE_PUSH_PASSWORD") || "").trim(),
+    // 一次最多 500 人；只有一人時用 push，多人用 multicast（計費方式相同：送達幾人算幾則）
+    async send(userIds: string[], text: string) {
+      const messages = [{ type: "text", text }];
+      if (userIds.length === 1) await lineApi("/v2/bot/message/push", { method: "POST", body: JSON.stringify({ to: userIds[0], messages }) });
+      else await lineApi("/v2/bot/message/multicast", { method: "POST", body: JSON.stringify({ to: userIds, messages }) });
+    },
+    async quota() {
+      const q = await lineApi("/v2/bot/message/quota");
+      const c = await lineApi("/v2/bot/message/quota/consumption");
+      return { limit: q.type === "limited" ? Number(q.value) : null, used: Number(c.totalUsage) || 0 };
+    },
+  },
   defaultClubPassword: (Deno.env.get("DEFAULT_CLUB_PASSWORD") || "").trim(),
   // 向 LINE 驗證 idToken：LINE 會檢查簽章、有效期限，以及這個 token 是不是發給我們這個頻道的
   async verify(idToken: string) {

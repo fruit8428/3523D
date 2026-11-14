@@ -21,6 +21,15 @@ export interface Deps {
   verify: (idToken: string) => Promise<LineUser>;      // 向 LINE 驗證 idToken；失敗丟出 AppError
   broadcast: (eventKey: string) => Promise<void>;      // 通知櫃台報到頁有人報到（失敗沒關係，櫃台 8 秒內會自己抓到）
   defaultClubPassword: string;                         // 地區的各社預設密碼（沒有就空字串）
+  push?: PushDeps;                                     // LINE 推播（沒有開放的地區不提供）
+}
+// LINE 推播：要用「LINE 官方帳號」的 Messaging API 才能主動傳訊息給社友（LINE Login 頻道不行）。
+// token 或 password 任一個是空的＝這個地區沒有開放推播。
+export interface PushDeps {
+  token: string;                                       // 官方帳號的 Channel access token（有值才算開放）
+  password: string;                                    // 推播密碼（由系統管理者設定，交給獲准使用的地區）
+  send: (userIds: string[], text: string) => Promise<void>;                       // 傳送文字訊息；失敗丟出例外
+  quota: () => Promise<{ limit: number | null; used: number } | null>;            // 本月額度與已用則數；查不到回 null
 }
 export class AppError extends Error {
   code: string;
@@ -120,8 +129,112 @@ function checkClubPassword(deps: Deps, state: Any, club: string, password: strin
   if (!club || !expected || String(password || "") !== String(expected)) fail("CLUB_AUTH_FAILED");
 }
 
+// ---------- LINE 推播：選出要通知的報名者 ----------
+// filter：{ clubs?: 社名[]（不給＝全部）, status?: 'all'|'absent'|'arrived', participation?: 'all'|'參賽'|'只用餐' }
+// 只通知「報名名單上的人」（現場加報的不算）；有綁定 LINE 的才有 uid。
+async function selectPushTargets(deps: Deps, eventKey: string, filter: Any) {
+  const state = await loadState(deps, false);
+  const roster = Core.buildRoster(state, eventKey);
+  if (!roster.ok) fail(roster.reason === "apportionment" ? "EVENT_NO_CHECKIN" : "EVENT_NOT_FOUND");
+  const rows: Any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await deps.admin.from("event_checkins").select("club_name,person_key,status,is_walk_in").eq("event_key", eventKey).order("id").range(from, from + 999);
+    if (error) dbFail(error);
+    rows.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  const f = filter || {};
+  const clubSet = Array.isArray(f.clubs) ? new Set(f.clubs.map(String)) : null;
+  const status = f.status === "absent" || f.status === "arrived" ? f.status : "all";
+  const part = f.participation === "參賽" || f.participation === "只用餐" ? f.participation : "all";
+  const entries = Core.mergeCheckins(roster, rows, state.divisionsData).filter((e: Any) =>
+    !e.isWalkIn && !e.isOrphan &&
+    (!clubSet || clubSet.has(e.club)) &&
+    (status === "all" || (status === "arrived" ? !!e.checkin : !e.checkin)) &&
+    (part === "all" || e.participation === part));
+  const clubs = Array.from(new Set(entries.map((e: Any) => e.club)));
+  const binds: Any[] = [];
+  for (let i = 0; i < clubs.length; i += 50) {
+    const { data, error } = await deps.admin.from("line_bindings").select("line_user_id,club_name,person_key,full_name").in("club_name", clubs.slice(i, i + 50));
+    if (error) dbFail(error);
+    binds.push(...(data || []));
+  }
+  const byKey = new Map<string, string>(), byName = new Map<string, string[]>();
+  binds.forEach((b) => {
+    byKey.set(b.club_name + "\u0001" + b.person_key, b.line_user_id);
+    const k = b.club_name + "\u0001" + b.full_name;
+    byName.set(k, (byName.get(k) || []).concat(b.line_user_id));
+  });
+  const targets = entries.map((e: Any) => {
+    const same = byName.get(e.club + "\u0001" + e.name) || [];
+    return { club: e.club, divName: e.divName, name: e.name || e.nickname, nickname: e.nickname || "", uid: byKey.get(e.club + "\u0001" + e.key) || (same.length === 1 ? same[0] : null) };
+  });
+  return { title: roster.title || "", targets };
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+async function requirePush(deps: Deps, body: Any): Promise<PushDeps> {
+  const push = deps.push;
+  if (!push || !push.token || !push.password) return fail("PUSH_DISABLED");
+  if (String((body && body.pushPassword) || "") !== push!.password) { await sleep(1000); fail("PUSH_AUTH_FAILED"); }   // 故意等 1 秒，降低被猜密碼的速度
+  return push!;
+}
+
 export async function handle(body: Any, deps: Deps): Promise<Any> {
   const action = String((body && body.action) || "");
+
+  // ---------- LINE 推播（活動主委用；以「推播密碼」確認，沒有開放的地區一律拒絕） ----------
+  if (action === "push_status") {
+    return { ok: true, enabled: !!(deps.push && deps.push.token && deps.push.password) };
+  }
+  if (action === "push_preview" || action === "push_send" || action === "push_history") {
+    const push = await requirePush(deps, body);
+    const eventKey = String(body.eventKey || "");
+    if (action === "push_history") {
+      const { data, error } = await deps.admin.from("line_push_log").select("sent_at,sender,message,target_count,sent_count,failed_count,unbound_count").eq("event_key", eventKey).order("sent_at", { ascending: false }).limit(10);
+      if (error) dbFail(error);
+      return { ok: true, history: data || [] };
+    }
+    const sel = await selectPushTargets(deps, eventKey, body.filter);
+    const bound = sel.targets.filter((t: Any) => t.uid);
+    const unbound = sel.targets.filter((t: Any) => !t.uid);
+    if (action === "push_preview") {
+      let quota = null;
+      try { quota = await push.quota(); } catch (_e) { quota = null; }
+      return { ok: true, title: sel.title, total: sel.targets.length, bound: bound.length, unbound: unbound.slice(0, 500).map((t: Any) => ({ club: t.club, name: t.name })), quota };
+    }
+    // ---- push_send ----
+    const message = String(body.message || "").trim();
+    if (!message) fail("PUSH_EMPTY_MESSAGE");
+    if (message.length > 1000) fail("PUSH_MESSAGE_TOO_LONG");
+    if (!bound.length) fail("PUSH_NO_TARGET");
+    // 防止連點：同一個活動 60 秒內送過一模一樣的訊息就擋下
+    const last = await deps.admin.from("line_push_log").select("message,sent_at").eq("event_key", eventKey).order("sent_at", { ascending: false }).limit(1);
+    if (last.error) dbFail(last.error);
+    if (last.data && last.data[0] && last.data[0].message === message && Date.now() - Date.parse(last.data[0].sent_at) < 60_000) fail("PUSH_DUPLICATE");
+    const base = message.split("{活動名稱}").join(sel.title);
+    const personal = base.includes("{姓名}") || base.includes("{社名}");
+    // 同一個 LINE 帳號只收一則
+    const seen = new Set<string>();
+    const list = bound.filter((t: Any) => (seen.has(t.uid) ? false : (seen.add(t.uid), true)));
+    let sent = 0, failed = 0;
+    if (personal) {
+      // 內容含個人化變數：一人一則，分批同時送出
+      for (let i = 0; i < list.length; i += 8) {
+        await Promise.all(list.slice(i, i + 8).map(async (t: Any) => {
+          try { await push.send([t.uid], base.split("{姓名}").join(t.name).split("{社名}").join(t.club)); sent++; } catch (_e) { failed++; }
+        }));
+      }
+    } else {
+      for (let i = 0; i < list.length; i += 500) {
+        const chunk = list.slice(i, i + 500);
+        try { await push.send(chunk.map((t: Any) => t.uid), base); sent += chunk.length; } catch (_e) { failed += chunk.length; }
+      }
+    }
+    const log = await deps.admin.from("line_push_log").insert({ event_key: eventKey, sender: String(body.sender || "").slice(0, 60) || null, filter: body.filter || {}, message, target_count: sel.targets.length, sent_count: sent, failed_count: failed, unbound_count: unbound.length });
+    if (log.error) console.error("推播紀錄寫入失敗", log.error.message);
+    return { ok: true, total: sel.targets.length, sent, failed, unbound: unbound.length };
+  }
 
   // ---------- 執秘：查看／解除本社的 LINE 綁定（用該社的登入密碼確認，與報名系統本身的防護程度相同） ----------
   if (action === "club_bindings" || action === "club_unbind") {
