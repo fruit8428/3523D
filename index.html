@@ -4737,20 +4737,75 @@
             renderMemberMasterTable();
         }
 
-        async function deleteMember(memberId) {
-            const members = clubMemberDatabase[selectedClubName] || [];
-            const target = members.find(m => m.id === memberId);
-            if (!target) return;
+        // 找出某位社友在本社「已送出的報名表」裡出現的地方（以 姓名＋Nick Name 認人，與報到名單相同）
+        function findSubmittedRegistrationsOf(clubName, target) {
+            const hits = [];
+            categoriesData.forEach(cat => (cat.subEvents || []).forEach(sub => {
+                (registrationOrders[sub] || []).forEach(o => {
+                    if (o.clubName !== clubName) return;
+                    if ((o.items || []).some(it => it.name === target.name && (it.nickname || '') === (target.nickname || ''))) {
+                        hits.push({ cat: cat, sub: sub, order: o, isPels: /PELS|社長當選人/i.test(sub) });
+                    }
+                });
+            }));
+            return hits;
+        }
 
-            if (confirm(`確定要從 ${selectedClubName} 名冊中移除社友【${target.name}】？`)) {
-                clubMemberDatabase[selectedClubName] = members.filter(m => m.id !== memberId);
-                // Also remove from current form if selected
-                currentFormSelectedMembers = currentFormSelectedMembers.filter(sm => !(sm.name === target.name && sm.nickname === target.nickname));
-                await saveToStorage();
-                renderMemberMasterTable();
-                renderSelectedMembersTable();
-                showToast(`已刪除社友【${target.name}】`);
+        // 刪除社友。若他已經在本社送出的報名表裡，會再問一次要不要一併從報名表移除：
+        // 不自動連動，是因為社友離社後，過去活動的報名與報到紀錄通常要保留；而且移除會改變該社的應繳金額。
+        async function deleteMember(memberId) {
+            let members = clubMemberDatabase[selectedClubName] || [];
+            let target = members.find(m => m.id === memberId);
+            if (!target) return;
+            if (!confirm(`確定要從 ${selectedClubName} 名冊中移除社友【${target.name}】？`)) return;
+
+            // 先抓最新的雲端資料再改，避免蓋掉別社剛送出的報名
+            if (typeof pullRemoteState === 'function') { try { await pullRemoteState(true); } catch (e) { /* 抓不到就用本機資料 */ } }
+            members = clubMemberDatabase[selectedClubName] || [];
+            target = members.find(m => m.id === memberId) || target;
+
+            const hits = findSubmittedRegistrationsOf(selectedClubName, target);
+            const removable = hits.filter(h => !h.isPels);
+            const pelsHits = hits.filter(h => h.isPels);
+            let alsoRemove = false;
+            if (removable.length) {
+                alsoRemove = confirm(`【${target.name}】已經在貴社送出的報名表裡：\n\n${removable.map(h => '・' + h.sub).join('\n')}\n\n要一併從這些報名表移除嗎？\n\n按「確定」＝一併移除，報名人數會減少（有收人頭費的活動，應繳金額也會跟著減少），報到名單上也不會再有他。\n按「取消」＝只從名冊刪除，已送出的報名保留不動（例如他已經離社，但過去的活動紀錄要留著）。`);
             }
+            const paidEvents = [];
+            if (alsoRemove) {
+                removable.forEach(h => {
+                    const o = h.order;
+                    const before = Number(o.grandTotal) || 0;
+                    const isHim = it => it.name === target.name && (it.nickname || '') === (target.nickname || '');
+                    // 金額：只有「這張報名表真的有收人頭費」時才扣掉他的那一份。
+                    // 判斷方式＝表上記的人頭費合計（participantFee）等於每個人 fee 的加總。研討會這類不收人頭費的活動，
+                    // 每個人身上雖然也帶著 fee 欄位，但 participantFee 是 0，就不能拿 fee 來算，否則金額會被算錯。
+                    const feeSum = (o.items || []).reduce((sum, it) => sum + (Number(it.fee) || 0), 0);
+                    const hisFee = (o.items || []).filter(isHim).reduce((sum, it) => sum + (Number(it.fee) || 0), 0);
+                    const chargesPerHead = typeof o.participantFee === 'number' && o.participantFee > 0 && Math.abs(o.participantFee - feeSum) < 0.5;
+                    o.items = (o.items || []).filter(it => !isHim(it));
+                    if (chargesPerHead && hisFee > 0 && typeof o.grandTotal === 'number') {
+                        o.participantFee -= hisFee;
+                        o.grandTotal -= hisFee;
+                    }
+                    if (Math.abs((Number(o.grandTotal) || 0) - before) >= 0.5 && isRecordPaid((chairPaymentRecords[`${h.cat.id}::${h.sub}`] || {})[selectedClubName])) paidEvents.push(h.sub);
+                });
+            }
+            clubMemberDatabase[selectedClubName] = members.filter(m => m.id !== memberId);
+            // Also remove from current form if selected
+            currentFormSelectedMembers = currentFormSelectedMembers.filter(sm => !(sm.name === target.name && sm.nickname === target.nickname));
+            const saved = await saveToStorage();
+            renderMemberMasterTable();
+            renderSelectedMembersTable();
+            if (typeof updateTotalFeeSummaryDisplay === 'function') updateTotalFeeSummaryDisplay();
+            if (currentRole === 'chair' || currentRole === 'super_admin') { try { updateChairDashboard(); renderDivisionPaymentSection(); } catch (e) { /* 後台沒開著就略過 */ } }
+            if (saved === false) { alert('⚠️ 存檔失敗，請確認網路後重新整理頁面，再檢查名冊與報名表。'); return; }
+            showToast(alsoRemove ? `已刪除社友【${target.name}】，並從 ${removable.length} 個報名表移除` : `已刪除社友【${target.name}】`);
+            const notes = [];
+            if (paidEvents.length) notes.push(`以下活動貴社已繳費，移除後應繳金額變少，差額請與主委確認：\n${paidEvents.map(x => '・' + x).join('\n')}`);
+            if (removable.length && !alsoRemove) notes.push('已送出的報名表沒有更動，他仍會出現在這些活動的報名與報到名單上。之後要移除，請到該活動的報名表把他取消後重新送出。');
+            if (pelsHits.length) notes.push(`他在「${pelsHits.map(h => h.sub).join('、')}」的報名沒有自動移除（這個活動牽涉出席方式與旅平險資料）。如需取消，請到該活動的報名表修改後重新送出。`);
+            if (notes.length) alert(notes.join('\n\n'));
         }
 
         // ================= CHAIR DASHBOARD & CHARTS =================
