@@ -497,24 +497,25 @@
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
                 <!-- Left: Club Member Master Database (各社執秘社友資料庫) -->
                 <div id="memberMasterCol" class="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col">
-                    <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-3">
-                        <div>
-                            <h3 class="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-1.5">
-                                👥 <span id="currentClubNameTitle">臺北市南區扶輪社</span> 社友庫
+                    <!-- 標題在上、按鈕在下（各佔一整列）：按鈕變多時才不會把標題擠成直排 -->
+                    <div class="flex flex-col gap-2.5 pb-3 border-b border-slate-100 mb-3">
+                        <div class="min-w-0">
+                            <h3 class="font-bold text-slate-800 text-sm sm:text-base leading-snug">
+                                👥 <span id="currentClubNameTitle" class="whitespace-nowrap">臺北市南區扶輪社</span> <span class="whitespace-nowrap">社友庫</span>
                             </h3>
                             <p class="text-[11px] text-slate-500" id="masterDbSubDesc">已整合<strong>高爾夫差點</strong>，預先維護一勞永逸</p>
                         </div>
-                        <div class="flex items-center gap-2 flex-wrap justify-end">
-                            <button id="lineBindingsBtn" onclick="openLineBindingsModal()" class="hidden px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95" title="查看本社哪些社友已經綁定 LINE（自助報到用），或解除綁定">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <button id="lineBindingsBtn" onclick="openLineBindingsModal()" class="hidden px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm whitespace-nowrap transition active:scale-95" title="查看本社哪些社友已經綁定 LINE（自助報到用），或解除綁定">
                                 📱 LINE 綁定名單
                             </button>
-                            <button onclick="openLineRelayModal()" class="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95" title="把 LINE 群組的報名接龍整段貼上，系統自動勾選名單">
+                            <button onclick="openLineRelayModal()" class="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm whitespace-nowrap transition active:scale-95" title="把 LINE 群組的報名接龍整段貼上，系統自動勾選名單">
                                 💬 貼上 LINE 接龍
                             </button>
-                            <button onclick="openExcelModal()" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95">
+                            <button onclick="openExcelModal()" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm whitespace-nowrap transition active:scale-95">
                                 📊 匯入/匯出 Excel
                             </button>
-                            <button onclick="openAddMemberModal()" class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95">
+                            <button onclick="openAddMemberModal()" class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm whitespace-nowrap transition active:scale-95">
                                 ➕ 新增社友
                             </button>
                         </div>
