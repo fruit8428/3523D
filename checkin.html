@@ -432,7 +432,7 @@
                 const btn = arrived
                     ? `<div class="flex items-center gap-2 shrink-0"><div class="text-right leading-tight"><div class="text-sm font-black text-emerald-700 whitespace-nowrap">✅ ${E(fmtTime(e.checkin.checked_in_at))}</div>${e.checkin.checked_by ? `<div class="text-[10px] text-slate-400 max-w-[88px] truncate">${E(e.checkin.checked_by)}</div>` : ''}</div>${open ? `<button type="button" data-act="cancel" data-i="${i}" ${busy ? 'disabled' : ''} class="text-[11px] font-bold text-slate-500 border border-slate-300 rounded-md px-2 py-2 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300">取消</button>` : ''}</div>`
                     : (open
-                        ? `<div class="flex items-center gap-2 shrink-0">${e.pendingRow ? `<button type="button" data-act="cancel" data-i="${i}" ${busy ? 'disabled' : ''} class="text-[11px] font-bold text-slate-500 border border-slate-300 rounded-md px-2 py-2 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300">移除</button>` : ''}<button type="button" data-act="mark" data-i="${i}" ${busy ? 'disabled' : ''} class="ck-row-btn bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-base rounded-lg px-4 shadow-sm ${busy ? 'opacity-50' : ''}">${busy ? '…' : '報到'}</button></div>`
+                        ? `<div class="flex items-center gap-2 shrink-0">${e.pendingRow ? `<button type="button" data-act="cancel" data-i="${i}" ${busy ? 'disabled' : ''} class="text-[11px] font-bold text-slate-500 border border-slate-300 rounded-md px-2 py-2 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300">刪除</button>` : ''}<button type="button" data-act="mark" data-i="${i}" ${busy ? 'disabled' : ''} class="ck-row-btn bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-base rounded-lg px-4 shadow-sm ${busy ? 'opacity-50' : ''}">${busy ? '…' : '報到'}</button></div>`
                         : '<span class="shrink-0 text-xs font-bold text-slate-400">未到</span>');
                 html += `<div class="flex items-center justify-between gap-3 px-3 py-2.5 ${arrived ? 'bg-emerald-50/60' : ''} ${uid === flashUid ? 'ck-flash' : ''}">
                     <div class="min-w-0">
@@ -534,16 +534,17 @@
         async function cancelPerson(e) {
             const uid = uidOf(e.club, e.key);
             if (pending.has(uid) || !(e.checkin || e.pendingRow)) return;
-            const removing = !e.checkin;   // 加報但尚未到場的人：從加報名單移除
-            if (!confirm(removing ? `確定把「${e.club} ${e.name || e.nickname}」從現場加報名單移除嗎？` : `確定取消「${e.club} ${e.name || e.nickname}」的報到嗎？\n\n（只有點錯人時才需要取消）`)) return;
+            const removing = !e.checkin;   // 加報但尚未到場的人按「刪除」：從名單拿掉
+            // 已報到的人按「取消」：只取消報到，名字仍留在名單上（現場加報的人變回「尚未到場」）
+            if (!confirm(removing ? `確定把「${e.club} ${e.name || e.nickname}」從現場加報名單刪除嗎？\n\n刪除後名單上就不會再有這個人。` : `確定取消「${e.club} ${e.name || e.nickname}」的報到嗎？\n\n只會取消報到，名字仍會留在名單上。`)) return;
             pending.add(uid);
             renderList();
             try {
-                const { data, error } = await sb.rpc('checkin_cancel', { p_event_key: EVENT_KEY, p_password: password, p_club: e.club, p_person_key: e.key, p_by: deskName });
+                const { data, error } = await sb.rpc(removing ? 'checkin_remove_walkin' : 'checkin_cancel', { p_event_key: EVENT_KEY, p_password: password, p_club: e.club, p_person_key: e.key, p_by: deskName });
                 if (error) throw error;
                 if (data && data.id != null) rowsMap.set(data.id, data);
                 markSeq++;
-                toast(removing ? `已把 ${e.name || e.nickname} 從加報名單移除` : `已取消 ${e.name || e.nickname} 的報到`);
+                toast(removing ? `已把 ${e.name || e.nickname} 從加報名單刪除` : `已取消 ${e.name || e.nickname} 的報到`);
                 notifyPeers('cancel');
             } catch (err) {
                 handleWriteError(err);

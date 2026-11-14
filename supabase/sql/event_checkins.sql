@@ -17,7 +17,8 @@
 --   checkin_verify        工作人員進入報到頁時檢查密碼
 --   checkin_mark          報到（重複點同一個人不會產生第二筆）
 --   checkin_add_walkin    現場加報但人還沒到（例：社友先幫忙報名）：先加入名單，狀態為 pending，人到了再按報到
---   checkin_cancel        取消誤點的報到（紀錄保留、狀態改為已取消）
+--   checkin_cancel        取消誤點的報到（紀錄保留、狀態改為已取消；現場加報的人則變回「尚未到場」，仍留在名單上）
+--   checkin_remove_walkin 把現場加報的人從名單刪除（狀態改為已取消）
 --   checkin_reset         清空某活動全部報到紀錄（活動前測試完要歸零時用）
 --
 -- 安全性說明：這個系統沒有真正的帳號登入，checkin_set_event 無法驗證呼叫者是不是主委，
@@ -176,6 +177,7 @@ begin
 end $$;
 
 -- 取消報到（誤點）。紀錄不刪除，只把狀態改成已取消，其他櫃台才同步得到這個變更。
+-- 現場加報的人：取消報到後變回「尚未到場」（pending），名字仍留在名單上；要從名單拿掉請用 checkin_remove_walkin。
 create or replace function public.checkin_cancel(p_event_key text, p_password text, p_club text, p_person_key text, p_by text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare r public.event_checkins%rowtype;
@@ -183,8 +185,24 @@ begin
     if not public._checkin_password_ok(p_event_key, p_password) then raise exception 'CHECKIN_PASSWORD_WRONG'; end if;
     if not coalesce((select is_open from public.checkin_events where event_key = p_event_key), false) then raise exception 'CHECKIN_CLOSED'; end if;
     update public.event_checkins
-       set status = 'cancelled', checked_by = coalesce(nullif(p_by, ''), checked_by), updated_at = now()
+       set status = case when status = 'pending' then 'pending' when is_walk_in then 'pending' else 'cancelled' end,
+           checked_by = coalesce(nullif(p_by, ''), checked_by), updated_at = now()
      where event_key = p_event_key and club_name = p_club and person_key = p_person_key
+    returning * into r;
+    if r.id is null then return null; end if;
+    return to_jsonb(r);
+end $$;
+
+-- 把現場加報的人從名單刪除（紀錄保留、狀態改為已取消）。只對現場加報的人有效。
+create or replace function public.checkin_remove_walkin(p_event_key text, p_password text, p_club text, p_person_key text, p_by text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r public.event_checkins%rowtype;
+begin
+    if not public._checkin_password_ok(p_event_key, p_password) then raise exception 'CHECKIN_PASSWORD_WRONG'; end if;
+    if not coalesce((select is_open from public.checkin_events where event_key = p_event_key), false) then raise exception 'CHECKIN_CLOSED'; end if;
+    update public.event_checkins
+       set status = 'cancelled', checked_by = coalesce(nullif(p_by, ''), checked_by), updated_at = now()
+     where event_key = p_event_key and club_name = p_club and person_key = p_person_key and (is_walk_in or status = 'pending')
     returning * into r;
     if r.id is null then return null; end if;
     return to_jsonb(r);
@@ -207,5 +225,6 @@ grant execute on function public.checkin_verify(text, text) to anon, authenticat
 grant execute on function public.checkin_mark(text, text, text, text, text, text, boolean, text, text) to anon, authenticated;
 grant execute on function public.checkin_add_walkin(text, text, text, text, text, text, text, text) to anon, authenticated;
 grant execute on function public.checkin_cancel(text, text, text, text, text) to anon, authenticated;
+grant execute on function public.checkin_remove_walkin(text, text, text, text, text) to anon, authenticated;
 grant execute on function public.checkin_reset(text, text) to anon, authenticated;
 notify pgrst, 'reload schema';
