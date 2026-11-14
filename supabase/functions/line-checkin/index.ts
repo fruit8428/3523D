@@ -41,6 +41,19 @@ const deps: Deps = {
       if (userIds.length === 1) await lineApi("/v2/bot/message/push", { method: "POST", body: JSON.stringify({ to: userIds[0], messages }) });
       else await lineApi("/v2/bot/message/multicast", { method: "POST", body: JSON.stringify({ to: userIds, messages }) });
     },
+    // 傳給官方帳號的所有好友（計費：有幾位好友收得到就算幾則）
+    async broadcast(text: string) {
+      await lineApi("/v2/bot/message/broadcast", { method: "POST", body: JSON.stringify({ messages: [{ type: "text", text }] }) });
+    },
+    // 好友人數：LINE 只提供「前一天」的統計（日本時間），帳號剛建立或統計還沒出來時查不到
+    async friends() {
+      for (const back of [1, 2]) {
+        const d = new Date(Date.now() + 9 * 3600_000 - back * 86400_000).toISOString().slice(0, 10).replace(/-/g, "");
+        const r = await lineApi(`/v2/bot/insight/followers?date=${d}`);
+        if (r.status === "ready") return Number(r.targetedReaches ?? r.followers) || 0;
+      }
+      return null;
+    },
     async quota() {
       const q = await lineApi("/v2/bot/message/quota");
       const c = await lineApi("/v2/bot/message/quota/consumption");

@@ -1174,7 +1174,19 @@
                 <div id="panelBody_linePush" class="hidden mt-4 pt-4 border-t border-slate-100 space-y-4">
                     <div>
                         <div class="text-sm font-bold text-slate-800">① 要通知誰</div>
-                        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 text-sm">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                            <label class="flex items-start gap-2 border border-slate-300 rounded-lg px-3 py-2.5 cursor-pointer has-[:checked]:border-green-500 has-[:checked]:bg-green-50">
+                                <input type="radio" name="linePushAudience" value="registered" checked onchange="linePushAudienceChanged()" class="w-4 h-4 mt-0.5">
+                                <span class="text-sm"><b>已報名這個活動的社友</b><span class="block text-[11px] text-slate-500">提醒出席用。可以挑分區、社，或只通知還沒報到的人。</span></span>
+                            </label>
+                            <label class="flex items-start gap-2 border border-slate-300 rounded-lg px-3 py-2.5 cursor-pointer has-[:checked]:border-green-500 has-[:checked]:bg-green-50">
+                                <input type="radio" name="linePushAudience" value="all_friends" onchange="linePushAudienceChanged()" class="w-4 h-4 mt-0.5">
+                                <span class="text-sm"><b>LINE 官方帳號的所有好友</b><span class="block text-[11px] text-slate-500">邀請大家報名用（例如年會）。不管有沒有報名、有沒有綁定，加了好友的人都會收到。</span></span>
+                            </label>
+                        </div>
+                        <div id="linePushAllNote" class="hidden mt-2 text-xs text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2 leading-relaxed">會發給官方帳號的<b>每一位好友</b>，人數通常比報名者多很多，<b>有幾位好友就用掉幾則訊息</b>。每個人收到的內容都一樣，所以這種發法不能用 <code class="font-mono">{姓名}</code>、<code class="font-mono">{社名}</code>。</div>
+                        <div id="linePushRegFilters">
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3 text-sm">
                             <label class="flex items-center gap-1.5"><input type="radio" name="linePushStatus" value="all" checked onchange="linePushFilterChanged()" class="w-4 h-4"> 全部報名者</label>
                             <label class="flex items-center gap-1.5"><input type="radio" name="linePushStatus" value="absent" onchange="linePushFilterChanged()" class="w-4 h-4"> 只通知還沒報到的人</label>
                             <label class="flex items-center gap-1.5"><input type="radio" name="linePushStatus" value="arrived" onchange="linePushFilterChanged()" class="w-4 h-4"> 只通知已報到的人</label>
@@ -1189,6 +1201,7 @@
                             <span id="linePushCount" class="text-xs text-slate-500"></span>
                         </div>
                         <div id="linePushGroups" class="mt-2 space-y-2 max-h-72 overflow-y-auto border border-slate-200 rounded-lg p-2.5 bg-slate-50/60"></div>
+                        </div>
                     </div>
                     <div>
                         <div class="text-sm font-bold text-slate-800">② 訊息內容</div>
@@ -9652,6 +9665,8 @@
         // 這個面板有輸入框，所以「不」跟著 updateRolePermissionsUI 重畫內容：renderLinePushPanel() 只切換顯示，換了活動才重設。
         const LINE_PUSH_ENABLED = !!DISTRICT.linePushEnabled && !!DISTRICT.lineLiffId;   // 要先啟用 LINE 自助報到（社友才有綁定）
         const LINE_PUSH_DEFAULT_MESSAGE = '{姓名} 您好：\n提醒您已報名「{活動名稱}」，請準時出席。\n如臨時無法參加，請儘早告知貴社執秘，謝謝！';
+        // 對象是「官方帳號所有好友」時的預設內容（每個人收到的都一樣，不能用 {姓名}、{社名}）
+        const LINE_PUSH_DEFAULT_MESSAGE_ALL = '各位社友好：\n「{活動名稱}」歡迎大家踴躍報名參加！\n報名請洽貴社執秘，謝謝。';
         let linePushKey = '';             // 目前面板對應的活動
         let linePushPassword = '';        // 推播密碼只記在記憶體（重新整理就要重打），不存到這台裝置
         let linePushPreviewed = '';       // 上次按「先看人數」時的條件；條件或訊息一改就要重看，才能按發送
@@ -9663,6 +9678,8 @@
             PUSH_MESSAGE_TOO_LONG: '訊息內容太長（上限 1000 字）。',
             PUSH_NO_TARGET: '符合條件的人裡面，沒有任何人綁定 LINE，所以沒有可以發送的對象。',
             PUSH_DUPLICATE: '剛剛已經發送過一模一樣的訊息，為避免重複打擾，請等一分鐘後再試。',
+            PUSH_NO_PERSONAL: '發給「官方帳號所有好友」時，每個人收到的內容都一樣，不能使用 {姓名} 或 {社名}，請從訊息中拿掉。',
+            PUSH_BROADCAST_FAILED: 'LINE 沒有接受這次發送（可能是本月訊息用量不足，或官方帳號設定有問題），訊息沒有送出。',
             EVENT_NOT_FOUND: '找不到這個活動，請重新整理頁面。',
             EVENT_NO_CHECKIN: '分攤金／配合款項目沒有報名名單，不能推播。',
             TABLE_MISSING: '雲端尚未建立推播需要的資料表，請最高管理員依 README 執行 supabase/sql/line_push.sql。',
@@ -9708,6 +9725,9 @@
             linePushKey = key;
             linePushPreviewed = '';
             document.querySelectorAll('input[name="linePushStatus"]').forEach(r => { r.checked = r.value === 'all'; });
+            document.querySelectorAll('input[name="linePushAudience"]').forEach(r => { r.checked = r.value === 'registered'; });
+            document.getElementById('linePushRegFilters').classList.remove('hidden');
+            document.getElementById('linePushAllNote').classList.add('hidden');
             document.getElementById('linePushPart').value = 'all';
             document.getElementById('linePushPartWrap').classList.toggle('hidden', !isCurrentEventSports());
             document.getElementById('linePushResult').innerHTML = '';
@@ -9758,7 +9778,21 @@
             document.querySelectorAll('#linePushGroups [data-push-club]').forEach(b => { b.checked = on; });
             linePushFilterChanged();
         }
+        function linePushIsAllFriends() { const a = document.querySelector('input[name="linePushAudience"]:checked'); return !!a && a.value === 'all_friends'; }
+        // 切換「已報名的社友／官方帳號所有好友」：換掉篩選區，訊息若還是另一種的預設內容就跟著換
+        function linePushAudienceChanged() {
+            const all = linePushIsAllFriends();
+            document.getElementById('linePushRegFilters').classList.toggle('hidden', all);
+            document.getElementById('linePushAllNote').classList.toggle('hidden', !all);
+            const m = document.getElementById('linePushMessage');
+            if (all && m.value.trim() === LINE_PUSH_DEFAULT_MESSAGE) m.value = LINE_PUSH_DEFAULT_MESSAGE_ALL;
+            else if (!all && m.value.trim() === LINE_PUSH_DEFAULT_MESSAGE_ALL) m.value = LINE_PUSH_DEFAULT_MESSAGE;
+            linePushMessageChanged();
+            linePushInvalidate();
+            document.getElementById('linePushResult').innerHTML = '';
+        }
         function linePushGetFilter() {
+            if (linePushIsAllFriends()) return { audience: 'all_friends' };
             const st = document.querySelector('input[name="linePushStatus"]:checked');
             return { clubs: linePushSelectedClubs(), status: st ? st.value : 'all', participation: isCurrentEventSports() ? document.getElementById('linePushPart').value : 'all' };
         }
@@ -9770,7 +9804,7 @@
         }
         function linePushFilterChanged() { linePushUpdateCount(); linePushInvalidate(); document.getElementById('linePushResult').innerHTML = ''; }
         function linePushMessageChanged() { document.getElementById('linePushLen').innerText = document.getElementById('linePushMessage').value.length; }
-        function linePushResetMessage() { const m = document.getElementById('linePushMessage'); m.value = LINE_PUSH_DEFAULT_MESSAGE; linePushMessageChanged(); }
+        function linePushResetMessage() { const m = document.getElementById('linePushMessage'); m.value = linePushIsAllFriends() ? LINE_PUSH_DEFAULT_MESSAGE_ALL : LINE_PUSH_DEFAULT_MESSAGE; linePushMessageChanged(); }
         function linePushShowError(r) {
             if (r.code === 'PUSH_AUTH_FAILED') linePushPassword = '';
             document.getElementById('linePushResult').innerHTML = `<div class="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">❌ ${escapeHtmlText(linePushErrText(r.code))}</div>`;
@@ -9779,7 +9813,7 @@
         async function linePushPreview() {
             if (linePushBusy || !isLinePushApplicable()) return;
             const filter = linePushGetFilter();
-            if (!filter.clubs.length) { alert('請至少勾選一個社。'); return; }
+            if (!filter.audience && !filter.clubs.length) { alert('請至少勾選一個社。'); return; }
             if (!linePushAskPassword()) return;
             const key = getActivePaymentKey();
             const box = document.getElementById('linePushResult');
@@ -9791,6 +9825,20 @@
             if (!r.ok) { linePushShowError(r); return; }
             const q = r.quota;
             const remain = q && q.limit !== null ? q.limit - q.used : null;
+            if (r.audience === 'all_friends') {   // 對象是官方帳號所有好友
+                const qt = !q ? '（查不到本月訊息用量）' : q.limit === null ? `本月已用 ${q.used} 則（方案沒有上限）` : `本月額度 ${q.limit} 則，已用 ${q.used} 則，剩 <b class="${r.friends !== null && remain < r.friends ? 'text-rose-700' : 'text-slate-900'}">${remain}</b> 則`;
+                box.innerHTML = `
+                    <div class="border border-slate-200 rounded-lg p-3 bg-slate-50 text-sm leading-relaxed">
+                        <div>會發給 LINE 官方帳號的<b>所有好友</b>${r.friends === null ? '。<span class="text-amber-800">目前查不到好友人數（LINE 只提供前一天的統計，帳號剛建立時要隔天才有），實際人數請到官方帳號後台查看。</span>' : `：約 <b class="text-green-700 text-base">${r.friends}</b> 人，會用掉約 ${r.friends} 則。`}</div>
+                        <div class="text-xs text-slate-600 mt-1">LINE 官方帳號訊息用量：${qt}${r.friends !== null && remain !== null && remain < r.friends ? '。<b class="text-rose-700">剩餘則數不夠，LINE 可能整批都不送，或另外計費。</b>' : ''}</div>
+                        <div class="text-[11px] text-slate-500 mt-2">好友裡如果有不是社友的人（例如來賓、廠商），他們也會收到。</div>
+                    </div>`;
+                linePushPreviewed = JSON.stringify(filter);
+                document.getElementById('linePushSendBtn').disabled = false;
+                window.__linePushBound = r.friends;
+                linePushLoadHistory();
+                return;
+            }
             const byClub = {};
             (r.unbound || []).forEach(u => { (byClub[u.club] = byClub[u.club] || []).push(u.name); });
             const quotaText = !q ? '（查不到本月訊息用量）' : q.limit === null ? `本月已用 ${q.used} 則（方案沒有上限）` : `本月額度 ${q.limit} 則，已用 ${q.used} 則，剩 <b class="${remain < r.bound ? 'text-rose-700' : 'text-slate-900'}">${remain}</b> 則`;
@@ -9815,7 +9863,10 @@
             if (!message) { alert('請先輸入訊息內容。'); return; }
             if (!linePushAskPassword()) return;
             const n = window.__linePushBound || 0;
-            if (!confirm(`確定要發送 LINE 推播給 ${n} 位社友嗎？\n\n訊息送出後無法收回，並會用掉 ${n} 則訊息用量。\n\n────────\n${message.slice(0, 200)}${message.length > 200 ? '…' : ''}`)) return;
+            const allFriends = !!filter.audience;
+            if (allFriends && (message.includes('{姓名}') || message.includes('{社名}'))) { alert('發給「官方帳號所有好友」時，每個人收到的內容都一樣，不能使用 {姓名} 或 {社名}。\n\n請從訊息中拿掉，或按「恢復預設內容」。'); return; }
+            const who = allFriends ? `LINE 官方帳號的所有好友${window.__linePushBound === null ? '' : `（約 ${n} 人）`}` : `${n} 位社友`;
+            if (!confirm(`確定要發送 LINE 推播給 ${who} 嗎？\n\n訊息送出後無法收回，${allFriends ? '有幾位好友就會用掉幾則訊息用量' : `並會用掉 ${n} 則訊息用量`}。\n\n────────\n${message.slice(0, 200)}${message.length > 200 ? '…' : ''}`)) return;
             const key = getActivePaymentKey();
             const btn = document.getElementById('linePushSendBtn');
             linePushBusy = true;
@@ -9826,6 +9877,12 @@
             if (key !== getActivePaymentKey()) return;
             if (!r.ok) { linePushShowError(r); linePushInvalidate(); return; }
             linePushInvalidate();   // 發完要重新確認才能再發，避免連點重複發送
+            if (r.audience === 'all_friends') {
+                document.getElementById('linePushResult').innerHTML = `<div class="text-sm font-bold text-green-800 bg-green-50 border border-green-300 border rounded-lg px-3 py-2.5 leading-relaxed">✅ 已送出給官方帳號的所有好友${r.friends === null ? '' : `（約 ${r.friends} 人）`}。</div>`;
+                showToast('已送出 LINE 推播給所有好友', '📣');
+                linePushLoadHistory();
+                return;
+            }
             document.getElementById('linePushResult').innerHTML = `<div class="text-sm font-bold ${r.failed ? 'text-amber-900 bg-amber-50 border-amber-300' : 'text-green-800 bg-green-50 border-green-300'} border rounded-lg px-3 py-2.5 leading-relaxed">✅ 已送出 ${r.sent} 則${r.failed ? `，<span class="text-rose-700">失敗 ${r.failed} 則</span>（可能是訊息用量不足，或官方帳號設定有問題）` : ''}。${r.unbound ? `另有 ${r.unbound} 位報名者沒有綁定 LINE，沒有收到。` : ''}</div>`;
             showToast(`已送出 ${r.sent} 則 LINE 推播`, '📣');
             linePushLoadHistory();
@@ -9840,7 +9897,7 @@
             const list = r.history || [];
             box.innerHTML = list.length ? `<div class="text-sm font-bold text-slate-800">這個活動的發送紀錄</div><div class="mt-2 space-y-1.5">${list.map(h => `
                 <div class="border border-slate-200 rounded-lg px-3 py-2 text-xs">
-                    <div class="text-slate-500">${escapeHtmlText(checkinFmtTime(h.sent_at))}　${escapeHtmlText(h.sender || '')}　送出 <b class="text-slate-800">${h.sent_count}</b> 則${h.failed_count ? `、失敗 ${h.failed_count} 則` : ''}${h.unbound_count ? `、未綁定 ${h.unbound_count} 人` : ''}</div>
+                    <div class="text-slate-500">${escapeHtmlText(checkinFmtTime(h.sent_at))}　${escapeHtmlText(h.sender || '')}　${h.filter_all ? '所有好友　' : ''}送出 <b class="text-slate-800">${h.sent_count}</b> 則${h.failed_count ? `、失敗 ${h.failed_count} 則` : ''}${h.unbound_count ? `、未綁定 ${h.unbound_count} 人` : ''}</div>
                     <div class="text-slate-700 mt-1 whitespace-pre-line break-words">${escapeHtmlText(String(h.message || '').slice(0, 160))}${String(h.message || '').length > 160 ? '…' : ''}</div>
                 </div>`).join('')}</div>` : '';
         }

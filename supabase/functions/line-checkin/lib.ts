@@ -30,6 +30,8 @@ export interface PushDeps {
   password: string;                                    // 推播密碼（由系統管理者設定，交給獲准使用的地區）
   send: (userIds: string[], text: string) => Promise<void>;                       // 傳送文字訊息；失敗丟出例外
   quota: () => Promise<{ limit: number | null; used: number } | null>;            // 本月額度與已用則數；查不到回 null
+  broadcast: (text: string) => Promise<void>;                                     // 傳給官方帳號的「所有好友」；失敗丟出例外
+  friends: () => Promise<number | null>;                                          // 官方帳號目前收得到訊息的好友人數；查不到回 null
 }
 export class AppError extends Error {
   code: string;
@@ -191,9 +193,36 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
     const push = await requirePush(deps, body);
     const eventKey = String(body.eventKey || "");
     if (action === "push_history") {
-      const { data, error } = await deps.admin.from("line_push_log").select("sent_at,sender,message,target_count,sent_count,failed_count,unbound_count").eq("event_key", eventKey).order("sent_at", { ascending: false }).limit(10);
+      const { data, error } = await deps.admin.from("line_push_log").select("sent_at,sender,message,target_count,sent_count,failed_count,unbound_count,filter").eq("event_key", eventKey).order("sent_at", { ascending: false }).limit(10);
       if (error) dbFail(error);
-      return { ok: true, history: data || [] };
+      return { ok: true, history: (data || []).map((h: Any) => ({ sent_at: h.sent_at, sender: h.sender, message: h.message, target_count: h.target_count, sent_count: h.sent_count, failed_count: h.failed_count, unbound_count: h.unbound_count, filter_all: !!(h.filter && h.filter.audience === "all_friends") })) };
+    }
+    // ---- 對象是「官方帳號的所有好友」（不管有沒有報名、有沒有綁定）：例如年會，希望所有社友都來 ----
+    if (body.filter && body.filter.audience === "all_friends") {
+      const roster = Core.buildRoster(await loadState(deps, false), eventKey);
+      if (!roster.ok) fail(roster.reason === "apportionment" ? "EVENT_NO_CHECKIN" : "EVENT_NOT_FOUND");
+      let friends: number | null = null;
+      try { friends = await push.friends(); } catch (_e) { friends = null; }
+      if (action === "push_preview") {
+        let quota = null;
+        try { quota = await push.quota(); } catch (_e) { quota = null; }
+        return { ok: true, audience: "all_friends", title: roster.title || "", friends, quota };
+      }
+      const msg = String(body.message || "").trim();
+      if (!msg) fail("PUSH_EMPTY_MESSAGE");
+      if (msg.length > 1000) fail("PUSH_MESSAGE_TOO_LONG");
+      // 群發給所有好友時，每個人收到的內容一模一樣，系統也不知道對方是誰，所以不能用個人化的代換字
+      if (msg.includes("{姓名}") || msg.includes("{社名}")) fail("PUSH_NO_PERSONAL");
+      const prev = await deps.admin.from("line_push_log").select("message,sent_at").eq("event_key", eventKey).order("sent_at", { ascending: false }).limit(1);
+      if (prev.error) dbFail(prev.error);
+      if (prev.data && prev.data[0] && prev.data[0].message === msg && Date.now() - Date.parse(prev.data[0].sent_at) < 60_000) fail("PUSH_DUPLICATE");
+      let okSend = true;
+      try { await push.broadcast(msg.split("{活動名稱}").join(roster.title || "")); } catch (_e) { okSend = false; }
+      const n = friends === null ? 0 : friends;
+      const lg = await deps.admin.from("line_push_log").insert({ event_key: eventKey, sender: String(body.sender || "").slice(0, 60) || null, filter: { audience: "all_friends" }, message: msg, target_count: n, sent_count: okSend ? n : 0, failed_count: okSend ? 0 : Math.max(n, 1), unbound_count: 0 });
+      if (lg.error) console.error("推播紀錄寫入失敗", lg.error.message);
+      if (!okSend) fail("PUSH_BROADCAST_FAILED");
+      return { ok: true, audience: "all_friends", friends };
     }
     const sel = await selectPushTargets(deps, eventKey, body.filter);
     const bound = sel.targets.filter((t: Any) => t.uid);
