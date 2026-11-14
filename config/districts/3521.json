@@ -12,7 +12,7 @@
   "ragAssistantUrl": "",
   "defaultClubPassword": "111111",
   "lineLiffId": "2012609430-gMTTWlNe",
-  "linePushEnabled": false,
+  "linePushEnabled": true,
   "emailDomain": "rotary3521.org",
   "divisions": [
     {
