@@ -177,6 +177,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - **認人用 `person_key`＝`姓名|Nick Name`**（同一社內），不用社友 id（匯入 Excel 會整批重編）。
 - **應到名單規則**：來源是 `registrationOrders[子活動名稱]` 的 `items`；PELS 的 `ABSENT` 不列入、`FAMILY` 只點本人（眷屬是受保護個資）；運動賽事另加贊助獎用餐來賓；「參賽／只用餐」標籤只有運動賽事顯示（其他活動的 item 也帶預設值「參賽」）；分攤金／配合款不提供報到（`CheckinCore.isApportionEvent`，判斷式與 `applyCurrentEventMode` 相同）。
 - **兩個 Realtime 廣播頻道**：`rotary-checkin`（payload `{key, kind}`，kind＝`mark`／`cancel`／`status`／`reset`；主委面板與所有櫃台都訂閱）與既有的 `rotary-live-sync`（櫃台頁收到後重讀應到名單）。備援：櫃台每 8 秒抓變動（順便 `checkin_verify`，主委換密碼後舊密碼的櫃台會被退回輸入畫面）、每 2 分鐘整批重抓；主委面板展開時每 20 秒抓一次。報到紀錄讀取要 `.range()` 分頁（一次上限 1000 筆）。
+- 統計欄位：`expected`＝應到、`arrived`＝名單內已到、`extra`＝現場加報、`present`＝`arrived+extra`。**畫面與 Excel 的「實到」一律顯示 `present`**（使用者要求與現場人數一致），未到＝`expected−arrived`、出席率＝`arrived÷expected`。各社 `people[]` 是整張名單（含加報），統計分頁以紅色標示已報到（使用者指定的顏色）。
 - 報到密碼記在 localStorage `rotary_checkin_pw::<活動key>`，主委面板與報到頁共用（同一台裝置主委開報到頁免輸入）。
 - 測試：內嵌 script 抽出來 `node -c`；資料庫與瀏覽器實測先在 3521 展示站做，測完清空 `event_checkins`／`checkin_events` 的測試列。`.vercelignore` 的 `check_*.js` 不會排除 `checkin-core.js`（沒有底線），改排除規則時要留意。
 

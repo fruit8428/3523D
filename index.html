@@ -9655,9 +9655,9 @@
                     <p class="text-[11px] text-slate-500 mt-1 leading-relaxed">只有在「報到中」的時候，櫃台才能點名；活動結束後請按「結束報到」。${st.has_password ? '' : '<b class="text-rose-700">請先設定報到密碼，才能開始報到。</b>'}</p>
                     <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mt-3">
                         ${kpi('應到（報名人數）', t.expected + ' 人', `來自 ${stats.clubs.filter(c => c.expected).length} 個社`, 'text-slate-900')}
-                        ${kpi('實到', t.arrived + ' 人', `出席率 ${t.rate}%`, 'text-emerald-600')}
+                        ${kpi('實到（現場人數）', t.present + ' 人', `報名者到 ${t.arrived} 人，出席率 ${t.rate}%`, 'text-emerald-600')}
                         ${kpi('未到', t.absent + ' 人', '名單請看報到頁的「統計」', t.absent ? 'text-rose-600' : 'text-slate-400')}
-                        ${kpi('現場加報', t.extra + ' 人', '未報名但到場，費用活動後處理', t.extra ? 'text-amber-600' : 'text-slate-400')}
+                        ${kpi('其中現場加報', t.extra + ' 人', '未報名但到場，已算在實到裡；費用活動後處理', t.extra ? 'text-amber-600' : 'text-slate-400')}
                     </div>
                     <div class="text-[10px] text-slate-400 mt-1">人數每 20 秒自動更新一次（面板展開時）；上次更新 ${esc(checkinFmtTime(checkinState.fetchedAt))}</div>
 

@@ -142,14 +142,18 @@
         return entries;
     }
 
-    // 統計：全體、各分區、各社。應到只算報名名單內的人；現場加報另外計。
+    // 統計：全體、各分區、各社。
+    //   expected＝應到（報名名單內的人）、arrived＝名單內已到、extra＝現場加報（含報到後被移出名單的人）、
+    //   present＝現場實際人數（arrived + extra）。畫面上的「實到」一律用 present，才會與現場人數一致；
+    //   「未到」＝expected − arrived、出席率＝arrived ÷ expected（只看有報名的人來了多少）。
+    //   各社另有 people[]（整張名單含加報，依名單順序）給「各社名單」顯示已到／未到。
     function computeStats(entries) {
         const blank = () => ({ expected: 0, arrived: 0, extra: 0, companions: 0 });
         const total = Object.assign(blank(), { meat: 0, vegan: 0, dietUnknown: 0 });
         const divMap = new Map(), clubMap = new Map();
         (entries || []).forEach(e => {
             if (!divMap.has(e.divId)) divMap.set(e.divId, Object.assign(blank(), { divId: e.divId, divName: e.divName, divOrder: e.divOrder }));
-            if (!clubMap.has(e.club)) clubMap.set(e.club, Object.assign(blank(), { club: e.club, divId: e.divId, divName: e.divName, divOrder: e.divOrder, clubOrder: e.clubOrder, absentNames: [] }));
+            if (!clubMap.has(e.club)) clubMap.set(e.club, Object.assign(blank(), { club: e.club, divId: e.divId, divName: e.divName, divOrder: e.divOrder, clubOrder: e.clubOrder, absentNames: [], people: [] }));
             const d = divMap.get(e.divId), c = clubMap.get(e.club);
             const listed = !e.isWalkIn && !e.isOrphan;
             if (listed) {
@@ -159,6 +163,7 @@
             } else if (e.checkin) {
                 total.extra++; d.extra++; c.extra++;
             }
+            c.people.push({ name: e.name || e.nickname, arrived: !!e.checkin, walkIn: !listed });
             if (e.checkin) {
                 if (e.companions) { total.companions += e.companions; d.companions += e.companions; c.companions += e.companions; }
                 if (e.diet === 'VEGAN') total.vegan++; else if (e.diet === 'MEAT') total.meat++; else total.dietUnknown++;
@@ -167,6 +172,8 @@
         total.absent = total.expected - total.arrived;
         total.present = total.arrived + total.extra;
         total.rate = total.expected ? Math.round(total.arrived * 1000 / total.expected) / 10 : 0;
+        divMap.forEach(d => { d.present = d.arrived + d.extra; });
+        clubMap.forEach(c => { c.present = c.arrived + c.extra; });
         const byOrder = (a, b) => (a.divOrder - b.divOrder) || ((a.clubOrder || 0) - (b.clubOrder || 0));
         return {
             total,

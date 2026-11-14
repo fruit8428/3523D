@@ -406,11 +406,11 @@
                 if (e.club !== curClub) {
                     if (curClub !== null) html += '</div></section>';
                     curClub = e.club;
-                    const cs = clubStat[e.club] || { expected: 0, arrived: 0, extra: 0 };
+                    const cs = clubStat[e.club] || { expected: 0, arrived: 0, extra: 0, present: 0 };
                     html += `<section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                         <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2 bg-slate-50 border-b border-slate-200">
                             <div class="flex flex-wrap items-center gap-2 min-w-0"><span class="font-black text-base">${E(e.club)}</span><span class="text-[11px] text-slate-500">${E(e.divName)}</span>${clubPaymentTag(e.club)}</div>
-                            <div class="text-sm font-black whitespace-nowrap ${cs.expected && cs.arrived >= cs.expected ? 'text-emerald-700' : 'text-slate-700'}">${cs.arrived} / ${cs.expected} 已到${cs.extra ? `<span class="text-amber-700">　加報 ${cs.extra}</span>` : ''}</div>
+                            <div class="text-sm font-black whitespace-nowrap ${cs.expected && cs.arrived >= cs.expected ? 'text-emerald-700' : 'text-slate-700'}">${cs.present} / ${cs.expected} 已到${cs.extra ? `<span class="text-amber-700">　含加報 ${cs.extra}</span>` : ''}</div>
                         </div><div class="divide-y divide-slate-100">`;
                 }
                 const uid = uidOf(e.club, e.key);
@@ -437,19 +437,19 @@
             const kpi = (label, value, sub, color) => `<div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3.5"><div class="text-xs font-semibold text-slate-500">${label}</div><div class="text-2xl font-black mt-0.5 ${color}">${value}</div><div class="text-[11px] text-slate-500 mt-0.5">${sub}</div></div>`;
             const bar = (a, b) => `<div class="h-2 rounded-full bg-slate-200 overflow-hidden min-w-[60px]"><div class="h-full ${a >= b && b ? 'bg-emerald-500' : 'bg-blue-500'}" style="width:${Math.min(100, pct(a, b))}%"></div></div>`;
             const divRows = stats.divisions.filter(d => d.expected || d.extra).map(d => `<tr class="border-t border-slate-100">
-                <td class="p-2 font-bold whitespace-nowrap">${E(d.divName)}</td><td class="p-2 text-right">${d.expected}</td><td class="p-2 text-right font-bold text-emerald-700">${d.arrived}</td>
+                <td class="p-2 font-bold whitespace-nowrap">${E(d.divName)}</td><td class="p-2 text-right">${d.expected}</td><td class="p-2 text-right font-bold text-emerald-700">${d.present}</td>
                 <td class="p-2 text-right ${d.expected - d.arrived ? 'font-bold text-rose-700' : 'text-slate-400'}">${d.expected - d.arrived}</td><td class="p-2 text-right text-amber-700">${d.extra || ''}</td>
                 <td class="p-2 w-1/3"><div class="flex items-center gap-2">${bar(d.arrived, d.expected)}<span class="text-xs font-bold w-12 text-right">${pct(d.arrived, d.expected)}%</span></div></td></tr>`).join('');
             const clubRows = stats.clubs.filter(c => c.expected || c.extra).map(c => `<tr class="border-t border-slate-100 align-top">
                 <td class="p-2 whitespace-nowrap"><div class="font-bold">${E(c.club)}</div><div class="text-[10px] text-slate-400">${E(c.divName)}</div></td>
-                <td class="p-2 text-right whitespace-nowrap"><span class="font-bold ${c.expected && c.arrived >= c.expected ? 'text-emerald-700' : ''}">${c.arrived}</span> / ${c.expected}${c.extra ? `<div class="text-[10px] text-amber-700">加報 ${c.extra}</div>` : ''}</td>
-                <td class="p-2 text-slate-600">${c.absentNames.length ? E(c.absentNames.join('、')) : '<span class="text-emerald-700 font-bold">全員到齊</span>'}</td></tr>`).join('');
+                <td class="p-2 text-right whitespace-nowrap"><span class="font-bold ${c.expected && c.arrived >= c.expected ? 'text-emerald-700' : ''}">${c.present}</span> / ${c.expected}${c.extra ? `<div class="text-[10px] text-amber-700">含加報 ${c.extra}</div>` : ''}</td>
+                <td class="p-2 leading-relaxed">${c.people.map(p => `<span class="whitespace-nowrap ${p.arrived ? 'text-red-600 font-bold' : 'text-slate-600'}">${E(p.name)}${p.walkIn ? '<span class="text-[11px] font-semibold">（加報）</span>' : ''}</span>`).join('<span class="text-slate-300">、</span>')}${c.expected && !c.absentNames.length ? ' <span class="text-emerald-700 font-bold whitespace-nowrap">✓ 全員到齊</span>' : ''}</td></tr>`).join('');
             $('viewStats').innerHTML = `
                 <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     ${kpi('應到（報名人數）', t.expected + ' 人', `來自 ${stats.clubs.filter(c => c.expected).length} 個社`, 'text-slate-900')}
-                    ${kpi('實到', t.arrived + ' 人', `出席率 ${t.rate}%`, 'text-emerald-600')}
-                    ${kpi('未到', t.absent + ' 人', '名單見下方各社明細', t.absent ? 'text-rose-600' : 'text-slate-400')}
-                    ${kpi('現場加報', t.extra + ' 人', '未報名但到場，費用活動後處理', t.extra ? 'text-amber-600' : 'text-slate-400')}
+                    ${kpi('實到（現場人數）', t.present + ' 人', `報名者到 ${t.arrived} 人，出席率 ${t.rate}%`, 'text-emerald-600')}
+                    ${kpi('未到', t.absent + ' 人', '報名了但還沒報到', t.absent ? 'text-rose-600' : 'text-slate-400')}
+                    ${kpi('其中現場加報', t.extra + ' 人', '未報名但到場，已算在實到裡', t.extra ? 'text-amber-600' : 'text-slate-400')}
                 </div>
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3.5 text-sm text-slate-700 leading-relaxed">
                     🍽️ 現場實際人數 <b class="text-slate-900">${t.present}</b> 人：葷食 <b>${t.meat}</b>、素食 <b class="text-lime-700">${t.vegan}</b>${t.dietUnknown ? `、未註明 <b>${t.dietUnknown}</b>（現場加報）` : ''}${t.companions ? `<br>👨‍👩‍👧 另有攜眷 <b>${t.companions}</b> 位（眷屬不另外點名，隨報名者一起報到）` : ''}
@@ -460,11 +460,11 @@
                 </div>
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3.5 overflow-x-auto">
                     <div class="font-black mb-2">各分區出席狀況</div>
-                    ${divRows ? `<table class="w-full text-sm min-w-[480px]"><thead><tr class="text-left text-xs text-slate-500 bg-slate-50"><th class="p-2">分區</th><th class="p-2 text-right">應到</th><th class="p-2 text-right">實到</th><th class="p-2 text-right">未到</th><th class="p-2 text-right">加報</th><th class="p-2">出席率</th></tr></thead><tbody>${divRows}</tbody></table>` : '<div class="text-sm text-slate-400">尚無資料</div>'}
+                    ${divRows ? `<table class="w-full text-sm min-w-[480px]"><thead><tr class="text-left text-xs text-slate-500 bg-slate-50"><th class="p-2">分區</th><th class="p-2 text-right">應到</th><th class="p-2 text-right">實到</th><th class="p-2 text-right">未到</th><th class="p-2 text-right whitespace-nowrap">其中加報</th><th class="p-2">報名者出席率</th></tr></thead><tbody>${divRows}</tbody></table>` : '<div class="text-sm text-slate-400">尚無資料</div>'}
                 </div>
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3.5 overflow-x-auto">
-                    <div class="font-black mb-2">各社明細與未到名單</div>
-                    ${clubRows ? `<table class="w-full text-sm"><thead><tr class="text-left text-xs text-slate-500 bg-slate-50"><th class="p-2">社別</th><th class="p-2 text-right">實到 / 應到</th><th class="p-2">尚未報到</th></tr></thead><tbody>${clubRows}</tbody></table>` : '<div class="text-sm text-slate-400">尚無資料</div>'}
+                    <div class="flex flex-wrap items-baseline justify-between gap-x-3 mb-2"><div class="font-black">各社明細與名單</div><div class="text-xs text-slate-500"><span class="text-red-600 font-bold">紅色</span>＝已報到　<span class="text-slate-600">灰色</span>＝尚未報到　（加報）＝現場加報</div></div>
+                    ${clubRows ? `<table class="w-full text-sm"><thead><tr class="text-left text-xs text-slate-500 bg-slate-50"><th class="p-2">社別</th><th class="p-2 text-right">實到 / 應到</th><th class="p-2">名單</th></tr></thead><tbody>${clubRows}</tbody></table>` : '<div class="text-sm text-slate-400">尚無資料</div>'}
                 </div>`;
         }
 
@@ -630,23 +630,24 @@
             try { await loadXlsx(); } catch (e) { toast('❌ ' + e.message, 'error'); return; }
             const title = roster.title, t = stats.total;
             const now = fmtDateTime(new Date().toISOString());
-            const detail = [[`${D.name || ''} ${title} 報到明細`], [`匯出時間：${now}　應到 ${t.expected}、實到 ${t.arrived}、未到 ${t.absent}、現場加報 ${t.extra}、出席率 ${t.rate}%`], [],
+            const detail = [[`${D.name || ''} ${title} 報到明細`], [`匯出時間：${now}　應到 ${t.expected}、實到 ${t.present}（其中現場加報 ${t.extra}）、未到 ${t.absent}、報名者出席率 ${t.rate}%`], [],
                 ['序號', '分區', '扶輪社', '姓名', 'Nick Name', '職稱', '類別', '飲食', '參加方式', '狀態', '報到時間', '櫃台', '備註']];
             entries.forEach((e, i) => detail.push([i + 1, e.divName, e.club, e.name, e.nickname, e.role, entryKind(e),
                 e.diet === 'VEGAN' ? ('素食' + (e.veganNote ? `（${e.veganNote}）` : '')) : e.diet === 'MEAT' ? '葷食' : '',
                 entryAttend(e), e.checkin ? '已到' : '未到', e.checkin ? fmtDateTime(e.checkin.checked_in_at) : '', e.checkin ? (e.checkin.checked_by || '') : '', e.note || '']));
-            const clubs = [['分區', '扶輪社', '應到', '實到', '未到', '現場加報', '出席率', '未到名單']];
-            stats.clubs.filter(c => c.expected || c.extra).forEach(c => clubs.push([c.divName, c.club, c.expected, c.arrived, c.expected - c.arrived, c.extra, c.expected ? pct(c.arrived, c.expected) + '%' : '', c.absentNames.join('、')]));
-            const divs = [['分區', '應到', '實到', '未到', '現場加報', '出席率']];
-            stats.divisions.filter(d => d.expected || d.extra).forEach(d => divs.push([d.divName, d.expected, d.arrived, d.expected - d.arrived, d.extra, d.expected ? pct(d.arrived, d.expected) + '%' : '']));
-            divs.push(['合計', t.expected, t.arrived, t.absent, t.extra, t.rate + '%']);
+            const clubs = [['分區', '扶輪社', '應到', '實到', '未到', '其中現場加報', '報名者出席率', '已到名單', '未到名單']];
+            stats.clubs.filter(c => c.expected || c.extra).forEach(c => clubs.push([c.divName, c.club, c.expected, c.present, c.expected - c.arrived, c.extra, c.expected ? pct(c.arrived, c.expected) + '%' : '',
+                c.people.filter(p => p.arrived).map(p => p.name + (p.walkIn ? '（加報）' : '')).join('、'), c.absentNames.join('、')]));
+            const divs = [['分區', '應到', '實到', '未到', '其中現場加報', '報名者出席率']];
+            stats.divisions.filter(d => d.expected || d.extra).forEach(d => divs.push([d.divName, d.expected, d.present, d.expected - d.arrived, d.extra, d.expected ? pct(d.arrived, d.expected) + '%' : '']));
+            divs.push(['合計', t.expected, t.present, t.absent, t.extra, t.rate + '%']);
             const wb = XLSX.utils.book_new();
             const ws1 = XLSX.utils.aoa_to_sheet(detail);
             ws1['!cols'] = [{ wch: 6 }, { wch: 10 }, { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 6 }, { wch: 20 }, { wch: 14 }, { wch: 20 }];
             const ws2 = XLSX.utils.aoa_to_sheet(clubs);
-            ws2['!cols'] = [{ wch: 10 }, { wch: 16 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 8 }, { wch: 8 }, { wch: 50 }];
+            ws2['!cols'] = [{ wch: 10 }, { wch: 16 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 12 }, { wch: 12 }, { wch: 50 }, { wch: 50 }];
             const ws3 = XLSX.utils.aoa_to_sheet(divs);
-            ws3['!cols'] = [{ wch: 12 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 8 }, { wch: 8 }];
+            ws3['!cols'] = [{ wch: 12 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 12 }, { wch: 12 }];
             XLSX.utils.book_append_sheet(wb, ws1, '報到明細');
             XLSX.utils.book_append_sheet(wb, ws2, '各社統計');
             XLSX.utils.book_append_sheet(wb, ws3, '各分區統計');
