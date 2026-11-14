@@ -505,6 +505,9 @@
                             <p class="text-[11px] text-slate-500" id="masterDbSubDesc">已整合<strong>高爾夫差點</strong>，預先維護一勞永逸</p>
                         </div>
                         <div class="flex items-center gap-2 flex-wrap justify-end">
+                            <button id="lineBindingsBtn" onclick="openLineBindingsModal()" class="hidden px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95" title="查看本社哪些社友已經綁定 LINE（自助報到用），或解除綁定">
+                                📱 LINE 綁定名單
+                            </button>
                             <button onclick="openLineRelayModal()" class="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition active:scale-95" title="把 LINE 群組的報名接龍整段貼上，系統自動勾選名單">
                                 💬 貼上 LINE 接龍
                             </button>
@@ -1509,6 +1512,18 @@
     </main>
 
     <!-- ================= MODAL: EXCEL IMPORT / EXPORT ================= -->
+    <!-- ================= MODAL：本社 LINE 綁定名單（LINE 自助報到用） ================= -->
+    <div id="lineBindingsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl p-4 sm:p-6 max-h-[92vh] overflow-y-auto">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-3">
+                <h3 class="font-bold text-slate-900 text-base">📱 <span id="lineBindingsClubName"></span> LINE 綁定名單</h3>
+                <button onclick="closeLineBindingsModal()" class="text-slate-400 hover:text-slate-600 font-bold text-xl p-1 leading-none" aria-label="關閉">&times;</button>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed">社友用 LINE 綁定自己的名字後，活動當天掃會場的 QR Code 就能自助報到。這裡列出本社已經綁定的社友；如果有人<b>綁錯名字</b>或<b>換了 LINE 帳號</b>，按「解除綁定」後請他重新綁定。解除綁定不會影響已經完成的報到。</p>
+            <div id="lineBindingsList" class="mt-3"></div>
+        </div>
+    </div>
+
     <!-- ================= MODAL：貼上 LINE 接龍，自動勾選報名名單 ================= -->
     <div id="lineRelayModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3">
         <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl p-4 sm:p-6 max-h-[92vh] overflow-y-auto">
@@ -2802,6 +2817,7 @@
             await loadEmailInboxLogs();
             initLiveSync(); // 其他裝置存檔後，本畫面自動更新
             initCheckinSync(); // 活動報到面板：櫃台點名後即時更新人數
+            if (LINE_LIFF_ID) { const lb = document.getElementById('lineBindingsBtn'); if (lb) lb.classList.remove('hidden'); } // 有設定 LINE 自助報到的地區才顯示綁定名單按鈕
             // 注意：不再於啟動時自動生成示範繳費資料；要看示範請由最高管理員按「載入示範資料」
             populateLoginClubs();
             renderNavTabs();
@@ -9522,6 +9538,8 @@
         // 報到的設定（是否報到中、報到密碼）與紀錄都存在獨立資料表 checkin_events / event_checkins（supabase/sql/event_checkins.sql），
         // 櫃台用另一個頁面 checkin.html 點名。這一段只負責主委後台的面板：開始／結束報到、設定密碼、看即時人數、提供報到網址。
         // 重要：這個面板的任何操作都「不可以」呼叫 saveToStorage()；人數一律用 CheckinCore（checkin-core.js）計算，與報到頁同一套算法。
+        // LINE 自助報到（第二階段）：地區設定檔有填 lineLiffId 才啟用。社友掃會場的靜態 QR Code → 在 LINE 裡開啟 line.html 報到。
+        const LINE_LIFF_ID = DISTRICT.lineLiffId || '';
         const CHECKIN_PW_PREFIX = 'rotary_checkin_pw::';   // 這台裝置記住的報到密碼（與 checkin.html 共用，主委自己開報到頁不必再輸入）
         let checkinState = { key: '', status: null, rows: [], error: '', loaded: false, loading: false, fetchedAt: '' };
         let checkinFetchSeq = 0;      // 每次抓取 +1；使用者在等待期間切換子活動時，只套用最新一次的結果
@@ -9686,6 +9704,20 @@
                         </div>
                     </div>
 
+                    ${LINE_LIFF_ID ? `<div class="mt-4 pt-4 border-t border-slate-100">
+                        <div class="text-sm font-bold text-slate-800">📱 社友 LINE 自助報到 QR Code（張貼在會場）</div>
+                        <div class="mt-1.5 flex items-start gap-3">
+                            <div id="checkinLineQrBox" class="bg-white p-2 rounded-lg border border-slate-200 shadow-sm shrink-0 flex items-center justify-center w-[136px] h-[136px] text-[11px] text-slate-400 text-center leading-snug"></div>
+                            <div class="min-w-0 flex-1">
+                                <div class="text-[11px] font-mono text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2 py-1.5 break-all select-all">${esc(getLineCheckinUrl())}</div>
+                                <div class="flex flex-wrap gap-2 mt-2">
+                                    <button type="button" onclick="checkinDownloadLineQr()" class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-md text-xs font-bold shadow-sm">⬇ 下載 QR Code 圖片（列印用）</button>
+                                    <button type="button" onclick="checkinCopyLineUrl()" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-md text-xs font-bold">📋 複製網址</button>
+                                </div>
+                                <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">這張 QR Code 是給<b>社友自己掃</b>的，不需要報到密碼：已綁定 LINE 的社友掃了就能報到（同樣只有「報到中」才有效）。沒報名的人掃了會被請到櫃台。<b>請不要跟上面給工作人員的 QR Code 弄混。</b></p>
+                            </div>
+                        </div>
+                    </div>` : ''}
                     <div class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
                         <button type="button" onclick="checkinResetRecords()" class="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 rounded-md text-xs font-bold">🗑 清空報到紀錄</button>
                         <span class="text-[11px] text-slate-500">只在「活動前測試完、要把紀錄歸零」時使用。目前共有 ${checkinState.rows.filter(r => r.status === 'in').length} 筆報到紀錄。</span>
@@ -9704,6 +9736,114 @@
                     qrBox.innerText = 'QR Code 無法產生，請改用「複製網址」';
                 }
             }
+            const lineQrBox = document.getElementById('checkinLineQrBox');
+            if (lineQrBox) {
+                try {
+                    if (typeof QRCode === 'undefined') throw new Error('QRCode.js 未載入');
+                    new QRCode(lineQrBox, { text: getLineCheckinUrl(), width: 120, height: 120, colorDark: '#166534', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+                } catch (e) {
+                    lineQrBox.innerText = 'QR Code 無法產生，請改用「複製網址」';
+                }
+            }
+        }
+
+        // ---------- LINE 自助報到：會場 QR Code ----------
+        // 網址是 LINE 的 LIFF 連結，LINE 會把 ?e=活動代碼 原樣帶到 line.html
+        function getLineCheckinUrl() {
+            return 'https://liff.line.me/' + LINE_LIFF_ID + '?e=' + encodeURIComponent(getActivePaymentKey());
+        }
+        function checkinCopyLineUrl() {
+            const url = getLineCheckinUrl();
+            const fallback = () => prompt('請複製 LINE 自助報到網址：', url);
+            try { navigator.clipboard.writeText(url).then(() => showToast('已複製 LINE 自助報到網址', '📋')).catch(fallback); } catch (e) { fallback(); }
+        }
+        // 下載大張的 QR Code 圖片（含活動名稱），列印後張貼在會場
+        function checkinDownloadLineQr() {
+            try {
+                if (typeof QRCode === 'undefined') throw new Error('QRCode.js 未載入');
+                const cat = categoriesData.find(c => c.id === currentCatId);
+                const sub = (cat && cat.subEvents && cat.subEvents[currentSubEventIndex]) || '活動';
+                const tmp = document.createElement('div');
+                new QRCode(tmp, { text: getLineCheckinUrl(), width: 800, height: 800, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+                const qr = tmp.querySelector('canvas');
+                if (!qr) throw new Error('瀏覽器不支援');
+                const cv = document.createElement('canvas');
+                cv.width = 1000; cv.height = 1240;
+                const g = cv.getContext('2d');
+                g.fillStyle = '#ffffff'; g.fillRect(0, 0, cv.width, cv.height);
+                g.fillStyle = '#0f172a'; g.textAlign = 'center';
+                g.font = 'bold 54px sans-serif'; g.fillText('LINE 掃描報到', 500, 90);
+                g.font = 'bold 40px sans-serif';
+                let title = sub; while (g.measureText(title).width > 920 && title.length > 4) title = title.slice(0, -2) + '…';
+                g.fillText(title, 500, 160);
+                g.drawImage(qr, 100, 210, 800, 800);
+                g.font = '32px sans-serif'; g.fillStyle = '#475569';
+                g.fillText('請用 LINE 掃描（第一次使用需先綁定姓名）', 500, 1090);
+                g.fillText('未報名或無法掃描者，請至櫃台報到', 500, 1145);
+                g.font = '26px sans-serif'; g.fillText(DISTRICT.name || '', 500, 1200);
+                const a = document.createElement('a');
+                a.href = cv.toDataURL('image/png');
+                a.download = `LINE報到QRCode_${String(sub).replace(/[\\/:*?"<>|\s]+/g, '_')}.png`;
+                document.body.appendChild(a); a.click(); a.remove();
+                showToast('已下載 QR Code 圖片', '⬇');
+            } catch (e) {
+                alert('❌ 無法產生 QR Code 圖片：' + ((e && e.message) || e) + '\n\n請改用「複製網址」，再用其他工具製作 QR Code。');
+            }
+        }
+
+        // ---------- LINE 自助報到：執秘查看／解除本社的綁定 ----------
+        // 綁定資料存在前端讀不到的資料表，一律透過雲端小程式 line-checkin，並以本社登入密碼確認（防護程度與報名系統相同）。
+        const LINE_BIND_ERR = {
+            CLUB_AUTH_FAILED: '無法確認貴社身分。貴社若還沒有設定登入密碼，請先完成首次登入設定後再試。',
+            LINE_NOT_CONFIGURED: 'LINE 自助報到尚未啟用。',
+            TABLE_MISSING: '雲端尚未建立 LINE 綁定資料表，請最高管理員依 README 執行 supabase/sql/line_bindings.sql。',
+            NETWORK: '網路連線不穩，請稍後再試。'
+        };
+        async function lineBindingsApi(action, extra) {
+            try {
+                const club = selectedClubName;
+                const res = await fetch(SUPABASE_URL + '/functions/v1/line-checkin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+                    body: JSON.stringify(Object.assign({ action: action, club: club, clubPassword: ((appAuthData.clubPasswords || {})[club]) || DEFAULT_CLUB_PASSWORD || '' }, extra || {}))
+                });
+                if (res.status === 404) return { ok: false, code: 'LINE_NOT_CONFIGURED' };
+                const j = await res.json();
+                return j && typeof j.ok === 'boolean' ? j : { ok: false, code: 'SERVER_ERROR' };
+            } catch (e) { return { ok: false, code: 'NETWORK' }; }
+        }
+        function renderLineBindings(r) {
+            const box = document.getElementById('lineBindingsList');
+            if (!box) return;
+            if (!r.ok) { box.innerHTML = `<div class="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">${escapeHtmlText(LINE_BIND_ERR[r.code] || '讀取失敗，請稍後再試。')}</div>`; return; }
+            const list = r.bindings || [];
+            const total = (clubMemberDatabase[selectedClubName] || []).length;
+            if (!list.length) { box.innerHTML = `<div class="text-sm text-slate-500 border border-dashed border-slate-300 rounded-lg px-3 py-6 text-center">本社目前還沒有社友綁定 LINE（社友庫共 ${total} 人）。</div>`; return; }
+            window.__lineBindingKeys = list.map(b => b.key);
+            box.innerHTML = `<div class="text-xs text-slate-500 mb-2">已綁定 <b class="text-slate-800">${list.length}</b> 人（社友庫共 ${total} 人）</div>` + list.map((b, i) => `
+                <div class="flex items-center justify-between gap-3 border border-slate-200 rounded-lg px-3 py-2 mb-1.5">
+                    <div class="min-w-0">
+                        <div class="font-bold text-sm text-slate-900">${escapeHtmlText(b.name)}${b.nickname ? `<span class="ml-1.5 font-semibold text-slate-600">${escapeHtmlText(b.nickname)}</span>` : ''}</div>
+                        <div class="text-[11px] text-slate-500 truncate">LINE 名稱：${escapeHtmlText(b.displayName || '（未提供）')}　綁定於 ${escapeHtmlText(checkinFmtTime(b.boundAt))}</div>
+                    </div>
+                    <button type="button" onclick="unbindLineMember(${i})" class="shrink-0 px-2.5 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 rounded-md text-xs font-bold">解除綁定</button>
+                </div>`).join('');
+        }
+        async function openLineBindingsModal() {
+            if (!selectedClubName) { alert('請先選擇社別。'); return; }
+            document.getElementById('lineBindingsClubName').innerText = selectedClubName;
+            document.getElementById('lineBindingsList').innerHTML = '<div class="text-sm text-slate-500">讀取中…</div>';
+            document.getElementById('lineBindingsModal').classList.remove('hidden');
+            renderLineBindings(await lineBindingsApi('club_bindings'));
+        }
+        function closeLineBindingsModal() { document.getElementById('lineBindingsModal').classList.add('hidden'); }
+        async function unbindLineMember(i) {
+            const key = (window.__lineBindingKeys || [])[i];
+            if (key === undefined) return;
+            if (!confirm(`確定解除「${key.split('|')[0]}」的 LINE 綁定嗎？\n\n解除後，他要重新用 LINE 綁定才能自助報到；已經完成的報到不受影響。`)) return;
+            const r = await lineBindingsApi('club_unbind', { personKey: key });
+            if (r.ok) showToast('已解除綁定', '📱');
+            renderLineBindings(r);
         }
 
         function notifyCheckinPeers(kind) {

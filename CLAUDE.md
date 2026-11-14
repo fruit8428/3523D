@@ -103,6 +103,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 | `patch_*.py`、`fix_*.py` | 過去各次對話用來對 `index.html` 做字串取代的一次性腳本，**不是建置系統，不可重跑**（不具冪等性）。 |
 | `test.js` | `extract_js.js` 產生的輸出，不要手動編輯。 |
 | `checkin.html` | 櫃台報到頁（獨立頁面，只讀 `app_storage`、絕不寫回）。見「活動報到系統」。 |
+| `line.html` | LINE 自助報到頁（LIFF 的 Endpoint，社友在 LINE 裡開啟）。不直接碰資料庫，全部透過雲端小程式 `line-checkin`。 |
 | `checkin-core.js` | 報到的純函式（應到名單、合併報到紀錄、統計），`index.html` 與 `checkin.html` 共用，可用 node 直接測。 |
 | `stub.js` | 在 node 裡 require `test.js` 用的 DOM/Supabase 假物件。 |
 
@@ -180,6 +181,16 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - 統計欄位：`expected`＝應到、`arrived`＝名單內已到、`extra`＝現場加報已到、`extraPending`＝加報未到、`walkTotal`＝兩者合計、`present`＝`arrived+extra`、`absent`＝`expected−arrived+extraPending`（恆等式：應到＋加報＝實到＋未到）。**畫面與 Excel 的「實到」一律顯示 `present`**（使用者要求與現場人數一致），未到顯示 `absent`、出席率＝`arrived÷expected`。各社 `people[]` 是整張名單（含加報），統計分頁以紅色標示已報到（使用者指定的顏色）。
 - 報到密碼記在 localStorage `rotary_checkin_pw::<活動key>`，主委面板與報到頁共用（同一台裝置主委開報到頁免輸入）。
 - 測試：內嵌 script 抽出來 `node -c`；資料庫與瀏覽器實測先在 3521 展示站做，測完清空 `event_checkins`／`checkin_events` 的測試列。`.vercelignore` 的 `check_*.js` 不會排除 `checkin-core.js`（沒有底線），改排除規則時要留意。
+
+### LINE 自助報到（2026-11-14，第二階段）
+
+- **啟用條件**：地區設定檔 `lineLiffId`（→ `LINE_LIFF_ID`）有值才出現：主委面板的「社友 LINE 自助報到 QR Code」（`getLineCheckinUrl()`＝`https://liff.line.me/<LIFF ID>?e=<活動key>`，`checkinDownloadLineQr()` 產生列印用 PNG）與社友庫的「📱 LINE 綁定名單」（`#lineBindingsBtn` → `#lineBindingsModal`）。3521、3523 目前都是空字串＝未啟用。
+- **`line.html`**：`liff.init` → `liff.getIDToken()` → 呼叫雲端小程式。沒帶 `?e=` 是綁定／查看綁定；帶 `?e=` 是報到。**只送 idToken，絕不把 LINE 使用者代碼當身分**。
+- **雲端小程式 `supabase/functions/line-checkin/`**（`--no-verify-jwt`）：`index.ts` 接上真正的 LINE 驗證（POST `https://api.line.me/oauth2/v2.1/verify`，`client_id`＝secret `LINE_LOGIN_CHANNEL_ID`）與資料庫；邏輯全在 `lib.ts` 的 `handle(body, deps)`，`deps.verify` 可替換，所以本機測試用假的驗證跑同一份邏輯。動作：`init`／`members`／`bind`／`unbind_self`／`checkin`（需 idToken）、`club_bindings`／`club_unbind`（執秘，用社的登入密碼；沒設密碼的社用 secret `DEFAULT_CLUB_PASSWORD`）。錯誤一律回 HTTP 200 的 `{ok:false, code}`，前端轉中文。
+- **`supabase/functions/line-checkin/checkin-core.js` 是根目錄 `checkin-core.js` 的複本**（小程式只能打包自己資料夾裡的檔案）。**改了根目錄那份一定要 `cp` 過去並重新部署小程式**，否則 LINE 報到與櫃台的應到名單會不一致。
+- **資料表**（`supabase/sql/line_bindings.sql`，要先跑過 `event_checkins.sql`）：`line_bindings`（`line_user_id` 主鍵、`unique(club_name, person_key)`；RLS 無 policy，anon 完全讀不到，比照旅平險個資）；函式 `line_checkin_mark` 只開放 `service_role`，寫入 `event_checkins` 時 `method='line'`、`checked_by='LINE 自助'`（代家人報到為 `LINE（某某 代）`）。
+- **規則**：只能綁社友庫裡的人；一個 LINE 只能綁一個名字、一個名字只能被一個 LINE 綁；報到要活動在「報到中」；本人要在 `buildRoster` 的名單內，或櫃台已幫他現場加報（pending）；同行者只限社友庫裡互為寶(尊)眷（`spouseOfId`）且也在名單上的人，前端送來的其他 key 會被忽略；報到後小程式用 Realtime REST 廣播 `rotary-checkin` 通知櫃台。
+- 不做防代點（不做動態 QR Code、GPS），使用者已決定。
 
 ### UI 慣例
 

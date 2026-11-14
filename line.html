@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+    <title>LINE 自助報到</title>
+    <meta name="robots" content="noindex">
+    <meta name="theme-color" content="#0F172A">
+    <meta name="format-detection" content="telephone=no">
+    <!--
+        LINE 自助報到頁（社友用，在 LINE 裡開啟）。這一頁是 LIFF 的 Endpoint URL。
+        - 沒帶活動代碼：綁定「我是哪一社的誰」，或查看／解除自己的綁定。
+        - 帶活動代碼（?e=大類id::子活動名稱，由會場的靜態 QR Code 帶入）：確認報到。
+        - 這一頁不直接讀寫資料庫，全部透過雲端小程式 line-checkin；小程式會先向 LINE 驗證身分，
+          所以這裡絕不把 LINE 使用者代碼當成身分依據，只送 idToken。
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="./district-config.js"></script>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        body { -webkit-tap-highlight-color: transparent; }
+        @keyframes lnPop { 0% { transform: scale(.6); opacity: 0; } 70% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+        .ln-pop { animation: lnPop .45s ease-out; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen">
+    <header class="bg-slate-900 text-white">
+        <div class="max-w-md mx-auto px-4 py-3">
+            <div class="text-[11px] text-slate-400 truncate" id="hdDistrict">扶輪地區</div>
+            <h1 class="font-black text-lg leading-tight" id="hdTitle">LINE 自助報到</h1>
+        </div>
+    </header>
+
+    <main class="max-w-md mx-auto px-4 py-5 space-y-4">
+        <!-- 讀取中 -->
+        <div id="viewLoading" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center text-slate-500">
+            <div class="text-3xl">⏳</div>
+            <div class="mt-2 font-bold" id="loadingText">讀取中…</div>
+        </div>
+
+        <!-- 無法使用時的說明 -->
+        <div id="viewMessage" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-center">
+            <div class="text-5xl" id="msgIcon">ℹ️</div>
+            <div class="font-black text-xl mt-3" id="msgTitle"></div>
+            <p class="text-base text-slate-600 mt-2 leading-relaxed whitespace-pre-line" id="msgBody"></p>
+            <button type="button" id="msgRetry" onclick="location.reload()" class="hidden mt-4 w-full border border-slate-300 text-slate-700 font-bold rounded-xl py-3">重新整理</button>
+        </div>
+
+        <!-- 目前綁定的身分 -->
+        <div id="idCard" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+                <div class="text-xs text-slate-500">您的身分</div>
+                <div class="font-black text-lg leading-tight truncate"><span id="idName"></span></div>
+                <div class="text-sm text-slate-600 truncate" id="idClub"></div>
+            </div>
+            <button type="button" onclick="unbindSelf()" class="shrink-0 text-xs font-bold text-slate-500 border border-slate-300 rounded-lg px-3 py-2">不是我？<br>重新綁定</button>
+        </div>
+
+        <!-- 綁定：選分區 → 選社 → 選自己的名字 -->
+        <div id="viewBind" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <div class="font-black text-lg">第一次使用，請先綁定身分</div>
+            <p class="text-sm text-slate-600 mt-1 leading-relaxed">選擇您的社別，再從名單中點選自己的名字。只需要做一次，之後報到就不必再選。</p>
+            <div class="grid grid-cols-2 gap-2 mt-4">
+                <div>
+                    <label class="text-sm font-bold text-slate-700" for="bindDiv">分區</label>
+                    <select id="bindDiv" onchange="onBindDivChange()" class="mt-1 w-full border border-slate-300 rounded-lg px-2 py-3 text-base bg-white"></select>
+                </div>
+                <div>
+                    <label class="text-sm font-bold text-slate-700" for="bindClub">社別</label>
+                    <select id="bindClub" onchange="onBindClubChange()" class="mt-1 w-full border border-slate-300 rounded-lg px-2 py-3 text-base bg-white"></select>
+                </div>
+            </div>
+            <div id="bindError" class="hidden mt-3 text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2"></div>
+            <div class="mt-4 text-sm font-bold text-slate-700">請點選您的名字</div>
+            <div id="bindList" class="mt-2 space-y-2"></div>
+        </div>
+
+        <!-- 已綁定、沒有活動 -->
+        <div id="viewHome" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-center">
+            <div class="text-5xl">✅</div>
+            <div class="font-black text-xl mt-3">綁定完成</div>
+            <p class="text-base text-slate-600 mt-2 leading-relaxed">活動當天，用 LINE 掃描會場的<br><b>報到 QR Code</b> 就能完成報到。</p>
+        </div>
+
+        <!-- 報到 -->
+        <div id="viewEvent" class="hidden"></div>
+    </main>
+
+    <div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-6 z-50 px-4 py-2.5 rounded-xl shadow-lg text-sm font-bold text-white bg-slate-900 opacity-0 pointer-events-none transition-opacity duration-300 max-w-[92vw] text-center"></div>
+
+    <script>
+        // ================= 基本設定 =================
+        const D = window.DISTRICT || {};
+        const LIFF_ID = D.lineLiffId || '';
+        const FN_URL = (D.supabaseUrl || '') + '/functions/v1/line-checkin';
+        const RELOGIN_FLAG = 'rotary_line_relogin';      // 避免「token 過期 → 重新登入」無限循環
+
+        // ================= 狀態 =================
+        let idToken = '';
+        let eventKey = '';
+        let binding = null;        // { club, key, name, nickname }
+        let divisions = [];        // [{ name, clubs: [社名] }]
+        let eventInfo = null;      // 雲端回傳的活動與報到狀態
+        let busy = false;
+
+        // ================= 小工具 =================
+        const $ = id => document.getElementById(id);
+        function E(str) { return String(str == null ? '' : str).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
+        function fmtTime(ts) {   // 一律顯示台灣時間
+            if (!ts) return '';
+            try { return new Date(ts).toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }); } catch (e) { return ''; }
+        }
+        let toastTimer = null;
+        function toast(msg) {
+            const t = $('toast'); t.textContent = msg; t.style.opacity = '1';
+            clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.style.opacity = '0'; }, 3500);
+        }
+        const VIEWS = ['viewLoading', 'viewMessage', 'viewBind', 'viewHome', 'viewEvent'];
+        function show(id) { VIEWS.forEach(v => $(v).classList.toggle('hidden', v !== id)); }
+        function showMessage(icon, title, body, retry) {
+            $('msgIcon').textContent = icon; $('msgTitle').textContent = title; $('msgBody').textContent = body;
+            $('msgRetry').classList.toggle('hidden', !retry);
+            $('idCard').classList.add('hidden');
+            show('viewMessage');
+        }
+        // 把雲端小程式回傳的錯誤代碼轉成看得懂的中文
+        const ERR_TEXT = {
+            LINE_NOT_CONFIGURED: 'LINE 自助報到尚未啟用，請洽報到櫃台。',
+            LINE_TOKEN_INVALID: 'LINE 身分驗證失敗，請關閉這個頁面後，從 LINE 重新開啟。',
+            LINE_TOKEN_EXPIRED: 'LINE 登入已逾時，請關閉這個頁面後，從 LINE 重新開啟。',
+            NOT_BOUND: '您還沒有綁定身分。',
+            NAME_TAKEN: '這個名字已經被另一個 LINE 帳號綁定了。\n如果不是您本人綁的，請洽貴社執秘解除綁定後再試。',
+            ALREADY_BOUND: '您的 LINE 已經綁定過身分了，請重新整理頁面。',
+            MEMBER_NOT_FOUND: '名單上找不到這個名字，請重新整理後再選一次；若名單沒有您，請洽貴社執秘。',
+            EVENT_NOT_FOUND: '找不到這個活動，請確認掃描的是本次活動的 QR Code。',
+            EVENT_NO_CHECKIN: '這個項目不需要報到。',
+            CHECKIN_CLOSED: '目前不是報到時段，請洽報到櫃台。',
+            NOT_REGISTERED: '您尚未報名本活動，請洽櫃台。',
+            TABLE_MISSING: 'LINE 自助報到尚未啟用（雲端資料表未建立），請洽報到櫃台。',
+            SERVER_ERROR: '系統忙碌中，請稍後再試；或直接到櫃台報到。',
+            BAD_REQUEST: '操作失敗，請重新整理頁面。'
+        };
+        function errText(code) { return ERR_TEXT[code] || ERR_TEXT.SERVER_ERROR; }
+
+        // 呼叫雲端小程式。回傳 { ok, ... }；網路失敗回 { ok:false, code:'NETWORK' }
+        async function api(action, extra) {
+            try {
+                const res = await fetch(FN_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', apikey: D.supabaseAnonKey || '', Authorization: 'Bearer ' + (D.supabaseAnonKey || '') },
+                    body: JSON.stringify(Object.assign({ action: action, idToken: idToken }, extra || {}))
+                });
+                if (res.status === 404) return { ok: false, code: 'LINE_NOT_CONFIGURED' };   // 小程式還沒部署
+                const j = await res.json();
+                if (j && j.ok === false && j.code === 'LINE_TOKEN_EXPIRED') { relogin(); }
+                return j && typeof j.ok === 'boolean' ? j : { ok: false, code: 'SERVER_ERROR' };
+            } catch (e) {
+                return { ok: false, code: 'NETWORK' };
+            }
+        }
+        // LINE 的登入憑證過期：登出後重新登入一次（只自動做一次，避免無限循環）
+        function relogin() {
+            let done = '';
+            try { done = sessionStorage.getItem(RELOGIN_FLAG) || ''; } catch (e) { /* 忽略 */ }
+            if (done) return;
+            try { sessionStorage.setItem(RELOGIN_FLAG, '1'); } catch (e) { /* 忽略 */ }
+            try { liff.logout(); } catch (e) { /* 忽略 */ }
+            location.reload();
+        }
+
+        // ================= 綁定 =================
+        function renderIdCard() {
+            const card = $('idCard');
+            card.classList.toggle('hidden', !binding);
+            if (!binding) return;
+            $('idName').textContent = binding.name + (binding.nickname ? `（${binding.nickname}）` : '');
+            $('idClub').textContent = binding.club;
+        }
+        function showBind(message) {
+            $('idCard').classList.add('hidden');
+            const sel = $('bindDiv');
+            sel.innerHTML = '<option value="">請選擇</option>' + divisions.map((d, i) => `<option value="${i}">${E(d.name)}</option>`).join('');
+            $('bindClub').innerHTML = '<option value="">請先選分區</option>';
+            $('bindList').innerHTML = '<div class="text-sm text-slate-400 py-4 text-center">請先選擇分區與社別</div>';
+            const err = $('bindError');
+            err.classList.toggle('hidden', !message); err.textContent = message || '';
+            show('viewBind');
+        }
+        function onBindDivChange() {
+            const d = divisions[Number($('bindDiv').value)];
+            $('bindClub').innerHTML = '<option value="">請選擇</option>' + (d ? d.clubs.map(c => `<option value="${E(c)}">${E(c)}</option>`).join('') : '');
+            $('bindList').innerHTML = '<div class="text-sm text-slate-400 py-4 text-center">請選擇社別</div>';
+        }
+        let bindMembers = [];
+        async function onBindClubChange() {
+            const club = $('bindClub').value;
+            $('bindError').classList.add('hidden');
+            if (!club) { $('bindList').innerHTML = '<div class="text-sm text-slate-400 py-4 text-center">請選擇社別</div>'; return; }
+            $('bindList').innerHTML = '<div class="text-sm text-slate-400 py-4 text-center">讀取名單中…</div>';
+            const r = await api('members', { club: club });
+            if ($('bindClub').value !== club) return;   // 等待期間又換了社
+            if (!r.ok) { $('bindList').innerHTML = `<div class="text-sm font-bold text-rose-700 py-4 text-center">${E(r.code === 'NETWORK' ? '網路連線不穩，請再選一次社別。' : errText(r.code))}</div>`; return; }
+            bindMembers = r.members || [];
+            if (!bindMembers.length) { $('bindList').innerHTML = '<div class="text-sm text-slate-500 py-4 text-center leading-relaxed">這個社的名單還沒有建立。<br>請洽貴社執秘先在報名系統建立社友名單。</div>'; return; }
+            $('bindList').innerHTML = bindMembers.map((m, i) => m.taken
+                ? `<div class="flex items-center justify-between gap-2 border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-slate-400"><div class="min-w-0"><span class="font-bold text-base">${E(m.name)}</span>${m.nickname ? `<span class="ml-2 text-sm">${E(m.nickname)}</span>` : ''}</div><span class="shrink-0 text-xs font-bold">已綁定</span></div>`
+                : `<button type="button" onclick="bindTo(${i})" class="w-full flex items-center justify-between gap-2 border border-slate-300 bg-white active:bg-blue-50 rounded-xl px-4 py-3 text-left"><div class="min-w-0"><span class="font-black text-lg">${E(m.name)}</span>${m.nickname ? `<span class="ml-2 text-sm font-bold text-slate-600">${E(m.nickname)}</span>` : ''}${m.role ? `<span class="ml-2 text-xs text-slate-400">${E(m.role)}</span>` : ''}</div><span class="shrink-0 text-sm font-bold text-blue-700">這是我 ›</span></button>`).join('');
+        }
+        async function bindTo(i) {
+            const m = bindMembers[i], club = $('bindClub').value;
+            if (!m || busy) return;
+            if (!confirm(`確定您是「${club} ${m.name}${m.nickname ? '（' + m.nickname + '）' : ''}」嗎？\n\n綁定後，這個 LINE 帳號就代表這位社友報到。`)) return;
+            busy = true;
+            const r = await api('bind', { club: club, personKey: m.key });
+            busy = false;
+            if (!r.ok) {
+                const err = $('bindError');
+                err.textContent = r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : errText(r.code); err.classList.remove('hidden');
+                err.scrollIntoView({ block: 'center' });
+                if (r.code === 'NAME_TAKEN') onBindClubChange();
+                if (r.code === 'ALREADY_BOUND') start();
+                return;
+            }
+            binding = r.binding;
+            toast('綁定完成');
+            start();   // 重新讀一次：有活動代碼的話直接進報到畫面
+        }
+        async function unbindSelf() {
+            if (busy || !binding) return;
+            if (!confirm(`要解除「${binding.club} ${binding.name}」的綁定，重新選擇身分嗎？\n\n已經完成的報到不受影響。`)) return;
+            busy = true;
+            const r = await api('unbind_self');
+            busy = false;
+            if (!r.ok) { toast(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : errText(r.code)); return; }
+            binding = null;
+            showBind('');
+        }
+
+        // ================= 報到 =================
+        function renderEvent() {
+            const ev = eventInfo, box = $('viewEvent');
+            $('hdTitle').textContent = (ev.title || '活動') + ' 報到';
+            renderIdCard();
+            const card = (inner, tone) => `<div class="bg-white rounded-2xl border ${tone || 'border-slate-200'} shadow-sm p-6 text-center">${inner}</div>`;
+            if (!ev.ok) {
+                box.innerHTML = card(`<div class="text-5xl">ℹ️</div><div class="font-black text-xl mt-3">${E(ev.reason === 'apportionment' ? '這個項目不需要報到' : '找不到這個活動')}</div><p class="text-base text-slate-600 mt-2 leading-relaxed">${E(ev.reason === 'apportionment' ? '' : '請確認掃描的是本次活動的報到 QR Code。')}</p>`);
+            } else if (ev.me && ev.me.arrived) {
+                // 報到成功：畫面要夠明顯，讓櫃台遠遠看一眼就知道
+                const others = (ev.companions || []).filter(c => c.arrived);
+                const pending = (ev.companions || []).filter(c => !c.arrived);
+                box.innerHTML = `<div class="ln-pop bg-emerald-600 text-white rounded-2xl shadow-lg p-7 text-center">
+                        <div class="text-7xl leading-none">✅</div>
+                        <div class="font-black text-3xl mt-3">報到成功</div>
+                        <div class="font-black text-2xl mt-4">${E(ev.me.name)}${ev.me.nickname ? `<span class="text-lg font-bold opacity-90">　${E(ev.me.nickname)}</span>` : ''}</div>
+                        <div class="text-base font-bold opacity-90 mt-1">${E(binding.club)}</div>
+                        ${others.length ? `<div class="text-base font-bold mt-3 bg-white/15 rounded-xl px-3 py-2">同行：${others.map(c => E(c.name)).join('、')}</div>` : ''}
+                        <div class="text-sm opacity-90 mt-4">${E(ev.title)}</div>
+                        <div class="text-lg font-black mt-1">報到時間 ${E(fmtTime(ev.me.time))}</div>
+                        ${(ev.me.tags || []).length ? `<div class="flex flex-wrap justify-center gap-1.5 mt-3">${ev.me.tags.map(t => `<span class="text-sm font-bold bg-white text-emerald-800 rounded-full px-3 py-0.5">${E(t)}</span>`).join('')}</div>` : ''}
+                    </div>
+                    <p class="text-center text-sm text-slate-500 mt-3">請出示這個畫面給櫃台工作人員。</p>
+                    ${pending.length && ev.isOpen ? `<div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mt-4"><div class="font-bold text-sm text-slate-700">同行的家人到了嗎？</div>${companionChecks(pending)}<button type="button" onclick="doCheckin()" class="mt-3 w-full bg-blue-600 active:bg-blue-700 text-white font-black text-base rounded-xl py-3 shadow">幫勾選的家人報到</button></div>` : ''}`;
+            } else if (ev.me && !ev.me.registered) {
+                box.innerHTML = card('<div class="text-5xl">🙋</div><div class="font-black text-xl mt-3">您尚未報名本活動</div><p class="text-base text-slate-600 mt-2 leading-relaxed">請洽報到櫃台，由工作人員協助您現場加報。</p>', 'border-amber-300');
+            } else if (!ev.isOpen) {
+                box.innerHTML = card(`<div class="text-5xl">⏰</div><div class="font-black text-xl mt-3">${ev.hasClosed ? '報到已經結束' : '還沒開始報到'}</div><p class="text-base text-slate-600 mt-2 leading-relaxed">${ev.hasClosed ? '如需補登，請洽報到櫃台。' : '請等工作人員宣布開始報到後，再重新掃描 QR Code 或按下方按鈕。'}</p><button type="button" onclick="start()" class="mt-4 w-full border border-slate-300 text-slate-700 font-bold rounded-xl py-3">重新整理</button>`);
+            } else {
+                const comps = (ev.companions || []).filter(c => !c.arrived);
+                box.innerHTML = `<div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-center">
+                        <div class="text-sm font-bold text-slate-500">${E(ev.title)}</div>
+                        <div class="font-black text-3xl mt-3">${E(ev.me.name)}</div>
+                        ${ev.me.nickname ? `<div class="text-lg font-bold text-slate-600">${E(ev.me.nickname)}</div>` : ''}
+                        <div class="text-base text-slate-600 mt-1">${E(binding.club)}</div>
+                        ${comps.length ? `<div class="text-left mt-5 pt-4 border-t border-slate-100"><div class="font-bold text-sm text-slate-700">同行的家人一起報到（選填）</div>${companionChecks(comps)}</div>` : ''}
+                        <button type="button" id="checkinBtn" onclick="doCheckin()" class="mt-6 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black text-2xl rounded-2xl py-5 shadow-lg">確認報到</button>
+                    </div>`;
+            }
+            show('viewEvent');
+        }
+        function companionChecks(list) {
+            return list.map(c => `<label class="flex items-center gap-3 border border-slate-200 rounded-xl px-3 py-3 mt-2"><input type="checkbox" data-companion="${E(c.key)}" class="w-6 h-6"><span class="font-bold text-base">${E(c.name)}${c.nickname ? `<span class="ml-2 text-sm font-normal text-slate-500">${E(c.nickname)}</span>` : ''}</span></label>`).join('');
+        }
+        async function doCheckin() {
+            if (busy) return;
+            const keys = Array.from(document.querySelectorAll('[data-companion]:checked')).map(el => el.getAttribute('data-companion'));
+            const btn = $('checkinBtn');
+            busy = true;
+            if (btn) { btn.disabled = true; btn.textContent = '報到中…'; }
+            const r = await api('checkin', { eventKey: eventKey, companionKeys: keys });
+            busy = false;
+            if (!r.ok) {
+                if (btn) { btn.disabled = false; btn.textContent = '確認報到'; }
+                if (r.code === 'NETWORK') { toast('網路連線不穩，請再按一次；或直接到櫃台報到。'); return; }
+                if (r.code === 'NOT_BOUND') { binding = null; showBind(''); return; }
+                toast(errText(r.code));
+                start();   // 狀態可能變了（例如剛結束報到），重新讀一次
+                return;
+            }
+            eventInfo = r.event;
+            renderEvent();
+            window.scrollTo({ top: 0 });
+        }
+
+        // ================= 啟動 =================
+        async function start() {
+            const r = await api('init', eventKey ? { eventKey: eventKey } : {});
+            if (!r.ok) {
+                if (r.code === 'LINE_TOKEN_EXPIRED') return;   // 已經在重新登入
+                return showMessage('⚠️', r.code === 'NETWORK' ? '網路連線不穩' : '暫時無法使用', r.code === 'NETWORK' ? '請確認網路後重新整理；趕時間的話可以直接到櫃台報到。' : errText(r.code), true);
+            }
+            try { sessionStorage.removeItem(RELOGIN_FLAG); } catch (e) { /* 忽略 */ }
+            binding = r.binding || null;
+            divisions = r.divisions || [];
+            eventInfo = r.event || null;
+            if (eventInfo && eventInfo.title) $('hdTitle').textContent = eventInfo.title + ' 報到';
+            if (!binding) return showBind('');
+            renderIdCard();
+            if (eventInfo) return renderEvent();
+            show('viewHome');
+        }
+        (async function init() {
+            $('hdDistrict').textContent = D.name || '扶輪地區';
+            if (!LIFF_ID || !D.supabaseUrl) return showMessage('ℹ️', 'LINE 自助報到尚未啟用', '請到報到櫃台，由工作人員協助報到。');
+            if (!window.liff) return showMessage('⚠️', '無法載入 LINE 元件', '請確認網路後重新整理；趕時間的話可以直接到櫃台報到。', true);
+            try {
+                await liff.init({ liffId: LIFF_ID });
+            } catch (e) {
+                return showMessage('⚠️', 'LINE 啟動失敗', '請關閉這個頁面後，從 LINE 重新開啟。\n（' + ((e && e.message) || '未知錯誤') + '）', true);
+            }
+            // 活動代碼由 QR Code 的網址帶入（LIFF 會把參數原樣帶到這一頁）
+            eventKey = new URLSearchParams(location.search).get('e') || '';
+            if (!liff.isLoggedIn()) {   // 用一般瀏覽器開啟時要先登入 LINE；在 LINE 裡開啟會自動登入
+                $('loadingText').textContent = '前往 LINE 登入…';
+                liff.login({ redirectUri: location.href });
+                return;
+            }
+            idToken = liff.getIDToken() || '';
+            if (!idToken) return showMessage('⚠️', 'LINE 身分驗證失敗', '無法取得 LINE 登入資訊，請關閉這個頁面後，從 LINE 重新開啟。', true);
+            await start();
+        })();
+    </script>
+</body>
+</html>

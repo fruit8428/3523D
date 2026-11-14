@@ -10,6 +10,7 @@ window.DISTRICT = {
   "supabaseUrl": "https://ncrvmhfggfczicpyebvn.supabase.co",
   "supabaseAnonKey": "sb_publishable_oTRCxVE73AYelSw9P-Zf4A_f_Ooj98u",
   "ragAssistantUrl": "https://agentic-rag-dusky.vercel.app",
+  "lineLiffId": "",
   "emailDomain": "rotary3523.org",
   "divisions": [
     {

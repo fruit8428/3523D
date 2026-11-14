@@ -1,5 +1,5 @@
 {
-  "_說明": "新地區設定範本：複製成 config/districts/<地區代號>.json，把每個欄位換成該地區的值，再執行 node scripts/build-config.js。supabaseAnonKey 填 Supabase 的 publishable（anon）金鑰，不要填 secret。",
+  "_說明": "新地區設定範本：複製成 config/districts/<地區代號>.json，把每個欄位換成該地區的值，再執行 node scripts/build-config.js。supabaseAnonKey 填 Supabase 的 publishable（anon）金鑰，不要填 secret。lineLiffId 填 LINE Developers 的 LIFF ID（要用 LINE 自助報到才需要，沒有就留空）。",
   "code": "3481",
   "name": "國際扶輪 3481 地區",
   "nameEn": "Rotary District 3481",
@@ -11,6 +11,7 @@
   "supabaseAnonKey": "sb_publishable_xxxxxxxxxxxxxxxxxxxx",
   "ragAssistantUrl": "https://rotary-3481-ai.vercel.app",
   "defaultClubPassword": "",
+  "lineLiffId": "",
   "emailDomain": "rotary3481.org",
   "divisions": [
     {
