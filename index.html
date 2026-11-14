@@ -16,6 +16,8 @@
         <!-- Supabase CDN -->
     <!-- 地區設定：由 scripts/build-config.js 從 config/districts/<代號>.json 產生，所有地區專屬內容都從這裡來 -->
     <script src="./district-config.js"></script>
+    <!-- 報到系統共用邏輯（應到名單與統計的算法，與櫃台報到頁 checkin.html 共用） -->
+    <script src="./checkin-core.js"></script>
     <script>
         if (!window.DISTRICT) {
             console.error('找不到 district-config.js，請執行 node scripts/build-config.js');
@@ -1150,6 +1152,25 @@
                 </div><!-- /panelBody -->
             </div>
 
+
+            <!-- ================= 活動報到（櫃台點名）：設定與紀錄都在獨立資料表，這張面板的任何操作都不會存檔到 app_storage ================= -->
+            <div data-panel="checkin" id="checkinSection" class="hidden bg-white rounded-xl shadow-sm border-2 border-sky-200/90 p-4 sm:p-5">
+                <button type="button" onclick="togglePanel('checkin'); renderCheckinPanel(true);" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_checkin">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-lg bg-sky-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">🎫</div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">活動報到 <span id="checkinBadge" class="ml-1 text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded-full align-middle">尚未開始</span></div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>活動當天按「開始報到」，把報到網址（或 QR Code）與報到密碼交給櫃台工作人員，他們就能用電腦、平板或手機點名；這裡會即時顯示應到、實到與未到人數。多個櫃台可以同時點名，不會互相蓋掉。</p>
+                        </div>
+                    </div>
+                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
+                        <span id="panelToggleText_checkin">展開</span><span id="panelChevron_checkin" class="inline-block transition-transform duration-200">▼</span>
+                    </span>
+                </button>
+                <div id="panelBody_checkin" class="hidden mt-4 pt-4 border-t border-slate-100">
+                    <div id="checkinPanelBody"></div>
+                </div>
+            </div>
 
             <!-- ================= 各分區各社繳費狀況清楚列表 (依附圖42要求新增：專為開會秀出打造) ================= -->
             <div data-panel="eventIncome" id="eventIncomeSection" class="hidden bg-white rounded-xl shadow-sm border-2 border-emerald-200/90 p-4 sm:p-5 space-y-4">
@@ -2780,6 +2801,7 @@
             await loadBankData(); // 入帳紀錄與抓取狀態，並自動比對執秘已回報的匯款
             await loadEmailInboxLogs();
             initLiveSync(); // 其他裝置存檔後，本畫面自動更新
+            initCheckinSync(); // 活動報到面板：櫃台點名後即時更新人數
             // 注意：不再於啟動時自動生成示範繳費資料；要看示範請由最高管理員按「載入示範資料」
             populateLoginClubs();
             renderNavTabs();
@@ -2837,6 +2859,7 @@
             if (typeof renderRemitInfoBox === 'function') renderRemitInfoBox(); // 執秘端匯款資訊
             if (typeof renderChairBankMailSection === 'function') renderChairBankMailSection(); // 主委端帳號／信箱／入帳紀錄
             if (typeof renderPelsInsuranceSection === 'function') renderPelsInsuranceSection(); // 社長當選人研討會：出席方式總覽與旅平險名單
+            if (typeof renderCheckinPanel === 'function') renderCheckinPanel(); // 活動報到面板（只用已抓到的資料重畫；換了活動才重新抓）
             // 主選單與子活動的增刪只開放給最高管理員（活動主委、執秘都看不到）
             const isAdmin = (currentRole === 'super_admin');
             const cat = categoriesData.find(c => c.id === currentCatId);
@@ -9493,6 +9516,295 @@
             const rec = (chairPaymentRecords[key] || {})[selectedClubName];
             if (rec && isRecordPaid(rec)) showToast('✅ 已收到您的匯款！');
             else showToast('⏳ 尚未比對到入帳，銀行通知可能還沒送達，請稍後再試');
+        }
+
+        // ================= 活動報到（主委後台面板） =================
+        // 報到的設定（是否報到中、報到密碼）與紀錄都存在獨立資料表 checkin_events / event_checkins（supabase/sql/event_checkins.sql），
+        // 櫃台用另一個頁面 checkin.html 點名。這一段只負責主委後台的面板：開始／結束報到、設定密碼、看即時人數、提供報到網址。
+        // 重要：這個面板的任何操作都「不可以」呼叫 saveToStorage()；人數一律用 CheckinCore（checkin-core.js）計算，與報到頁同一套算法。
+        const CHECKIN_PW_PREFIX = 'rotary_checkin_pw::';   // 這台裝置記住的報到密碼（與 checkin.html 共用，主委自己開報到頁不必再輸入）
+        let checkinState = { key: '', status: null, rows: [], error: '', loaded: false, loading: false, fetchedAt: '' };
+        let checkinFetchSeq = 0;      // 每次抓取 +1；使用者在等待期間切換子活動時，只套用最新一次的結果
+        let checkinChannel = null;
+        let checkinLastHtml = '';
+        let checkinBusy = false;      // 正在送出開始／結束／改密碼，避免連點
+
+        function checkinGetSavedPassword(key) { try { return localStorage.getItem(CHECKIN_PW_PREFIX + key) || ''; } catch (e) { return ''; } }
+        function checkinSavePassword(key, pw) { try { localStorage.setItem(CHECKIN_PW_PREFIX + key, pw); } catch (e) { /* 無痕模式：不記就算了 */ } }
+        function checkinFmtTime(ts) {   // 一律顯示台灣時間，例：11/14 09:30
+            if (!ts) return '';
+            try { return new Date(ts).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }); } catch (e) { return ''; }
+        }
+
+        // 這個活動需不需要報到面板：已登入、主委或最高管理員、目前子活動不是分攤金／配合款
+        function isCheckinApplicable() {
+            if (!loggedInUser || !window.CheckinCore) return false;
+            if (!(currentRole === 'chair' || currentRole === 'super_admin')) return false;
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const sub = cat && cat.subEvents ? cat.subEvents[currentSubEventIndex] : '';
+            if (!cat || !sub) return false;
+            return !CheckinCore.isApportionEvent(cat.name, sub);
+        }
+
+        function getCheckinPageUrl() {
+            return new URL('checkin.html?e=' + encodeURIComponent(getActivePaymentKey()), location.href).href;
+        }
+
+        // 把資料庫回傳的錯誤代碼轉成看得懂的中文
+        function checkinIsMissingTable(error) {
+            const msg = (error && error.message) || String(error || '');
+            return /could not find the (function|table)|schema cache|does not exist|PGRST20[25]|42P01|42883/i.test(msg + ' ' + ((error && error.code) || ''));
+        }
+        function checkinErrorText(error) {
+            const msg = (error && error.message) || String(error || '');
+            if (/CHECKIN_PASSWORD_NOT_SET/.test(msg)) return '這個活動還沒有設定報到密碼，請先按「設定報到密碼」。';
+            if (/CHECKIN_PASSWORD_WRONG/.test(msg)) return '報到密碼不正確。';
+            if (/CHECKIN_PASSWORD_TOO_SHORT/.test(msg)) return '報到密碼至少要 4 個字。';
+            if (/CHECKIN_CLOSED/.test(msg)) return '目前不是報到時段。';
+            if (/CHECKIN_MISSING/.test(msg)) return '資料不完整，請重新整理頁面後再試。';
+            if (checkinIsMissingTable(error)) return '雲端尚未建立報到資料表，請最高管理員依 README 執行 supabase/sql/event_checkins.sql。';
+            if (/failed to fetch|networkerror|load failed|timeout/i.test(msg)) return '網路連線不穩，請確認網路後再試一次。';
+            return msg || '未知錯誤';
+        }
+
+        // 從雲端抓「報到狀態」與「報到紀錄」。非同步：等待期間使用者可能已切到別的子活動，所以用序號判斷只套用最新一次。
+        async function refreshCheckinPanel() {
+            if (!supabaseClient || !isCheckinApplicable()) return;
+            const key = getActivePaymentKey();
+            const seq = ++checkinFetchSeq;
+            if (checkinState.key !== key) checkinState = { key: key, status: null, rows: [], error: '', loaded: false, loading: true, fetchedAt: '' };
+            else checkinState.loading = true;
+            let status = null, rows = [], error = '';
+            try {
+                const st = await supabaseClient.rpc('checkin_event_status', { p_event_key: key });
+                if (st.error) throw st.error;
+                status = st.data || { is_open: false, has_password: false };
+                for (let from = 0; ; from += 1000) {   // 資料庫一次最多回 1000 筆，分頁抓
+                    const { data, error: e2 } = await supabaseClient.from('event_checkins').select('*').eq('event_key', key).order('id').range(from, from + 999);
+                    if (e2) throw e2;
+                    rows.push(...(data || []));
+                    if (!data || data.length < 1000) break;
+                }
+            } catch (e) {
+                error = checkinIsMissingTable(e) ? 'missing' : checkinErrorText(e);
+            }
+            if (seq !== checkinFetchSeq) return;   // 已經有更新的一次抓取（例如切換了子活動），這次的結果作廢
+            if (error) {
+                checkinState.error = error;
+                checkinState.loading = false;
+                checkinState.loaded = true;
+            } else {
+                checkinState = { key: key, status: status, rows: rows, error: '', loaded: true, loading: false, fetchedAt: new Date().toISOString() };
+            }
+            renderCheckinPanel();
+        }
+
+        // 用「已經抓到的資料」重畫面板（會被 updateRolePermissionsUI 頻繁呼叫，所以這裡不連網；換了活動才重新抓）
+        function renderCheckinPanel(forceFetch) {
+            const section = document.getElementById('checkinSection');
+            const body = document.getElementById('checkinPanelBody');
+            if (!section || !body) return;
+            const applicable = isCheckinApplicable();
+            section.classList.toggle('hidden', !applicable);
+            if (!applicable) return;
+            const key = getActivePaymentKey();
+            if (checkinState.key !== key) {
+                checkinState = { key: key, status: null, rows: [], error: '', loaded: false, loading: true, fetchedAt: '' };
+                refreshCheckinPanel();
+            } else if (forceFetch && !checkinState.loading) {
+                refreshCheckinPanel();
+            }
+            const st = checkinState.status || { is_open: false, has_password: false };
+            const badge = document.getElementById('checkinBadge');
+            if (badge) {
+                const missing = checkinState.error === 'missing';
+                badge.innerText = missing ? '尚未啟用' : !checkinState.loaded ? '讀取中…' : st.is_open ? '🟢 報到中' : st.closed_at ? '已結束' : '尚未開始';
+                badge.className = 'ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full align-middle border ' + (st.is_open && !missing ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-slate-100 text-slate-600 border-slate-200');
+            }
+
+            let html = '';
+            if (!supabaseClient) {
+                html = '<div class="text-sm text-slate-500">目前沒有連上雲端資料庫，無法使用報到功能。</div>';
+            } else if (checkinState.error === 'missing') {
+                html = '<div class="text-sm font-bold text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-3 leading-relaxed">⚠️ 雲端尚未建立報到資料表，請最高管理員依 README 執行 <code class="font-mono">supabase/sql/event_checkins.sql</code>。<div class="mt-2"><button type="button" onclick="refreshCheckinPanel()" class="px-3 py-1.5 bg-white border border-amber-400 rounded-md text-xs font-bold text-amber-900 hover:bg-amber-100">🔄 重新檢查</button></div></div>';
+            } else if (!checkinState.loaded) {
+                html = '<div class="text-sm text-slate-500">讀取報到資料中…</div>';
+            } else {
+                const esc = escapeHtmlText;
+                // 人數：與報到頁同一套算法
+                const roster = CheckinCore.buildRoster({ categoriesData: categoriesData, divisionsData: divisionsData, registrationOrders: registrationOrders }, key);
+                const stats = CheckinCore.computeStats(CheckinCore.mergeCheckins(roster, checkinState.rows, divisionsData));
+                const t = stats.total;
+                const savedPw = checkinGetSavedPassword(key);
+                const url = getCheckinPageUrl();
+                const statusText = st.is_open
+                    ? `<span class="text-emerald-700">🟢 報到中</span><span class="text-xs font-semibold text-slate-500 ml-2">${esc(checkinFmtTime(st.opened_at))} 開始</span>`
+                    : st.closed_at
+                        ? `<span class="text-slate-700">⚪ 已結束報到</span><span class="text-xs font-semibold text-slate-500 ml-2">${esc(checkinFmtTime(st.closed_at))} 結束</span>`
+                        : '<span class="text-slate-700">⚪ 尚未開始報到</span>';
+                const toggleBtn = st.is_open
+                    ? '<button type="button" onclick="checkinToggleOpen(false)" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-bold shadow-sm">⏹ 結束報到</button>'
+                    : `<button type="button" onclick="checkinToggleOpen(true)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow-sm">▶ ${st.closed_at ? '重新開始報到' : '開始報到'}</button>`;
+                const kpi = (label, value, sub, color) => `<div class="bg-slate-50 rounded-lg border border-slate-200 p-3"><div class="text-[11px] font-semibold text-slate-500">${label}</div><div class="text-xl font-black mt-0.5 ${color}">${value}</div><div class="text-[10px] text-slate-500 mt-0.5">${sub}</div></div>`;
+                html = `
+                    ${checkinState.error ? `<div class="mb-3 text-xs font-bold text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">⚠️ 最近一次更新失敗：${esc(checkinState.error)}（下方是上一次抓到的資料）</div>` : ''}
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div class="text-base font-black">${statusText}</div>
+                        <div class="flex flex-wrap gap-2">${toggleBtn}<button type="button" onclick="refreshCheckinPanel()" class="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-sm font-bold">🔄 重新整理</button></div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-1 leading-relaxed">只有在「報到中」的時候，櫃台才能點名；活動結束後請按「結束報到」。${st.has_password ? '' : '<b class="text-rose-700">請先設定報到密碼，才能開始報到。</b>'}</p>
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mt-3">
+                        ${kpi('應到（報名人數）', t.expected + ' 人', `來自 ${stats.clubs.filter(c => c.expected).length} 個社`, 'text-slate-900')}
+                        ${kpi('實到', t.arrived + ' 人', `出席率 ${t.rate}%`, 'text-emerald-600')}
+                        ${kpi('未到', t.absent + ' 人', '名單請看報到頁的「統計」', t.absent ? 'text-rose-600' : 'text-slate-400')}
+                        ${kpi('現場加報', t.extra + ' 人', '未報名但到場，費用活動後處理', t.extra ? 'text-amber-600' : 'text-slate-400')}
+                    </div>
+                    <div class="text-[10px] text-slate-400 mt-1">人數每 20 秒自動更新一次（面板展開時）；上次更新 ${esc(checkinFmtTime(checkinState.fetchedAt))}</div>
+
+                    <div class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div>
+                            <div class="text-sm font-bold text-slate-800">🔑 報到密碼</div>
+                            <div class="mt-1.5 text-sm">${st.has_password
+                                ? `<span class="font-bold text-emerald-700">已設定</span>${savedPw ? `<span class="ml-2 text-slate-600">這台裝置記住的密碼：</span><span class="font-mono font-black text-slate-900 bg-slate-100 border border-slate-200 rounded px-2 py-0.5 select-all">${esc(savedPw)}</span>` : '<span class="ml-2 text-xs text-slate-500">（這台裝置沒有記住密碼；忘記的話請重新設定）</span>'}`
+                                : '<span class="font-bold text-rose-700">尚未設定</span>'}</div>
+                            <div class="mt-2"><button type="button" onclick="checkinSetPassword()" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-md text-xs font-bold">${st.has_password ? '重新設定報到密碼' : '設定報到密碼'}</button></div>
+                            <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">請把報到密碼告訴櫃台工作人員，他們開啟報到頁時要輸入。重新設定後，所有櫃台都要用新密碼重新進入。</p>
+                        </div>
+                        <div>
+                            <div class="text-sm font-bold text-slate-800">🔗 報到頁網址（給櫃台工作人員）</div>
+                            <div class="mt-1.5 flex items-start gap-3">
+                                <div id="checkinQrBox" class="bg-white p-2 rounded-lg border border-slate-200 shadow-sm shrink-0 flex items-center justify-center w-[136px] h-[136px] text-[11px] text-slate-400 text-center leading-snug"></div>
+                                <div class="min-w-0 flex-1">
+                                    <div class="text-[11px] font-mono text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2 py-1.5 break-all select-all">${esc(url)}</div>
+                                    <div class="flex flex-wrap gap-2 mt-2">
+                                        <button type="button" onclick="checkinCopyUrl()" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-md text-xs font-bold">📋 複製網址</button>
+                                        <a href="${esc(url)}" target="_blank" rel="noopener" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-md text-xs font-bold shadow-sm">↗ 開啟報到頁</a>
+                                    </div>
+                                    <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">手機或平板掃 QR Code 就能開啟。每個子活動的網址不同（例如大會與晚宴各一張名單）。</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
+                        <button type="button" onclick="checkinResetRecords()" class="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 rounded-md text-xs font-bold">🗑 清空報到紀錄</button>
+                        <span class="text-[11px] text-slate-500">只在「活動前測試完、要把紀錄歸零」時使用。目前共有 ${checkinState.rows.filter(r => r.status === 'in').length} 筆報到紀錄。</span>
+                    </div>`;
+            }
+            if (html === checkinLastHtml && body.innerHTML) return;   // 內容沒變就不重畫（避免 QR Code 一直重建）
+            checkinLastHtml = html;
+            body.innerHTML = html;
+            // QR Code：用頁面已載入的 QRCode.js 在本機產生；載入失敗就請使用者複製網址（不使用外部服務代產）
+            const qrBox = document.getElementById('checkinQrBox');
+            if (qrBox) {
+                try {
+                    if (typeof QRCode === 'undefined') throw new Error('QRCode.js 未載入');
+                    new QRCode(qrBox, { text: getCheckinPageUrl(), width: 120, height: 120, colorDark: '#0f172a', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+                } catch (e) {
+                    qrBox.innerText = 'QR Code 無法產生，請改用「複製網址」';
+                }
+            }
+        }
+
+        function notifyCheckinPeers(kind) {
+            try {
+                if (checkinChannel) checkinChannel.send({ type: 'broadcast', event: 'changed', payload: { key: getActivePaymentKey(), kind: kind } });
+            } catch (e) { /* 廣播失敗沒關係，櫃台 8 秒內會自己發現 */ }
+        }
+
+        async function checkinSetPassword() {
+            if (!isCheckinApplicable() || checkinBusy) return;
+            const key = getActivePaymentKey();
+            const had = !!(checkinState.status && checkinState.status.has_password);
+            if (had && !confirm('確定要重新設定報到密碼嗎？\n\n重新設定後，所有櫃台都要用「新密碼」重新進入報到頁，請記得通知工作人員。')) return;
+            const input = prompt('請輸入這個活動的報到密碼（至少 4 個字）：\n\n這組密碼要告訴櫃台工作人員。請不要使用貴社的登入密碼。');
+            if (input === null) return;
+            const pw = input.trim();
+            if (pw.length < 4) { alert('⚠️ 報到密碼至少要 4 個字，請重新設定。'); return; }
+            checkinBusy = true;
+            try {
+                const { data, error } = await supabaseClient.rpc('checkin_set_event', { p_event_key: key, p_is_open: null, p_new_password: pw });
+                if (error) throw error;
+                checkinSavePassword(key, pw);
+                if (checkinState.key === key) checkinState.status = data || checkinState.status;
+                notifyCheckinPeers('status');
+                showToast(had ? '報到密碼已更新，請通知所有櫃台使用新密碼' : '報到密碼已設定', '🔑');
+            } catch (e) {
+                alert('❌ 設定失敗：' + checkinErrorText(e));
+            } finally {
+                checkinBusy = false;
+                renderCheckinPanel();
+            }
+        }
+
+        async function checkinToggleOpen(open) {
+            if (!isCheckinApplicable() || checkinBusy) return;
+            const key = getActivePaymentKey();
+            const st = checkinState.status || {};
+            if (open && !st.has_password) { alert('⚠️ 請先按「設定報到密碼」，設定好之後才能開始報到。'); return; }
+            if (!open && !confirm('確定要結束報到嗎？\n\n結束後所有櫃台都不能再點名（名單與統計仍可查看）。需要補登時可以再按「重新開始報到」。')) return;
+            checkinBusy = true;
+            try {
+                const { data, error } = await supabaseClient.rpc('checkin_set_event', { p_event_key: key, p_is_open: !!open, p_new_password: null });
+                if (error) throw error;
+                if (checkinState.key === key) checkinState.status = data || checkinState.status;
+                notifyCheckinPeers('status');
+                showToast(open ? '已開始報到，櫃台可以開始點名' : '已結束報到', open ? '🟢' : '⏹');
+            } catch (e) {
+                alert('❌ 操作失敗：' + checkinErrorText(e));
+            } finally {
+                checkinBusy = false;
+                renderCheckinPanel();
+            }
+        }
+
+        function checkinCopyUrl() {
+            const url = getCheckinPageUrl();
+            const fallback = () => prompt('請複製報到頁網址：', url);
+            try { navigator.clipboard.writeText(url).then(() => showToast('已複製報到頁網址', '📋')).catch(fallback); } catch (e) { fallback(); }
+        }
+
+        async function checkinResetRecords() {
+            if (!isCheckinApplicable() || checkinBusy) return;
+            const key = getActivePaymentKey();
+            const n = checkinState.rows.filter(r => r.status === 'in').length;
+            if (!confirm(`確定要清空這個活動的全部報到紀錄嗎？（目前 ${n} 筆）\n\n這個動作無法復原，只應該在「活動前測試完、要歸零」時使用。活動當天或活動後請不要清空。`)) return;
+            const input = prompt('請輸入報到密碼以確認清空：');
+            if (input === null) return;
+            checkinBusy = true;
+            try {
+                const { data, error } = await supabaseClient.rpc('checkin_reset', { p_event_key: key, p_password: input.trim() });
+                if (error) throw error;
+                notifyCheckinPeers('reset');
+                showToast(`已清空 ${Number(data) || 0} 筆報到紀錄`, '🗑');
+            } catch (e) {
+                alert('❌ 清空失敗：' + checkinErrorText(e));
+            } finally {
+                checkinBusy = false;
+                refreshCheckinPanel();
+            }
+        }
+
+        // 櫃台點名後即時更新人數：收到廣播就重抓；另外每 20 秒在「面板展開且分頁可見」時自動抓一次
+        function initCheckinSync() {
+            if (!supabaseClient) return;
+            try {
+                checkinChannel = supabaseClient.channel('rotary-checkin');
+                checkinChannel.on('broadcast', { event: 'changed' }, (msg) => {
+                    const p = (msg && msg.payload) || {};
+                    if (isCheckinApplicable() && p.key === getActivePaymentKey()) refreshCheckinPanel();
+                }).subscribe();
+            } catch (e) {
+                console.warn('報到即時同步頻道建立失敗，改用定時更新', e);
+                checkinChannel = null;
+            }
+            setInterval(() => {
+                if (document.hidden || !isCheckinApplicable()) return;
+                const body = document.getElementById('panelBody_checkin');
+                const view = document.getElementById('viewChair');
+                if (!body || body.classList.contains('hidden') || (view && view.classList.contains('hidden'))) return;
+                refreshCheckinPanel();
+            }, 20000);
         }
 
         // ================= 可收合面板（主委後台 / 最高權限頁） =================

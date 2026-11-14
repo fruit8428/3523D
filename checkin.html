@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+    <title>活動報到</title>
+    <meta name="robots" content="noindex">
+    <meta name="theme-color" content="#0F172A">
+    <meta name="format-detection" content="telephone=no">
+    <!--
+        活動報到頁（櫃台工作人員用）。網址：checkin.html?e=<大類id::子活動名稱>
+        - 這一頁「只讀」報名資料（app_storage），絕對不會寫回去，所以櫃台開一整天也不會蓋掉任何人的報名。
+        - 報到紀錄寫在獨立的 event_checkins 資料表（一人一筆），透過 supabase/sql/event_checkins.sql 的函式寫入。
+        - 應到名單與統計的算法在 checkin-core.js，主委後台（index.html）共用同一份。
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="./district-config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./checkin-core.js"></script>
+    <style>
+        body { -webkit-tap-highlight-color: transparent; }
+        .ck-row-btn { min-height: 44px; min-width: 76px; }
+        @keyframes ckFlash { 0% { background-color: #bbf7d0; } 100% { background-color: transparent; } }
+        .ck-flash { animation: ckFlash 1.2s ease-out; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen">
+
+    <!-- 頁首：活動名稱、狀態、人數 -->
+    <header class="bg-slate-900 text-white sticky top-0 z-30 shadow">
+        <div class="max-w-5xl mx-auto px-3 sm:px-4 py-2.5">
+            <div class="flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                    <div class="text-[11px] text-slate-400 truncate" id="hdDistrict">扶輪地區</div>
+                    <h1 class="font-black text-base sm:text-lg leading-tight truncate" id="hdTitle">活動報到</h1>
+                </div>
+                <div class="text-right shrink-0">
+                    <div id="hdStatus" class="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-700 text-slate-200">讀取中…</div>
+                    <div class="text-sm font-black mt-0.5 whitespace-nowrap"><span id="hdArrived" class="text-emerald-400 text-lg">–</span><span class="text-slate-400"> / </span><span id="hdExpected">–</span><span class="text-[11px] font-semibold text-slate-400"> 已到</span></div>
+                </div>
+            </div>
+            <div id="hdTabs" class="hidden mt-2 flex items-center justify-between gap-2">
+                <div class="flex gap-1 bg-slate-800 rounded-lg p-0.5">
+                    <button type="button" id="tabBtn_checkin" onclick="setTab('checkin')" class="px-4 py-1.5 text-sm font-bold rounded-md">📋 報到</button>
+                    <button type="button" id="tabBtn_stats" onclick="setTab('stats')" class="px-4 py-1.5 text-sm font-bold rounded-md">📊 統計</button>
+                </div>
+                <div class="flex items-center gap-2 text-[11px] text-slate-400 min-w-0">
+                    <span id="hdSync" class="truncate">　</span>
+                    <button type="button" onclick="leaveDesk()" class="shrink-0 underline hover:text-white">登出</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-3 sm:px-4 py-4">
+
+        <!-- 無法使用時的說明（沒有活動代碼、資料表未建立…） -->
+        <div id="viewMessage" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm p-6 text-center">
+            <div class="text-4xl" id="msgIcon">ℹ️</div>
+            <div class="font-black text-lg mt-2" id="msgTitle"></div>
+            <p class="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-line" id="msgBody"></p>
+        </div>
+
+        <!-- 輸入報到密碼 -->
+        <div id="viewGate" class="hidden max-w-md mx-auto bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
+            <div class="text-center">
+                <div class="text-4xl">🎫</div>
+                <div class="font-black text-lg mt-1">工作人員報到頁</div>
+                <p class="text-sm text-slate-600 mt-1">請輸入活動主委提供的「報到密碼」。</p>
+            </div>
+            <form onsubmit="enterDesk(event)" class="mt-4 space-y-3">
+                <div>
+                    <label class="text-sm font-bold text-slate-700" for="gatePassword">報到密碼</label>
+                    <input id="gatePassword" type="password" autocomplete="off" inputmode="text" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="請輸入報到密碼">
+                </div>
+                <div>
+                    <label class="text-sm font-bold text-slate-700" for="gateDesk">櫃台名稱（選填）</label>
+                    <input id="gateDesk" type="text" maxlength="20" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例：第一分區櫃台、王小明">
+                    <p class="text-xs text-slate-500 mt-1">會記在每一筆報到紀錄上，方便事後查是哪個櫃台點的。</p>
+                </div>
+                <div id="gateError" class="hidden text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2"></div>
+                <button id="gateBtn" type="submit" class="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-black text-base rounded-lg py-3 shadow">進入報到</button>
+            </form>
+        </div>
+
+        <!-- 報到名單 -->
+        <div id="viewCheckin" class="hidden">
+            <div id="closedBanner" class="hidden mb-3 text-sm font-bold text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5"></div>
+            <div id="searchBar" class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sticky z-20" style="top:92px">
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <input id="searchInput" type="search" oninput="onSearchInput()" autocomplete="off" class="flex-1 border border-slate-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="🔍 搜尋姓名、Nick Name 或社名">
+                    <div class="flex gap-2">
+                        <select id="divSelect" onchange="onDivChange()" class="flex-1 sm:flex-none border border-slate-300 rounded-lg px-2 py-2.5 text-sm font-bold bg-white"></select>
+                        <button type="button" id="walkInBtn" onclick="openWalkIn()" class="shrink-0 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-lg px-3 py-2.5 shadow-sm whitespace-nowrap">➕ 現場加報</button>
+                    </div>
+                </div>
+                <div id="filterChips" class="flex gap-1.5 mt-2"></div>
+            </div>
+            <div id="listBox" class="mt-3 space-y-3"></div>
+        </div>
+
+        <!-- 統計 -->
+        <div id="viewStats" class="hidden space-y-4"></div>
+    </main>
+
+    <!-- 現場加報 -->
+    <div id="walkInOverlay" class="hidden fixed inset-0 z-40 bg-slate-900/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl p-5 max-h-[92vh] overflow-y-auto">
+            <div class="flex items-center justify-between">
+                <div class="font-black text-lg">➕ 現場加報</div>
+                <button type="button" onclick="closeWalkIn()" class="text-slate-400 hover:text-slate-700 text-2xl leading-none px-2">×</button>
+            </div>
+            <p class="text-xs text-slate-500 mt-1 leading-relaxed">給「沒有報名但到場」的人用。只會記在報到紀錄裡並標示「現場加報」，不會更動該社的報名表與應繳金額，費用請活動後由主委處理。</p>
+            <form onsubmit="submitWalkIn(event)" class="mt-3 space-y-3">
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-sm font-bold text-slate-700" for="wiDiv">分區</label>
+                        <select id="wiDiv" onchange="onWalkInDivChange()" class="mt-1 w-full border border-slate-300 rounded-lg px-2 py-2.5 text-sm bg-white"></select>
+                    </div>
+                    <div>
+                        <label class="text-sm font-bold text-slate-700" for="wiClub">社別</label>
+                        <select id="wiClub" onchange="onWalkInClubChange()" class="mt-1 w-full border border-slate-300 rounded-lg px-2 py-2.5 text-sm bg-white"></select>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-sm font-bold text-slate-700" for="wiName">姓名</label>
+                    <input id="wiName" type="text" list="wiNameList" maxlength="30" oninput="onWalkInNameInput()" autocomplete="off" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="輸入姓名（社友會出現在建議清單）">
+                    <datalist id="wiNameList"></datalist>
+                </div>
+                <div>
+                    <label class="text-sm font-bold text-slate-700" for="wiNick">Nick Name（選填）</label>
+                    <input id="wiNick" type="text" maxlength="30" autocomplete="off" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="text-sm font-bold text-slate-700" for="wiNote">備註（選填）</label>
+                    <input id="wiNote" type="text" maxlength="60" autocomplete="off" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例：代理 ○○○ 出席、來賓、眷屬">
+                </div>
+                <div id="wiError" class="hidden text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2"></div>
+                <div class="flex gap-2 pt-1">
+                    <button type="button" onclick="closeWalkIn()" class="flex-1 border border-slate-300 text-slate-700 font-bold rounded-lg py-3">取消</button>
+                    <button id="wiSubmit" type="submit" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-lg py-3 shadow">加報並完成報到</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-6 z-50 px-4 py-2.5 rounded-xl shadow-lg text-sm font-bold text-white bg-slate-900 opacity-0 pointer-events-none transition-opacity duration-300 max-w-[92vw] text-center"></div>
+
+    <script>
+        // ================= 基本設定 =================
+        const CK = window.CheckinCore;
+        const D = window.DISTRICT || {};
+        const MAIN_KEY = 'rotary_3523_spa_data_v3';              // 報名主資料（key 名稱各地區相同，刻意不改）
+        const PAYMENT_KEY = 'rotary_3523_payment_records_v1';    // 繳費紀錄
+        const EVENT_KEY = new URLSearchParams(location.search).get('e') || '';
+        const sb = (D.supabaseUrl && D.supabaseAnonKey && window.supabase) ? window.supabase.createClient(D.supabaseUrl, D.supabaseAnonKey) : null;
+        const LS_PW = 'rotary_checkin_pw::' + EVENT_KEY;         // 這台裝置記住的報到密碼（重新整理不必重打）
+        const LS_DESK = 'rotary_checkin_desk';
+        const LS_DIV = 'rotary_checkin_div::' + EVENT_KEY;
+
+        // ================= 狀態 =================
+        let appState = null;            // { categoriesData, divisionsData, registrationOrders }
+        let mainStamp = '';             // 報名主資料的版本（lastUpdated），用來判斷要不要重抓
+        let paymentByClub = {};         // 本活動各社的繳費紀錄
+        let memberDb = null;            // 社友庫（現場加報的姓名建議用，第一次開加報視窗才抓）
+        let roster = null;              // 應到名單
+        let rowsMap = new Map();        // 報到紀錄：id → 資料列
+        let lastSeen = '';              // 已收到的最新 updated_at（之後只抓比它新的）
+        let entries = [];               // 應到名單 + 報到紀錄
+        let stats = null;
+        let eventStatus = { is_open: false, has_password: false };
+        let password = '';
+        let deskName = '';
+        let entered = false;
+        let ui = { tab: 'checkin', search: '', div: 'ALL', filter: 'ALL' };
+        let shown = [];                 // 目前畫面上每一列對應的 entry（按鈕用 data-i 找回來）
+        let pending = new Set();        // 正在送出的人（避免連點）
+        let markSeq = 0;
+        let flashUid = '';
+        let syncChannel = null;
+        let mainChannel = null;
+        let fetchBusy = false, fetchQueued = null;
+        let tick = 0;
+
+        // ================= 小工具 =================
+        const $ = id => document.getElementById(id);
+        function E(str) { return String(str == null ? '' : str).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
+        function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+        function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* 無痕模式：不記就算了 */ } }
+        function lsDel(k) { try { localStorage.removeItem(k); } catch (e) { /* 同上 */ } }
+        function uidOf(club, key) { return club + '\u0001' + key; }
+        function fmtTime(ts) {   // 一律顯示台灣時間
+            if (!ts) return '';
+            try { return new Date(ts).toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }); } catch (e) { return ''; }
+        }
+        function fmtDateTime(ts) {
+            if (!ts) return '';
+            try { return new Date(ts).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false }); } catch (e) { return ''; }
+        }
+        let toastTimer = null;
+        function toast(msg, kind) {
+            const t = $('toast');
+            t.textContent = msg;
+            t.className = t.className.replace(/bg-\w+-\d+/g, '') + ' ' + (kind === 'error' ? 'bg-rose-600' : kind === 'ok' ? 'bg-emerald-600' : 'bg-slate-900');
+            t.style.opacity = '1';
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { t.style.opacity = '0'; }, kind === 'error' ? 4500 : 2200);
+        }
+        // 把資料庫回傳的錯誤代碼轉成看得懂的中文
+        function errText(error) {
+            const msg = (error && error.message) || String(error || '');
+            if (/CHECKIN_PASSWORD_NOT_SET/.test(msg)) return '主委尚未設定這個活動的報到密碼。';
+            if (/CHECKIN_PASSWORD_WRONG/.test(msg)) return '報到密碼不正確。';
+            if (/CHECKIN_CLOSED/.test(msg)) return '目前不是報到時段（主委尚未按「開始報到」，或已結束報到）。';
+            if (/CHECKIN_MISSING/.test(msg)) return '資料不完整，請重新整理頁面後再試。';
+            if (/could not find the (function|table)|schema cache|does not exist|PGRST20[25]/i.test(msg)) return '雲端尚未建立報到資料表，請最高管理員依 README 執行 supabase/sql/event_checkins.sql。';
+            if (/failed to fetch|networkerror|load failed|timeout/i.test(msg)) return '網路連線不穩，請確認網路後再試一次。';
+            return msg || '未知錯誤';
+        }
+        function showMessage(icon, title, body) {
+            ['viewGate', 'viewCheckin', 'viewStats'].forEach(id => $(id).classList.add('hidden'));
+            $('hdTabs').classList.add('hidden');
+            $('msgIcon').textContent = icon; $('msgTitle').textContent = title; $('msgBody').textContent = body;
+            $('viewMessage').classList.remove('hidden');
+        }
+        function setSync(ok) {
+            const el = $('hdSync');
+            if (ok) { el.textContent = '● 已同步 ' + new Date().toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false }); el.className = 'truncate text-emerald-400'; }
+            else { el.textContent = '● 連線中斷，自動重試中'; el.className = 'truncate text-amber-400 font-bold'; }
+        }
+
+        // ================= 讀取資料（全部唯讀） =================
+        // 報名主資料：只取報到需要的三塊，不下載社友庫與繳費紀錄
+        async function loadMainData() {
+            const { data, error } = await sb.from('app_storage')
+                .select('cats:value->categoriesData,divs:value->divisionsData,orders:value->registrationOrders,stamp:value->>lastUpdated')
+                .eq('key', MAIN_KEY).maybeSingle();
+            if (error) throw error;
+            const divs = (data && Array.isArray(data.divs) && data.divs.length) ? data.divs : (D.divisions || []);
+            appState = { categoriesData: (data && data.cats) || [], divisionsData: divs, registrationOrders: (data && data.orders) || {} };
+            mainStamp = (data && data.stamp) || '';
+        }
+        async function checkMainStamp() {
+            const { data, error } = await sb.from('app_storage').select('stamp:value->>lastUpdated').eq('key', MAIN_KEY).maybeSingle();
+            if (error || !data) return;
+            if ((data.stamp || '') !== mainStamp) await reloadMainData();
+        }
+        async function reloadMainData() {
+            try {
+                await loadMainData();
+                await loadPayment();
+                rebuild(true);
+            } catch (e) { console.warn('重新讀取報名資料失敗', e); }
+        }
+        async function loadPayment() {
+            try {
+                const { data } = await sb.from('app_storage').select('value').eq('key', PAYMENT_KEY).maybeSingle();
+                paymentByClub = (data && data.value && data.value[EVENT_KEY]) || {};
+            } catch (e) { paymentByClub = {}; }
+        }
+        // 已進入報到頁時順便重新驗證密碼：主委換了密碼，這台櫃台幾秒內就會被退回輸入畫面
+        async function fetchStatus() {
+            const verify = entered && !!password;
+            const { data, error } = verify
+                ? await sb.rpc('checkin_verify', { p_event_key: EVENT_KEY, p_password: password })
+                : await sb.rpc('checkin_event_status', { p_event_key: EVENT_KEY });
+            if (error) {
+                if (verify && /CHECKIN_PASSWORD_WRONG|CHECKIN_PASSWORD_NOT_SET/.test(error.message || '')) { kickToGate(); return false; }
+                throw error;
+            }
+            const before = eventStatus.is_open;
+            eventStatus = data || { is_open: false, has_password: false };
+            return before !== eventStatus.is_open;
+        }
+        // 報到紀錄。full=true 整批重抓（剛進頁面、每 2 分鐘、有人清空紀錄時）；否則只抓上次之後有變動的。
+        // 資料庫一次最多回 1000 筆，所以分頁抓。
+        async function fetchCheckins(full) {
+            if (fetchBusy) { fetchQueued = (fetchQueued === 'full' || full) ? 'full' : 'inc'; return; }
+            fetchBusy = true;
+            try {
+                const seqBefore = markSeq;
+                const incremental = !full && !!lastSeen;
+                const since = incremental ? new Date(Date.parse(lastSeen) - 10000).toISOString() : '';
+                const got = [];
+                for (let from = 0; ; from += 1000) {
+                    let q = sb.from('event_checkins').select('*').eq('event_key', EVENT_KEY).order('id').range(from, from + 999);
+                    if (incremental) q = q.gt('updated_at', since);
+                    const { data, error } = await q;
+                    if (error) throw error;
+                    got.push(...(data || []));
+                    if (!data || data.length < 1000) break;
+                }
+                if (!incremental) {
+                    const temps = Array.from(rowsMap.entries()).filter(([id]) => String(id).startsWith('tmp:'));
+                    rowsMap = new Map(got.map(r => [r.id, r]));
+                    temps.forEach(([id, r]) => rowsMap.set(id, r));
+                } else {
+                    got.forEach(r => rowsMap.set(r.id, r));
+                }
+                got.forEach(r => { if (!lastSeen || Date.parse(r.updated_at) > Date.parse(lastSeen)) lastSeen = r.updated_at; });
+                setSync(true);
+                if (!incremental || got.length) rebuild(false);
+                // 整批重抓的期間剛好有人點了報到：馬上再補抓一次，避免那一筆短暫消失
+                if (!incremental && seqBefore !== markSeq) fetchQueued = fetchQueued || 'inc';
+            } catch (e) {
+                console.warn('讀取報到紀錄失敗', e);
+                setSync(false);
+            } finally {
+                fetchBusy = false;
+                if (fetchQueued) { const f = fetchQueued === 'full'; fetchQueued = null; fetchCheckins(f); }
+            }
+        }
+
+        // ================= 整理與畫面 =================
+        function rebuild(rosterChanged) {
+            if (!appState) return;
+            if (rosterChanged || !roster) {
+                roster = CK.buildRoster(appState, EVENT_KEY);
+                populateDivSelect();
+            }
+            entries = CK.mergeCheckins(roster, Array.from(rowsMap.values()), appState.divisionsData);
+            stats = CK.computeStats(entries);
+            render();
+        }
+        function render() {
+            $('hdDistrict').textContent = D.name || '扶輪地區';
+            $('hdTitle').textContent = (roster && roster.title ? roster.title : '活動') + ' 報到';
+            document.title = (roster && roster.title ? roster.title : '活動') + ' 報到';
+            const st = $('hdStatus');
+            if (eventStatus.is_open) { st.textContent = '🟢 報到中'; st.className = 'inline-block text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white'; }
+            else { st.textContent = eventStatus.closed_at ? '⚪ 報到已結束' : '⚪ 尚未開始報到'; st.className = 'inline-block text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-600 text-slate-100'; }
+            $('hdArrived').textContent = entered && stats ? stats.total.present : '–';
+            $('hdExpected').textContent = entered && stats ? stats.total.expected : '–';
+            if (!entered) return;
+            $('viewMessage').classList.add('hidden');
+            $('viewGate').classList.add('hidden');
+            $('hdTabs').classList.remove('hidden');
+            ['checkin', 'stats'].forEach(t => {
+                $('tabBtn_' + t).className = 'px-4 py-1.5 text-sm font-bold rounded-md ' + (ui.tab === t ? 'bg-white text-slate-900 shadow' : 'text-slate-300');
+            });
+            $('viewCheckin').classList.toggle('hidden', ui.tab !== 'checkin');
+            $('viewStats').classList.toggle('hidden', ui.tab !== 'stats');
+            if (ui.tab === 'checkin') renderList(); else renderStats();
+            fixStickyTop();
+        }
+        // 搜尋列要黏在頁首正下方；頁首高度會隨字數換行而變，所以用量的
+        function fixStickyTop() { $('searchBar').style.top = (document.querySelector('header').offsetHeight + 6) + 'px'; }
+        window.addEventListener('resize', fixStickyTop);
+        function populateDivSelect() {
+            const sel = $('divSelect');
+            const divs = [];
+            const seen = new Set();
+            (roster ? roster.persons : []).forEach(p => { if (!seen.has(String(p.divId))) { seen.add(String(p.divId)); divs.push({ id: String(p.divId), name: p.divName, order: p.divOrder }); } });
+            divs.sort((a, b) => a.order - b.order);
+            if (ui.div !== 'ALL' && !seen.has(ui.div)) ui.div = 'ALL';
+            sel.innerHTML = '<option value="ALL">全部分區</option>' + divs.map(d => `<option value="${E(d.id)}">${E(d.name)}</option>`).join('');
+            sel.value = ui.div;
+        }
+        function clubPaymentTag(club) {
+            const rec = paymentByClub[club];
+            if (rec && (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL')) return '<span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">已繳費</span>';
+            if (rec && rec.status === 'EXEMPT') return '';
+            const order = ((appState.registrationOrders || {})[roster.subName] || []).find(o => o.clubName === club);
+            const due = order ? (Number(order.grandTotal) || 0) : 0;
+            if (due > 0) return `<span class="text-[11px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">尚未繳費 NT$ ${due.toLocaleString()}</span>`;
+            return '';
+        }
+        function entryTags(e) {
+            const tags = [];
+            if (e.isWalkIn) tags.push(['現場加報', 'bg-amber-100 text-amber-900 border-amber-300']);
+            if (e.isOrphan) tags.push(['已不在報名名單', 'bg-slate-100 text-slate-600 border-slate-300']);
+            if (e.diet === 'VEGAN') tags.push(['🌱 ' + (e.veganNote || '素食'), 'bg-lime-50 text-lime-800 border-lime-300']);
+            if (e.pelsOption) tags.push([CK.PELS_SHORT[e.pelsOption] || e.pelsOption, 'bg-blue-50 text-blue-800 border-blue-200']);
+            if (e.participation) tags.push([e.participation, e.participation === '參賽' ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : 'bg-orange-50 text-orange-800 border-orange-200']);
+            if (e.note) tags.push(['備註：' + e.note, 'bg-slate-50 text-slate-700 border-slate-200']);
+            return tags.map(t => `<span class="text-[11px] font-bold border px-1.5 py-0.5 rounded ${t[1]}">${E(t[0])}</span>`).join(' ');
+        }
+        function renderList() {
+            const open = !!eventStatus.is_open;
+            const banner = $('closedBanner');
+            banner.classList.toggle('hidden', open);
+            if (!open) banner.textContent = eventStatus.closed_at ? '⚪ 主委已結束報到，目前只能查看名單，不能再點報到。如需補登請主委在後台重新按「開始報到」。' : '⚪ 主委尚未開始報到，目前只能查看名單。請主委在後台按「開始報到」後再點名。';
+            $('walkInBtn').disabled = !open;
+            $('walkInBtn').classList.toggle('opacity-40', !open);
+
+            const scope = entries.filter(e => (ui.div === 'ALL' || String(e.divId) === ui.div) && CK.matchEntry(e, ui.search));
+            const nArrived = scope.filter(e => e.checkin).length;
+            const chip = (id, label, n) => `<button type="button" onclick="setFilter('${id}')" class="px-3 py-1.5 rounded-full text-sm font-bold border ${ui.filter === id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}">${label} ${n}</button>`;
+            $('filterChips').innerHTML = chip('ALL', '全部', scope.length) + chip('ABSENT', '未到', scope.length - nArrived) + chip('ARRIVED', '已到', nArrived);
+
+            const list = scope.filter(e => ui.filter === 'ALL' || (ui.filter === 'ARRIVED' ? !!e.checkin : !e.checkin));
+            shown = list;
+            const box = $('listBox');
+            if (!roster.persons.length && !entries.length) {
+                box.innerHTML = '<div class="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-500">這個活動目前還沒有任何社送出報名表。<br>有人到場可以先用右上方的「現場加報」。</div>';
+                return;
+            }
+            if (!list.length) {
+                box.innerHTML = `<div class="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-500">${ui.search ? `找不到符合「${E(ui.search)}」的人。<br>如果他沒有報名，請用「現場加報」。` : '這個條件下沒有人。'}</div>`;
+                return;
+            }
+            const clubStat = {};
+            (stats ? stats.clubs : []).forEach(c => { clubStat[c.club] = c; });
+            let html = '', curClub = null;
+            list.forEach((e, i) => {
+                if (e.club !== curClub) {
+                    if (curClub !== null) html += '</div></section>';
+                    curClub = e.club;
+                    const cs = clubStat[e.club] || { expected: 0, arrived: 0, extra: 0 };
+                    html += `<section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2 bg-slate-50 border-b border-slate-200">
+                            <div class="flex flex-wrap items-center gap-2 min-w-0"><span class="font-black text-base">${E(e.club)}</span><span class="text-[11px] text-slate-500">${E(e.divName)}</span>${clubPaymentTag(e.club)}</div>
+                            <div class="text-sm font-black whitespace-nowrap ${cs.expected && cs.arrived >= cs.expected ? 'text-emerald-700' : 'text-slate-700'}">${cs.arrived} / ${cs.expected} 已到${cs.extra ? `<span class="text-amber-700">　加報 ${cs.extra}</span>` : ''}</div>
+                        </div><div class="divide-y divide-slate-100">`;
+                }
+                const uid = uidOf(e.club, e.key);
+                const busy = pending.has(uid);
+                const arrived = !!e.checkin;
+                const btn = arrived
+                    ? `<div class="flex items-center gap-2 shrink-0"><div class="text-right leading-tight"><div class="text-sm font-black text-emerald-700 whitespace-nowrap">✅ ${E(fmtTime(e.checkin.checked_in_at))}</div>${e.checkin.checked_by ? `<div class="text-[10px] text-slate-400 max-w-[88px] truncate">${E(e.checkin.checked_by)}</div>` : ''}</div>${open ? `<button type="button" data-act="cancel" data-i="${i}" ${busy ? 'disabled' : ''} class="text-[11px] font-bold text-slate-500 border border-slate-300 rounded-md px-2 py-2 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300">取消</button>` : ''}</div>`
+                    : (open
+                        ? `<button type="button" data-act="mark" data-i="${i}" ${busy ? 'disabled' : ''} class="ck-row-btn shrink-0 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-base rounded-lg px-4 shadow-sm ${busy ? 'opacity-50' : ''}">${busy ? '…' : '報到'}</button>`
+                        : '<span class="shrink-0 text-xs font-bold text-slate-400">未到</span>');
+                html += `<div class="flex items-center justify-between gap-3 px-3 py-2.5 ${arrived ? 'bg-emerald-50/60' : ''} ${uid === flashUid ? 'ck-flash' : ''}">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-baseline gap-x-2"><span class="text-lg font-black">${E(e.name || e.nickname)}</span>${e.name && e.nickname ? `<span class="text-sm font-bold text-slate-600">${E(e.nickname)}</span>` : ''}${e.role ? `<span class="text-xs text-slate-400">${E(e.role)}</span>` : ''}</div>
+                        <div class="flex flex-wrap gap-1 mt-0.5">${entryTags(e)}</div>
+                    </div>${btn}</div>`;
+            });
+            html += '</div></section>';
+            box.innerHTML = html;
+            flashUid = '';
+        }
+        function pct(a, b) { return b ? Math.round(a * 1000 / b) / 10 : 0; }
+        function renderStats() {
+            const t = stats.total;
+            const kpi = (label, value, sub, color) => `<div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3.5"><div class="text-xs font-semibold text-slate-500">${label}</div><div class="text-2xl font-black mt-0.5 ${color}">${value}</div><div class="text-[11px] text-slate-500 mt-0.5">${sub}</div></div>`;
+            const bar = (a, b) => `<div class="h-2 rounded-full bg-slate-200 overflow-hidden min-w-[60px]"><div class="h-full ${a >= b && b ? 'bg-emerald-500' : 'bg-blue-500'}" style="width:${Math.min(100, pct(a, b))}%"></div></div>`;
+            const divRows = stats.divisions.filter(d => d.expected || d.extra).map(d => `<tr class="border-t border-slate-100">
+                <td class="p-2 font-bold whitespace-nowrap">${E(d.divName)}</td><td class="p-2 text-right">${d.expected}</td><td class="p-2 text-right font-bold text-emerald-700">${d.arrived}</td>
+                <td class="p-2 text-right ${d.expected - d.arrived ? 'font-bold text-rose-700' : 'text-slate-400'}">${d.expected - d.arrived}</td><td class="p-2 text-right text-amber-700">${d.extra || ''}</td>
+                <td class="p-2 w-1/3"><div class="flex items-center gap-2">${bar(d.arrived, d.expected)}<span class="text-xs font-bold w-12 text-right">${pct(d.arrived, d.expected)}%</span></div></td></tr>`).join('');
+            const clubRows = stats.clubs.filter(c => c.expected || c.extra).map(c => `<tr class="border-t border-slate-100 align-top">
+                <td class="p-2 whitespace-nowrap"><div class="font-bold">${E(c.club)}</div><div class="text-[10px] text-slate-400">${E(c.divName)}</div></td>
+                <td class="p-2 text-right whitespace-nowrap"><span class="font-bold ${c.expected && c.arrived >= c.expected ? 'text-emerald-700' : ''}">${c.arrived}</span> / ${c.expected}${c.extra ? `<div class="text-[10px] text-amber-700">加報 ${c.extra}</div>` : ''}</td>
+                <td class="p-2 text-slate-600">${c.absentNames.length ? E(c.absentNames.join('、')) : '<span class="text-emerald-700 font-bold">全員到齊</span>'}</td></tr>`).join('');
+            $('viewStats').innerHTML = `
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    ${kpi('應到（報名人數）', t.expected + ' 人', `來自 ${stats.clubs.filter(c => c.expected).length} 個社`, 'text-slate-900')}
+                    ${kpi('實到', t.arrived + ' 人', `出席率 ${t.rate}%`, 'text-emerald-600')}
+                    ${kpi('未到', t.absent + ' 人', '名單見下方各社明細', t.absent ? 'text-rose-600' : 'text-slate-400')}
+                    ${kpi('現場加報', t.extra + ' 人', '未報名但到場，費用活動後處理', t.extra ? 'text-amber-600' : 'text-slate-400')}
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3.5 text-sm text-slate-700 leading-relaxed">
+                    🍽️ 現場實際人數 <b class="text-slate-900">${t.present}</b> 人：葷食 <b>${t.meat}</b>、素食 <b class="text-lime-700">${t.vegan}</b>${t.dietUnknown ? `、未註明 <b>${t.dietUnknown}</b>（現場加報）` : ''}${t.companions ? `<br>👨‍👩‍👧 另有攜眷 <b>${t.companions}</b> 位（眷屬不另外點名，隨報名者一起報到）` : ''}
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" onclick="exportExcel()" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow-sm">📗 匯出 Excel</button>
+                    <button type="button" onclick="copyAbsentList()" class="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-sm font-bold">📋 複製未到名單（可貼到 LINE）</button>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3.5 overflow-x-auto">
+                    <div class="font-black mb-2">各分區出席狀況</div>
+                    ${divRows ? `<table class="w-full text-sm min-w-[480px]"><thead><tr class="text-left text-xs text-slate-500 bg-slate-50"><th class="p-2">分區</th><th class="p-2 text-right">應到</th><th class="p-2 text-right">實到</th><th class="p-2 text-right">未到</th><th class="p-2 text-right">加報</th><th class="p-2">出席率</th></tr></thead><tbody>${divRows}</tbody></table>` : '<div class="text-sm text-slate-400">尚無資料</div>'}
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3.5 overflow-x-auto">
+                    <div class="font-black mb-2">各社明細與未到名單</div>
+                    ${clubRows ? `<table class="w-full text-sm"><thead><tr class="text-left text-xs text-slate-500 bg-slate-50"><th class="p-2">社別</th><th class="p-2 text-right">實到 / 應到</th><th class="p-2">尚未報到</th></tr></thead><tbody>${clubRows}</tbody></table>` : '<div class="text-sm text-slate-400">尚無資料</div>'}
+                </div>`;
+        }
+
+        // ================= 操作 =================
+        function setTab(t) { ui.tab = t; render(); window.scrollTo({ top: 0 }); }
+        function setFilter(f) { ui.filter = f; renderList(); }
+        function onSearchInput() { ui.search = $('searchInput').value; renderList(); }
+        function onDivChange() { ui.div = $('divSelect').value; lsSet(LS_DIV, ui.div); renderList(); }
+        function notifyPeers(kind) {
+            try { if (syncChannel) syncChannel.send({ type: 'broadcast', event: 'changed', payload: { key: EVENT_KEY, kind: kind } }); } catch (e) { /* 其他櫃台幾秒內會自己抓到 */ }
+        }
+        function handleWriteError(error) {
+            const msg = (error && error.message) || '';
+            toast('❌ ' + errText(error), 'error');
+            if (/CHECKIN_PASSWORD_WRONG|CHECKIN_PASSWORD_NOT_SET/.test(msg)) kickToGate();
+            if (/CHECKIN_CLOSED/.test(msg)) fetchStatus().then(() => render()).catch(() => {});
+        }
+        // 密碼失效（主委換了密碼）：忘掉舊密碼，退回輸入畫面
+        function kickToGate() {
+            if (!entered) return;
+            lsDel(LS_PW); password = ''; entered = false;
+            closeWalkIn();
+            showGate('報到密碼已被主委更換，請重新輸入。');
+        }
+        // 報到：先在畫面上標成已到（不必等網路），資料庫寫入失敗再還原並提示
+        async function markPerson(p, isWalkIn, note) {
+            const uid = uidOf(p.club, p.key);
+            if (pending.has(uid)) return false;
+            pending.add(uid);
+            const tmpId = 'tmp:' + uid;
+            rowsMap.set(tmpId, { id: tmpId, event_key: EVENT_KEY, club_name: p.club, person_key: p.key, full_name: p.name || p.nickname, nickname: p.nickname || '', is_walk_in: !!isWalkIn, note: note || '', status: 'in', checked_by: deskName, checked_in_at: new Date().toISOString(), updated_at: '' });
+            flashUid = uid;
+            rebuild(false);
+            let ok = false;
+            try {
+                const { data, error } = await sb.rpc('checkin_mark', {
+                    p_event_key: EVENT_KEY, p_password: password, p_club: p.club, p_person_key: p.key,
+                    p_full_name: p.name || p.nickname, p_nickname: p.nickname || '', p_is_walk_in: !!isWalkIn, p_note: note || '', p_by: deskName
+                });
+                if (error) throw error;
+                if (data && data.id != null) rowsMap.set(data.id, data);
+                markSeq++;
+                ok = true;
+                notifyPeers('mark');
+            } catch (e) {
+                handleWriteError(e);
+            } finally {
+                rowsMap.delete(tmpId);
+                pending.delete(uid);
+                if (entered) rebuild(false);
+            }
+            return ok;
+        }
+        async function cancelPerson(e) {
+            const uid = uidOf(e.club, e.key);
+            if (pending.has(uid) || !e.checkin) return;
+            if (!confirm(`確定取消「${e.club} ${e.name || e.nickname}」的報到嗎？\n\n（只有點錯人時才需要取消）`)) return;
+            pending.add(uid);
+            renderList();
+            try {
+                const { data, error } = await sb.rpc('checkin_cancel', { p_event_key: EVENT_KEY, p_password: password, p_club: e.club, p_person_key: e.key, p_by: deskName });
+                if (error) throw error;
+                if (data && data.id != null) rowsMap.set(data.id, data);
+                markSeq++;
+                toast(`已取消 ${e.name || e.nickname} 的報到`);
+                notifyPeers('cancel');
+            } catch (err) {
+                handleWriteError(err);
+            } finally {
+                pending.delete(uid);
+                if (entered) rebuild(false);
+            }
+        }
+        $('listBox').addEventListener('click', async ev => {
+            const btn = ev.target.closest('[data-act]');
+            if (!btn) return;
+            const e = shown[Number(btn.dataset.i)];
+            if (!e) return;
+            if (btn.dataset.act === 'mark') {
+                const ok = await markPerson(e, false, '');
+                if (ok) toast(`✅ ${e.name || e.nickname} 已報到`, 'ok');
+            } else if (btn.dataset.act === 'cancel') {
+                cancelPerson(e);
+            }
+        });
+
+        // ---------- 現場加報 ----------
+        async function openWalkIn() {
+            if (!eventStatus.is_open) return;
+            const divs = (appState.divisionsData || []).filter(d => (d.clubs || []).length);
+            $('wiDiv').innerHTML = divs.map((d, i) => `<option value="${i}">${E(d.name || ('第 ' + d.id + ' 分區'))}</option>`).join('');
+            const cur = divs.findIndex(d => String(d.id) === ui.div);
+            $('wiDiv').value = String(cur >= 0 ? cur : 0);
+            onWalkInDivChange();
+            ['wiName', 'wiNick', 'wiNote'].forEach(id => { $(id).value = ''; });
+            $('wiError').classList.add('hidden');
+            $('walkInOverlay').classList.remove('hidden');
+            setTimeout(() => $('wiName').focus(), 50);
+            if (!memberDb) {   // 社友庫只在第一次開啟時下載一次，給姓名建議用；抓不到也不影響加報
+                try {
+                    const { data } = await sb.from('app_storage').select('members:value->clubMemberDatabase').eq('key', MAIN_KEY).maybeSingle();
+                    memberDb = (data && data.members) || {};
+                    onWalkInClubChange();
+                } catch (e) { memberDb = {}; }
+            }
+        }
+        function closeWalkIn() { $('walkInOverlay').classList.add('hidden'); }
+        function walkInDivs() { return (appState.divisionsData || []).filter(d => (d.clubs || []).length); }
+        function onWalkInDivChange() {
+            const d = walkInDivs()[Number($('wiDiv').value)] || { clubs: [] };
+            $('wiClub').innerHTML = (d.clubs || []).map(c => `<option value="${E(c.name)}">${E(c.name)}</option>`).join('');
+            onWalkInClubChange();
+        }
+        function walkInCandidates() {
+            const club = $('wiClub').value;
+            const listed = new Set(entries.filter(e => e.club === club).map(e => e.key));
+            return ((memberDb || {})[club] || []).filter(m => m && m.name && !listed.has(CK.personKey(m)));
+        }
+        function onWalkInClubChange() {
+            $('wiNameList').innerHTML = walkInCandidates().map(m => `<option value="${E(m.name)}">${E(m.nickname || '')}</option>`).join('');
+        }
+        function onWalkInNameInput() {   // 選到社友庫裡的人就自動帶出 Nick Name
+            const name = $('wiName').value.trim();
+            const m = walkInCandidates().find(x => x.name === name);
+            if (m && !$('wiNick').value) $('wiNick').value = m.nickname || '';
+        }
+        async function submitWalkIn(ev) {
+            ev.preventDefault();
+            const club = $('wiClub').value, name = $('wiName').value.trim(), nickname = $('wiNick').value.trim(), note = $('wiNote').value.trim();
+            const err = $('wiError');
+            const fail = m => { err.textContent = m; err.classList.remove('hidden'); };
+            if (!club) return fail('請選擇社別。');
+            if (!name) return fail('請輸入姓名。');
+            const key = CK.personKey({ name, nickname });
+            // 這個人其實在名單上：直接幫他報到，不算現場加報
+            const existing = entries.find(e => e.club === club && (e.key === key || (!nickname && e.name === name)));
+            if (existing && existing.checkin) return fail(`${name} 已經報到過了（${fmtTime(existing.checkin.checked_in_at)}）。`);
+            $('wiSubmit').disabled = true;
+            try {
+                if (existing && !existing.isWalkIn) {
+                    const ok = await markPerson(existing, false, '');
+                    if (ok) { closeWalkIn(); toast(`✅ ${name} 本來就在報名名單上，已直接完成報到`, 'ok'); }
+                } else {
+                    const ok = await markPerson({ club, key, name, nickname }, true, note);
+                    if (ok) { closeWalkIn(); toast(`✅ ${name} 現場加報並完成報到`, 'ok'); }
+                }
+            } finally { $('wiSubmit').disabled = false; }
+        }
+
+        // ---------- 統計匯出 ----------
+        function entryKind(e) { return e.isWalkIn ? '現場加報' : e.isOrphan ? '已不在報名名單' : '報名'; }
+        function entryAttend(e) { return e.pelsOption ? (CK.PELS_SHORT[e.pelsOption] || e.pelsOption) : (e.participation || ''); }
+        function loadXlsx() {
+            if (window.XLSX) return Promise.resolve();
+            return new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+                s.onload = resolve; s.onerror = () => reject(new Error('Excel 模組下載失敗，請確認網路後再試。'));
+                document.head.appendChild(s);
+            });
+        }
+        async function exportExcel() {
+            try { await loadXlsx(); } catch (e) { toast('❌ ' + e.message, 'error'); return; }
+            const title = roster.title, t = stats.total;
+            const now = fmtDateTime(new Date().toISOString());
+            const detail = [[`${D.name || ''} ${title} 報到明細`], [`匯出時間：${now}　應到 ${t.expected}、實到 ${t.arrived}、未到 ${t.absent}、現場加報 ${t.extra}、出席率 ${t.rate}%`], [],
+                ['序號', '分區', '扶輪社', '姓名', 'Nick Name', '職稱', '類別', '飲食', '參加方式', '狀態', '報到時間', '櫃台', '備註']];
+            entries.forEach((e, i) => detail.push([i + 1, e.divName, e.club, e.name, e.nickname, e.role, entryKind(e),
+                e.diet === 'VEGAN' ? ('素食' + (e.veganNote ? `（${e.veganNote}）` : '')) : e.diet === 'MEAT' ? '葷食' : '',
+                entryAttend(e), e.checkin ? '已到' : '未到', e.checkin ? fmtDateTime(e.checkin.checked_in_at) : '', e.checkin ? (e.checkin.checked_by || '') : '', e.note || '']));
+            const clubs = [['分區', '扶輪社', '應到', '實到', '未到', '現場加報', '出席率', '未到名單']];
+            stats.clubs.filter(c => c.expected || c.extra).forEach(c => clubs.push([c.divName, c.club, c.expected, c.arrived, c.expected - c.arrived, c.extra, c.expected ? pct(c.arrived, c.expected) + '%' : '', c.absentNames.join('、')]));
+            const divs = [['分區', '應到', '實到', '未到', '現場加報', '出席率']];
+            stats.divisions.filter(d => d.expected || d.extra).forEach(d => divs.push([d.divName, d.expected, d.arrived, d.expected - d.arrived, d.extra, d.expected ? pct(d.arrived, d.expected) + '%' : '']));
+            divs.push(['合計', t.expected, t.arrived, t.absent, t.extra, t.rate + '%']);
+            const wb = XLSX.utils.book_new();
+            const ws1 = XLSX.utils.aoa_to_sheet(detail);
+            ws1['!cols'] = [{ wch: 6 }, { wch: 10 }, { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 6 }, { wch: 20 }, { wch: 14 }, { wch: 20 }];
+            const ws2 = XLSX.utils.aoa_to_sheet(clubs);
+            ws2['!cols'] = [{ wch: 10 }, { wch: 16 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 8 }, { wch: 8 }, { wch: 50 }];
+            const ws3 = XLSX.utils.aoa_to_sheet(divs);
+            ws3['!cols'] = [{ wch: 12 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 8 }, { wch: 8 }];
+            XLSX.utils.book_append_sheet(wb, ws1, '報到明細');
+            XLSX.utils.book_append_sheet(wb, ws2, '各社統計');
+            XLSX.utils.book_append_sheet(wb, ws3, '各分區統計');
+            const day = new Date(Date.now() + 8 * 3600 * 1000).toISOString().substring(0, 10);
+            XLSX.writeFile(wb, `${D.code || ''}地區_${String(title).replace(/[\\/:*?"<>|\s]+/g, '_')}_報到紀錄_${day}.xlsx`);
+            toast('📗 已匯出報到紀錄', 'ok');
+        }
+        async function copyAbsentList() {
+            const lines = [`《${roster.title}》尚未報到名單（${fmtTime(new Date().toISOString())}，未到 ${stats.total.absent} 人）`];
+            let curDiv = null;
+            stats.clubs.filter(c => c.absentNames.length).forEach(c => {
+                if (c.divName !== curDiv) { curDiv = c.divName; lines.push('', `【${c.divName}】`); }
+                lines.push(`${c.club}：${c.absentNames.join('、')}`);
+            });
+            if (!stats.total.absent) lines.push('', '全員到齊 🎉');
+            const text = lines.join('\n');
+            try { await navigator.clipboard.writeText(text); }
+            catch (e) {   // 舊瀏覽器或非 https：改用隱藏文字框複製
+                const ta = document.createElement('textarea');
+                ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                document.body.appendChild(ta); ta.select();
+                try { document.execCommand('copy'); } catch (e2) { /* 複製失敗就算了 */ }
+                ta.remove();
+            }
+            toast('📋 已複製未到名單', 'ok');
+        }
+
+        // ================= 進入／離開 =================
+        function showGate(message) {
+            ['viewMessage', 'viewCheckin', 'viewStats'].forEach(id => $(id).classList.add('hidden'));
+            $('hdTabs').classList.add('hidden');
+            $('viewGate').classList.remove('hidden');
+            $('gateDesk').value = lsGet(LS_DESK);
+            const err = $('gateError');
+            err.classList.toggle('hidden', !message);
+            err.textContent = message || '';
+            render();
+        }
+        async function tryEnter(pw) {
+            const { data, error } = await sb.rpc('checkin_verify', { p_event_key: EVENT_KEY, p_password: pw });
+            if (error) throw error;
+            eventStatus = data || eventStatus;
+            password = pw;
+            entered = true;
+            lsSet(LS_PW, pw);
+        }
+        async function enterDesk(ev) {
+            ev.preventDefault();
+            const pw = $('gatePassword').value;
+            const err = $('gateError');
+            if (!pw) { err.textContent = '請輸入報到密碼。'; err.classList.remove('hidden'); return; }
+            $('gateBtn').disabled = true; $('gateBtn').textContent = '檢查中…';
+            try {
+                await tryEnter(pw);
+                deskName = $('gateDesk').value.trim();
+                lsSet(LS_DESK, deskName);
+                $('gatePassword').value = '';
+                await startDesk();
+            } catch (e) {
+                err.textContent = errText(e); err.classList.remove('hidden');
+            } finally { $('gateBtn').disabled = false; $('gateBtn').textContent = '進入報到'; }
+        }
+        function leaveDesk() {
+            if (!confirm('確定登出這台裝置嗎？\n\n登出後要重新輸入報到密碼才能繼續點名。')) return;
+            lsDel(LS_PW);
+            location.reload();
+        }
+        let deskStarted = false;
+        async function startDesk() {
+            await fetchCheckins(true);
+            rebuild(true);
+            if (deskStarted) return;
+            deskStarted = true;
+            // 其他櫃台點了報到：收到廣播後馬上抓有變動的那幾筆（廣播只是訊號，資料一律重新從資料庫讀）
+            try {
+                syncChannel = sb.channel('rotary-checkin');
+                syncChannel.on('broadcast', { event: 'changed' }, msg => {
+                    const p = (msg && msg.payload) || {};
+                    if (p.key !== EVENT_KEY) return;
+                    if (p.kind === 'status') fetchStatus().then(() => render()).catch(() => {});
+                    fetchCheckins(p.kind === 'reset');
+                }).subscribe();
+                // 有社剛送出或修改報名表：重新讀取應到名單
+                mainChannel = sb.channel('rotary-live-sync');
+                let mainTimer = null;
+                mainChannel.on('broadcast', { event: 'changed' }, () => { clearTimeout(mainTimer); mainTimer = setTimeout(reloadMainData, 1500); }).subscribe();
+            } catch (e) { console.warn('即時同步頻道建立失敗，改用定時檢查', e); }
+            // 備援：每 8 秒抓一次變動、每 2 分鐘整批重抓、每 32 秒檢查報名資料有沒有更新
+            setInterval(async () => {
+                if (document.hidden || !entered) return;
+                tick++;
+                try { if (await fetchStatus()) render(); } catch (e) { /* 下一輪再試 */ }
+                fetchCheckins(tick % 15 === 0);
+                if (tick % 4 === 0) checkMainStamp();
+            }, 8000);
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden || !entered) return;
+                fetchStatus().then(() => render()).catch(() => {});
+                fetchCheckins(true);
+                checkMainStamp();
+            });
+        }
+
+        // ================= 啟動 =================
+        (async function init() {
+            $('hdDistrict').textContent = D.name || '扶輪地區';
+            if (!sb) return showMessage('⚠️', '無法連線雲端', '這個頁面需要連上雲端資料庫才能使用，請確認網路後重新整理。');
+            if (!EVENT_KEY) return showMessage('ℹ️', '缺少活動代碼', '請使用活動主委在後台「活動報到」面板提供的報到網址或 QR Code 開啟本頁。');
+            try {
+                await loadMainData();
+            } catch (e) { return showMessage('⚠️', '讀取報名資料失敗', errText(e) + '\n\n請確認網路後重新整理。'); }
+            roster = CK.buildRoster(appState, EVENT_KEY);
+            if (!roster.ok) {
+                return roster.reason === 'apportionment'
+                    ? showMessage('ℹ️', '這個項目不需要報到', '分攤金／配合款只是繳款項目，沒有現場報到。')
+                    : showMessage('ℹ️', '找不到這個活動', '這個活動可能已被刪除或改名，請向主委索取新的報到網址。');
+            }
+            populateDivSelect();
+            const savedDiv = lsGet(LS_DIV);
+            if (savedDiv && Array.from($('divSelect').options).some(o => o.value === savedDiv)) { ui.div = savedDiv; $('divSelect').value = savedDiv; }
+            try {
+                await fetchStatus();
+            } catch (e) { return showMessage('⚠️', '報到功能尚未啟用', errText(e)); }
+            loadPayment();
+            if (!eventStatus.has_password) {
+                render();
+                return showMessage('🔑', '主委尚未設定報到密碼', '請活動主委先到後台的「活動報到」面板設定報到密碼，再重新整理本頁。');
+            }
+            deskName = lsGet(LS_DESK);
+            const saved = lsGet(LS_PW);
+            if (saved) {
+                try { await tryEnter(saved); await startDesk(); return; }
+                catch (e) { lsDel(LS_PW); entered = false; return showGate(/CHECKIN_PASSWORD_WRONG/.test((e && e.message) || '') ? '報到密碼已被主委更換，請重新輸入。' : errText(e)); }
+            }
+            showGate('');
+        })();
+    </script>
+</body>
+</html>
