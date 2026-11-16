@@ -263,16 +263,37 @@ function calOpenDetail(id) {
 // ---------- 社內報名狀況、我要參加 ----------
 // 行程有對應報名活動時，顯示「本社」誰已報名（執秘送出的正式報名）或表示要參加（社友在這裡按的），
 // 讓社內的人都知道；別社的人看不到。社友按「我要參加」只是留下意願，正式報名由執秘在報名系統確認後送出。
+let calRegTimer = null, calRegSig = '', calRegPolling = false;
+const CAL_REG_POLL_MS = 10000;      // 停在行程詳細頁時，每 10 秒自動更新一次社內報名名單
 async function calLoadReg(id) {
     const box = $('calReg'); if (!box) return;
     box.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-4 text-center text-slate-500 font-bold">讀取報名狀況…</div>';
     const r = await api('cal_rsvp_status', { id: id });
     calRegRender(id, r);
+    calRegStartPolling();
+}
+// 自動更新：只在「還停在這個行程的詳細頁」而且「LINE 在前景」時進行；離開詳細頁（或開啟編輯表單）就自動停止。
+// 背景更新失敗時不打擾使用者，畫面維持原樣，下一輪再試。
+function calRegStartPolling() {
+    if (calRegTimer) return;
+    calRegTimer = setInterval(calRegPoll, CAL_REG_POLL_MS);
+    if (!window.__calRegVis) { window.__calRegVis = true; document.addEventListener('visibilitychange', () => { if (!document.hidden) calRegPoll(); }); }   // 從別的 App 切回 LINE 時馬上更新
+}
+async function calRegPoll() {
+    const e = calCurrent;
+    if (!e || !$('calReg')) { clearInterval(calRegTimer); calRegTimer = null; return; }     // 已經離開詳細頁
+    if (document.hidden || busy || calRegPolling) return;
+    calRegPolling = true;
+    try {
+        const r = await api('cal_rsvp_status', { id: e.id });
+        if (r.ok && calCurrent && calCurrent.id === e.id && JSON.stringify([r.mine, r.open, r.people]) !== calRegSig) calRegRender(e.id, r);
+    } finally { calRegPolling = false; }
 }
 function calRegRender(id, r) {
     const box = $('calReg'); if (!box || !calCurrent || calCurrent.id !== id) return;
     if (!r.ok) { box.innerHTML = `<div class="bg-white rounded-2xl border border-rose-200 p-4 text-center text-rose-700 font-bold">${E(r.code === 'NETWORK' ? '網路連線不穩，無法讀取報名狀況。' : calErrText(r.code))}</div>`; return; }
-    if (!r.linked) { box.innerHTML = ''; return; }
+    if (!r.linked) { box.innerHTML = ''; calRegSig = ''; return; }
+    calRegSig = JSON.stringify([r.mine, r.open, r.people]);     // 自動更新時用來判斷名單有沒有變
     const reg = (r.people || []).filter(p => p.status === 'registered'), want = (r.people || []).filter(p => p.status === 'interested');
     const chip = (p, cls) => `<span class="inline-block rounded-full px-3 py-1 text-base font-bold ${cls} ${p.key === binding.key ? 'ring-2 ring-offset-1 ring-blue-600' : ''}">${E(p.name)}${p.nickname ? `<span class="ml-1 text-sm font-normal opacity-80">${E(p.nickname)}</span>` : ''}${p.key === binding.key ? ' （我）' : ''}</span>`;
     let action = '';
