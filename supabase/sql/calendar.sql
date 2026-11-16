@@ -64,9 +64,22 @@ create table if not exists public.calendar_events (
 create index if not exists calendar_events_layer_time on public.calendar_events (layer, end_at, start_at);
 create index if not exists calendar_events_club on public.calendar_events (club_name);
 
+-- 手機行事曆訂閱（.ics）：每位社友一組專屬網址（token）。enabled=false 時網址立即失效。
+-- token 等同密碼（知道網址就看得到該社友的所有行程，含私人），所以這張表比照 line_bindings：anon 完全讀不到。
+create table if not exists public.calendar_ics (
+    club_name  text not null,
+    person_key text not null,
+    token      text not null unique,
+    enabled    boolean not null default true,
+    created_at timestamptz not null default now(),
+    rotated_at timestamptz,
+    primary key (club_name, person_key)
+);
+
+alter table public.calendar_ics         enable row level security;
 alter table public.calendar_event_types enable row level security;
 alter table public.calendar_roles       enable row level security;
 alter table public.calendar_events      enable row level security;
-revoke all on public.calendar_event_types, public.calendar_roles, public.calendar_events from anon, authenticated;
+revoke all on public.calendar_event_types, public.calendar_roles, public.calendar_events, public.calendar_ics from anon, authenticated;
 revoke all on sequence public.calendar_event_types_id_seq, public.calendar_roles_id_seq from anon, authenticated;
 notify pgrst, 'reload schema';

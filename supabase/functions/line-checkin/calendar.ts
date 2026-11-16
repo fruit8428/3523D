@@ -150,6 +150,37 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
     return { ok: true, event: toView(data, true) };
   }
 
+  // ---------- 訂閱到手機行事曆（.ics）的開關 ----------
+  if (action === "cal_ics_status" || action === "cal_ics_set" || action === "cal_ics_rotate") {
+    const { data: cur, error } = await admin.from("calendar_ics").select("token,enabled").eq("club_name", me.club).eq("person_key", me.key).maybeSingle();
+    if (error) dbFail(error);
+    if (action === "cal_ics_status") return { ok: true, enabled: !!(cur && cur.enabled), token: cur && cur.enabled ? cur.token : null };
+    const now = new Date().toISOString();
+    if (action === "cal_ics_set") {
+      const on = body.enabled === true;
+      if (!cur) {
+        if (!on) return { ok: true, enabled: false, token: null };
+        const token = newToken();
+        const { error: e1 } = await admin.from("calendar_ics").insert({ club_name: me.club, person_key: me.key, token, enabled: true });
+        if (e1) dbFail(e1);
+        return { ok: true, enabled: true, token };
+      }
+      const { error: e2 } = await admin.from("calendar_ics").update({ enabled: on }).eq("club_name", me.club).eq("person_key", me.key);
+      if (e2) dbFail(e2);
+      return { ok: true, enabled: on, token: on ? cur.token : null };
+    }
+    // 重新產生：舊網址立即失效；同時視為開啟
+    const token = newToken();
+    if (!cur) {
+      const { error: e3 } = await admin.from("calendar_ics").insert({ club_name: me.club, person_key: me.key, token, enabled: true });
+      if (e3) dbFail(e3);
+    } else {
+      const { error: e4 } = await admin.from("calendar_ics").update({ token, enabled: true, rotated_at: now }).eq("club_name", me.club).eq("person_key", me.key);
+      if (e4) dbFail(e4);
+    }
+    return { ok: true, enabled: true, token };
+  }
+
   if (action === "cal_cancel" || action === "cal_delete") {
     const id = String(body.id || "");
     const { data: old, error } = await admin.from("calendar_events").select("*").eq("id", id).maybeSingle();
@@ -169,6 +200,75 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
   }
 
   return fail("BAD_REQUEST");
+}
+
+// ---------- .ics 訂閱內容 ----------
+// 隨機長字串（24 位元組＝192 位元），猜不到
+export function newToken(): string {
+  const b = new Uint8Array(24); crypto.getRandomValues(b);
+  return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+const icsEsc = (v: Any) => String(v == null ? "" : v).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+// RFC 5545：每行不超過 75 位元組，超過要折行（下一行開頭加一個空白）；以字元為單位切，避免切斷中文
+function icsFold(line: string): string {
+  const enc = new TextEncoder(); const out: string[] = []; let cur = "", bytes = 0;
+  for (const ch of line) {
+    const n = enc.encode(ch).length;
+    if (bytes + n > (out.length ? 74 : 75)) { out.push(cur); cur = ""; bytes = 0; }
+    cur += ch; bytes += n;
+  }
+  out.push(cur);
+  return out.join("\r\n ");
+}
+const icsUtc = (iso: string) => new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+const icsDate = (iso: string) => { const d = new Date(Date.parse(iso) + 8 * 3600e3); return d.toISOString().slice(0, 10).replace(/-/g, ""); };   // 台灣日期
+
+export function buildIcs(events: Any[], types: Record<string, string>, calName: string): string {
+  const L: string[] = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Rotary//Calendar//ZH-TW", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    `X-WR-CALNAME:${icsEsc(calName)}`, "X-WR-TIMEZONE:Asia/Taipei", "REFRESH-INTERVAL;VALUE=DURATION:PT6H", "X-PUBLISHED-TTL:PT6H"];
+  const layerName: Record<string, string> = { district: "地區", club: "社內", private: "私人" };
+  for (const e of events) {
+    const desc: string[] = [];
+    const t = e.event_type_id != null ? types[String(e.event_type_id)] : "";
+    desc.push(`【${layerName[e.layer] || ""}${t ? "・" + t : ""}】`);
+    if (e.dress_code) desc.push(`服裝：${e.dress_code}`);
+    if (e.contact_person || e.contact_phone) desc.push(`聯絡：${[e.contact_person, e.contact_phone].filter(Boolean).join(" ")}`);
+    if (e.address) desc.push(`地址：${e.address}`);
+    if (e.notes) desc.push(e.notes);
+    L.push("BEGIN:VEVENT", `UID:${e.id}@rotary-calendar`, `DTSTAMP:${icsUtc(e.updated_at || e.created_at || new Date().toISOString())}`);
+    if (e.all_day) {
+      const endDay = icsDate(new Date(Date.parse(e.end_at) + 86400e3).toISOString());   // DTEND 為「不含」的日期，要加一天
+      L.push(`DTSTART;VALUE=DATE:${icsDate(e.start_at)}`, `DTEND;VALUE=DATE:${endDay}`);
+    } else {
+      const end = Date.parse(e.end_at) > Date.parse(e.start_at) ? e.end_at : new Date(Date.parse(e.start_at) + 3600e3).toISOString();
+      L.push(`DTSTART:${icsUtc(e.start_at)}`, `DTEND:${icsUtc(end)}`);
+    }
+    L.push(`SUMMARY:${icsEsc((e.status === "cancelled" ? "【已取消】" : "") + e.title)}`);
+    if (e.location || e.address) L.push(`LOCATION:${icsEsc(e.location || e.address)}`);
+    L.push(`DESCRIPTION:${icsEsc(desc.join("\n"))}`, `STATUS:${e.status === "cancelled" ? "CANCELLED" : "CONFIRMED"}`, "END:VEVENT");
+  }
+  L.push("END:VCALENDAR");
+  return L.map(icsFold).join("\r\n") + "\r\n";
+}
+
+// 用 token 產生訂閱內容；token 不存在或已關閉回 null。範圍：今天前 30 天 ～ 未來 365 天，
+// 內容＝地區＋該社友所屬社的社內＋他自己的私人行程（與他在 LINE 看到的「所有行程」相同）。
+export async function icsFeed(admin: Any, token: string): Promise<string | null> {
+  if (!token || token.length < 20) return null;
+  const { data: row, error } = await admin.from("calendar_ics").select("club_name,person_key,enabled").eq("token", token).maybeSingle();
+  if (error) dbFail(error);
+  if (!row || !row.enabled) return null;
+  const from = new Date(Date.now() - 30 * 86400e3).toISOString(), to = new Date(Date.now() + 365 * 86400e3).toISOString();
+  const base = () => admin.from("calendar_events").select("*").gte("end_at", from).lte("start_at", to).order("start_at").limit(2000);
+  const [d, c, p] = await Promise.all([
+    base().eq("layer", "district"),
+    base().eq("layer", "club").eq("club_name", row.club_name),
+    base().eq("layer", "private").eq("club_name", row.club_name).eq("owner_key", row.person_key),
+  ]);
+  for (const r of [d, c, p]) if (r.error) dbFail(r.error);
+  const types: Record<string, string> = {};
+  for (const t of await loadTypes(admin)) types[String(t.id)] = t.name;
+  return buildIcs([...(d.data || []), ...(c.data || []), ...(p.data || [])], types, "扶輪行事曆");
 }
 
 // ---------- 後台動作（電腦版 admin-calendar.html，用後台密碼把關） ----------

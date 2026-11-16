@@ -24,7 +24,7 @@ const CAL_ERR = {
 
 let calRoles = { district: false, clubs: [], governor: false };
 let calTypes = [];
-let calPrefs = { layer: 'all', range: 'week' };
+let calPrefs = { layer: 'all', range: 'today' };   // 第一次打開（或讀不到記憶）的預設畫面：所有行程＋今天
 let calOffset = 0;                 // 往前／往後翻幾個「單位」（今天＝天、三天＝3 天、本週＝週、本月＝月）
 let calEvents = [];                // 目前畫面範圍內的行程
 let calSelDay = '';                // 月曆格模式下被點選的日期 YYYY-MM-DD
@@ -120,7 +120,7 @@ function calShell() {
         <div id="calMain">
             <div class="flex items-center justify-between gap-2 mb-2">
                 <div class="min-w-0 text-sm text-slate-600 truncate">${E(binding.name)}　${E(binding.club)}</div>
-                <button type="button" onclick="calGoToday()" class="shrink-0 text-sm font-bold text-blue-700 border border-blue-200 bg-white rounded-lg px-3 py-1.5">回到今天</button>
+                <div class="shrink-0 flex gap-2"><button type="button" onclick="calGoToday()" class="text-sm font-bold text-blue-700 border border-blue-200 bg-white rounded-lg px-3 py-1.5">回到今天</button><button type="button" onclick="calOpenSettings()" class="text-lg border border-slate-300 bg-white rounded-lg px-2.5 py-1" aria-label="設定">⚙️</button></div>
             </div>
             <div id="calLayerTabs" class="grid grid-cols-4 gap-1.5"></div>
             <div id="calRangeTabs" class="grid grid-cols-4 gap-1.5 mt-2"></div>
@@ -345,4 +345,75 @@ async function calSaveForm(id) {
     toast('已儲存');
     calSelDay = ymd(Date.parse(r.event.start));
     calBack(); await calReload();
+}
+
+// ---------- 設定：訂閱到手機行事曆（.ics） ----------
+// 開關存在雲端（calendar_ics）。開啟後有一組專屬網址，貼到 iPhone／Google 日曆就會自動同步；
+// 關閉或重新產生網址後，舊網址立刻失效。
+let calIcs = { enabled: false, token: null };
+const calIcsUrl = t => (typeof FN_URL === 'string' ? FN_URL : '') + '?ics=' + encodeURIComponent(t);
+async function calOpenSettings() {
+    calSubShow('<button type="button" onclick="calBack()" class="text-base font-bold text-blue-700 py-2">‹ 返回行事曆</button><div class="text-center text-slate-500 py-10 font-bold">讀取中…</div>');
+    const r = await api('cal_ics_status');
+    if (!r.ok) { calBack(); return toast(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : calErrText(r.code)); }
+    calIcs = { enabled: !!r.enabled, token: r.token || null };
+    calRenderSettings();
+}
+function calRenderSettings() {
+    const on = calIcs.enabled && calIcs.token, url = on ? calIcsUrl(calIcs.token) : '';
+    const step = (n, t) => `<li class="flex gap-2"><span class="shrink-0 w-6 h-6 rounded-full bg-blue-700 text-white text-sm font-black flex items-center justify-center">${n}</span><span>${t}</span></li>`;
+    calSubShow(`<button type="button" onclick="calBack()" class="text-base font-bold text-blue-700 py-2">‹ 返回行事曆</button>
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mt-1">
+            <h2 class="font-black text-xl">設定</h2>
+            <div class="mt-4 flex items-center justify-between gap-3">
+                <div class="min-w-0"><div class="font-black text-lg">訂閱到手機行事曆</div><div class="text-sm text-slate-600 leading-relaxed">把扶輪行程同步到 iPhone 行事曆或 Google 日曆，由手機自己跳提醒。</div></div>
+                <button type="button" role="switch" aria-checked="${on ? 'true' : 'false'}" onclick="calIcsToggle()" class="shrink-0 relative w-16 h-9 rounded-full ${on ? 'bg-emerald-500' : 'bg-slate-300'} transition-colors"><span class="absolute top-1 ${on ? 'left-8' : 'left-1'} w-7 h-7 bg-white rounded-full shadow transition-all"></span></button>
+            </div>
+            <div class="mt-2 text-sm font-bold ${on ? 'text-emerald-700' : 'text-slate-500'}">${on ? '✅ 已開啟' : '目前關閉'}</div>
+            ${on ? `
+            <div class="mt-4 text-sm font-bold text-slate-700">您的專屬訂閱網址</div>
+            <input id="icsUrl" type="text" readonly value="${E(url)}" onclick="this.select()" class="mt-1 w-full border border-slate-300 rounded-xl px-3 py-3 text-sm bg-slate-50 font-mono">
+            <button type="button" onclick="calIcsCopy()" class="mt-2 w-full bg-blue-700 active:bg-blue-800 text-white font-black rounded-xl py-3.5">複製網址</button>
+            <div class="mt-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl px-3 py-3 text-sm font-bold leading-relaxed">⚠️ 這個網址包含您的<b>私人行程</b>，請不要傳給別人。萬一外流，按下方「重新產生網址」，舊網址就會失效。</div>
+            <div class="mt-5 font-black">怎麼加入？</div>
+            <div class="mt-2 text-sm font-bold text-slate-700">📱 iPhone</div>
+            <ol class="mt-1 space-y-2 text-base leading-relaxed">
+                ${step(1, '先按上方「複製網址」。')}
+                ${step(2, '打開手機「設定」→「日曆」→「帳號」→「加入帳號」→「其他」。')}
+                ${step(3, '點「加入已訂閱的日曆」，貼上網址，按「下一步」→「儲存」。')}
+            </ol>
+            <div class="mt-4 text-sm font-bold text-slate-700">🗓️ Google 日曆（用電腦操作）</div>
+            <ol class="mt-1 space-y-2 text-base leading-relaxed">
+                ${step(1, '把網址複製下來，用電腦打開 calendar.google.com。')}
+                ${step(2, '左側「其他日曆」旁按 ＋ →「透過網址新增」，貼上網址。')}
+            </ol>
+            <p class="mt-3 text-sm text-slate-500 leading-relaxed">行程有異動時，手機會自動更新；iPhone 通常幾小時內，Google 日曆最長約 1 天。要在 LINE 裡看最新內容，以行事曆畫面為準。</p>
+            <button type="button" onclick="calIcsRotate()" class="mt-4 w-full bg-white border border-rose-300 text-rose-700 font-black rounded-xl py-3">重新產生網址（舊網址失效）</button>` : `
+            <p class="mt-3 text-sm text-slate-600 leading-relaxed">開啟後會產生一組只屬於您的網址。內容包含地區行程、本社行程和您的私人行程，今天前 30 天到未來一年。隨時可以關閉，關閉後網址立刻失效。</p>`}
+        </div>`);
+}
+async function calIcsToggle() {
+    if (busy) return;
+    const turnOn = !(calIcs.enabled && calIcs.token);
+    if (!turnOn && !confirm('要關閉訂閱嗎？\n關閉後，已經加入手機的行事曆會停止更新（日曆裡原本的行程可能保留或消失，視手機而定）。')) return;
+    busy = true; const r = await api('cal_ics_set', { enabled: turnOn }); busy = false;
+    if (!r.ok) return toast(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : calErrText(r.code));
+    calIcs = { enabled: !!r.enabled, token: r.token || null };
+    calRenderSettings();
+    toast(turnOn ? '已開啟訂閱' : '已關閉訂閱');
+}
+async function calIcsRotate() {
+    if (busy) return;
+    if (!confirm('要重新產生網址嗎？\n舊網址會立刻失效，已經加入手機的訂閱要用新網址重新加入。')) return;
+    busy = true; const r = await api('cal_ics_rotate'); busy = false;
+    if (!r.ok) return toast(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : calErrText(r.code));
+    calIcs = { enabled: true, token: r.token };
+    calRenderSettings();
+    toast('已產生新網址，舊網址已失效');
+}
+async function calIcsCopy() {
+    const el = $('icsUrl'); if (!el) return;
+    try { await navigator.clipboard.writeText(el.value); return toast('已複製網址'); } catch (e) { /* LINE 內建瀏覽器可能不允許，改用下面的做法 */ }
+    try { el.focus(); el.select(); el.setSelectionRange(0, el.value.length); if (document.execCommand('copy')) return toast('已複製網址'); } catch (e) { /* 忽略 */ }
+    toast('無法自動複製，請長按網址欄位選取後複製');
 }

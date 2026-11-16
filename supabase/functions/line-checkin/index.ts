@@ -11,6 +11,7 @@
 // =====================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { AppError, handle, type Deps } from "./lib.ts";
+import { icsFeed } from "./calendar.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -91,6 +92,18 @@ const deps: Deps = {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  // 手機行事曆訂閱（.ics）：iPhone／Google 日曆會直接用 GET 抓取，不能帶登入資訊，靠網址裡的隨機 token 認人
+  if (req.method === "GET") {
+    const token = new URL(req.url).searchParams.get("ics") || "";
+    try {
+      const ics = await icsFeed(admin, token);
+      if (!ics) return new Response("訂閱網址無效或已關閉", { status: 404, headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } });
+      return new Response(ics, { status: 200, headers: { ...CORS, "Content-Type": "text/calendar; charset=utf-8", "Cache-Control": "no-store" } });
+    } catch (e) {
+      console.error("ics 發生錯誤", e);
+      return new Response("系統忙碌中，請稍後再試", { status: 500, headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } });
+    }
+  }
   try {
     const body = await req.json().catch(() => ({}));
     return json(await handle(body, deps));

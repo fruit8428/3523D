@@ -1,4 +1,4 @@
-import { handleMember, handleAdmin } from "../functions/line-checkin/calendar.ts";
+import { handleMember, handleAdmin, icsFeed, buildIcs } from "../functions/line-checkin/calendar.ts";
 // 極簡假資料庫：支援 select/insert/update/delete/upsert + eq/gte/lte/order/limit/maybeSingle/single
 function fake(tables: Record<string, any[]>) {
   let seq = 1000;
@@ -61,3 +61,28 @@ ok("移除後馬上不能新增社內行程", await code(handleMember("cal_save"
 ok("未綁定的人被擋", await code(handleMember("cal_list", W, db, null)) === "NOT_BOUND");
 const st = await adm("cal_admin_state", {});
 ok("沒有管理者的社會被列出", st.clubsWithoutEditor.includes("甲社") && st.clubsWithoutEditor.includes("乙社"));
+
+// ---------- 手機行事曆訂閱（.ics） ----------
+ok("訂閱預設關閉", (await handleMember("cal_ics_status", {}, db, A)).enabled === false);
+const on = await handleMember("cal_ics_set", { enabled: true }, db, A);
+ok("開啟後取得 token", on.enabled === true && on.token.length >= 30);
+ok("再查狀態拿到同一組 token", (await handleMember("cal_ics_status", {}, db, A)).token === on.token);
+const nowIso = (h: number) => new Date(Date.now() + 86400e3 * 2 + h * 3600e3).toISOString();
+T.calendar_events.push({ id: "icsA", layer: "private", club_name: "甲社", owner_key: "王|", title: "我的私人,含;符號", start_at: nowIso(0), end_at: nowIso(1), all_day: false, status: "confirmed", location: "某處", notes: "第一行\n第二行", updated_at: nowIso(0) });
+T.calendar_events.push({ id: "icsB", layer: "private", club_name: "乙社", owner_key: "李|", title: "別人的私人", start_at: nowIso(0), end_at: nowIso(1), all_day: false, status: "confirmed", updated_at: nowIso(0) });
+T.calendar_events.push({ id: "icsD", layer: "district", club_name: "", owner_key: "", title: "地區全天", start_at: new Date(Date.now() + 5 * 86400e3).toISOString(), end_at: new Date(Date.now() + 5 * 86400e3 + 3600e3).toISOString(), all_day: true, status: "cancelled", updated_at: nowIso(0) });
+const feed = (await icsFeed(db, on.token)) || "";
+ok("訂閱內容含自己的私人與地區行程", feed.includes("UID:icsA@") && feed.includes("UID:icsD@"));
+ok("訂閱內容不含別人的私人行程", !feed.includes("icsB") && !feed.includes("別人的私人"));
+ok("特殊符號與換行有跳脫", feed.includes("我的私人\\,含\\;符號") && feed.includes("第一行\\n第二行"));
+ok("已取消行程標示 CANCELLED、全天用 DATE", feed.includes("STATUS:CANCELLED") && /DTSTART;VALUE=DATE:\d{8}/.test(feed));
+ok("每行不超過 75 位元組", feed.split("\r\n").every((l) => new TextEncoder().encode(l).length <= 75));
+const long = buildIcs([{ id: "x", layer: "club", title: "長".repeat(80), start_at: nowIso(0), end_at: nowIso(1), status: "confirmed" }], {}, "t");
+ok("長中文標題折行後不超長", long.split("\r\n").every((l) => new TextEncoder().encode(l).length <= 75) && long.includes("\r\n "));
+const rot = await handleMember("cal_ics_rotate", {}, db, A);
+ok("重新產生後舊網址失效、新網址有效", rot.token !== on.token && (await icsFeed(db, on.token)) === null && !!(await icsFeed(db, rot.token)));
+await handleMember("cal_ics_set", { enabled: false }, db, A);
+ok("關閉後網址立刻失效", (await icsFeed(db, rot.token)) === null && (await handleMember("cal_ics_status", {}, db, A)).token === null);
+ok("再開啟沿用同一組網址", (await handleMember("cal_ics_set", { enabled: true }, db, A)).token === rot.token);
+ok("亂猜的 token 無效", (await icsFeed(db, "x".repeat(32))) === null && (await icsFeed(db, "")) === null);
+ok("乙社的 token 看不到甲社私人", !((await icsFeed(db, (await handleMember("cal_ics_set", { enabled: true }, db, B)).token)) || "").includes("icsA"));

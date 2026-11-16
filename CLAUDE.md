@@ -211,7 +211,8 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - **資料表**（`supabase/sql/calendar.sql`，**要先在 Supabase 執行才能用**）：`calendar_event_types`、`calendar_roles`、`calendar_events`，RLS 開啟、無 policy、anon 完全讀不到（私人行程才不會外洩）。**行程不放進 `app_storage`**（整包覆寫會互蓋）。認人同 LINE 報到：社名＋`姓名|Nick Name`，不用 uuid；原規格的 `members`／`clubs` 表不建立。
 - **後端**：`supabase/functions/line-checkin/calendar.ts`，由 `lib.ts` 的 `handle()` 轉送 `cal_*` 動作。社友動作先向 LINE 驗證 idToken、查 `line_bindings` 找出是誰，再依 `calendar_roles` 判斷權限（`canWrite()` 集中判斷：地區＝district_editor、社內＝managed_club 相符的 club_editor、私人＝本人）。`cal_admin_*` 用 secret `CALENDAR_ADMIN_PASSWORD` 把關（沒設＝後台關閉；**不要用最高管理員密碼**，它寫在前端）。錯誤碼 `CAL_*`，前端 `CAL_ERR` 轉中文。
 - 時間一律存 timestamptz、前後端都用台灣時間（UTC+8）計算；全天行程 `end_at` 為當天 23:59；沒填結束時間＝開始時間。取消行程只改 `status='cancelled'`。列表查詢用「地區＋本社＋本人私人」三次查詢合併（不用 `.or()` 字串，避免社名符號弄壞查詢）。
-- 測試：權限＝`deno run --no-check --node-modules-dir=none -A supabase/tests/calendar_permissions.ts`（假資料庫，17 項）；畫面＝`node check_calendar_ui.js`（puppeteer 塞假的 `api()`，17 項，不需 8000 埠）。改了雲端小程式要重新部署：Finder 點兩下 `部署行事曆.command`。
+- **手機行事曆訂閱（.ics，6.9）**：LINE 行事曆右上 ⚙️ → 開關／複製網址／重新產生（動作 `cal_ics_status`／`cal_ics_set`／`cal_ics_rotate`）。表 `calendar_ics`（每人一組隨機 token，`enabled=false` 或重新產生後舊網址立即失效；anon 讀不到）。公開網址＝`<supabaseUrl>/functions/v1/line-checkin?ics=<token>`（`index.ts` 的 GET 分支 → `icsFeed()`，回 `text/calendar`，不帶登入，靠 token 認人）。內容＝地區＋本社＋本人私人，今天前 30 天～未來 365 天，已取消的行程標 `STATUS:CANCELLED`。**token 等同密碼，private 行程在內**，畫面有警告。預設畫面已改為「所有行程＋今天」。尚未在真實 iPhone／Google 日曆驗證過，部署後要實測（含 Supabase 是否原樣回傳 `text/calendar`）。
+- 測試：權限與 .ics＝`deno run --no-check --node-modules-dir=none -A supabase/tests/calendar_permissions.ts`（假資料庫，31 項）；畫面＝`node check_calendar_ui.js`（puppeteer 塞假的 `api()`，22 項，不需 8000 埠）。改了雲端小程式要重新部署：Finder 點兩下 `部署行事曆.command`。
 
 ### UI 慣例
 
