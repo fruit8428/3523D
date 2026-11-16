@@ -166,3 +166,23 @@ ok("日期清空 → 移除自動建立的行程", (await sync({ club: "甲社",
 T.calendar_events.push({ id: "manualX", layer: "district", club_name: "", owner_key: "", title: "手動建立", start_at: "2026-12-01T00:00:00.000Z", end_at: "2026-12-01T01:00:00.000Z", all_day: false, status: "confirmed", registration_key: SK, created_by: "某人（地區）", updated_at: "x" });
 ok("手動建立的行程：清空日期不會被刪", (await sync({ adminPassword: "pw", key: SK, date: "" })).removed === false && dsyn({}).length === 1);
 ok("手動建立的行程：填日期時更新它，不另外新增", !(await sync({ adminPassword: "pw", key: SK, date: "2026-12-25", startTime: "13:00" })).created && dsyn({}).length === 1 && AUTO_SYNC_MARK.length > 0);
+
+// ---------- 我參加的活動 → 私人行事曆 ----------
+const jr = [{ club: "甲社", key: "趙|", name: "趙", nickname: "" }];
+const jreg = { roster: async (k: string) => k === "cat::羽球賽" ? { ok: true, title: "羽球賽", persons: jr } : { ok: false, title: "", persons: [] } };
+const jEv = (await handleMember("cal_save", { event: ev({ layer: "district", title: "地區羽球賽", registrationKey: "cat::羽球賽" }) }, db, B)).event;
+const jPlain = (await handleMember("cal_save", { event: ev({ layer: "district", title: "地區無報名" }) }, db, B)).event;
+const jClub = (await desk("cal_desk_save", { adminPassword: "pw", event: dev({ layer: "club", club: "乙社", title: "乙社內活動", registrationKey: "cat::羽球賽" }) })).event;
+const L = async (me: any) => (await handleMember("cal_list", W, db, me, jreg)).events;
+const pick = (evs: any[], id: string) => evs.find((e: any) => e.id === id);
+const mkU = (key: string, name: string) => ({ club: "甲社", key, name, nickname: "" });
+ok("沒參加的人：joined 為 null", pick(await L(mkU("路人|", "路人")), jEv.id).joined === null);
+ok("執秘已正式報名的人（趙）：joined=registered", pick(await L(mkU("趙|", "趙")), jEv.id).joined === "registered");
+await handleMember("cal_rsvp_set", { id: jEv.id, join: true }, db, mkU("孫甲|", "孫甲"), jreg);
+ok("按了我要參加的人：joined=interested", pick(await L(mkU("孫甲|", "孫甲")), jEv.id).joined === "interested");
+ok("沒有對應報名的地區行程：不算參加", pick(await L(mkU("趙|", "趙")), jPlain.id).joined === null);
+ok("別人的意願不會讓我的 joined 變動", pick(await L(mkU("路人|", "路人")), jEv.id).joined === null);
+await handleMember("cal_rsvp_set", { id: jEv.id, join: false }, db, mkU("孫甲|", "孫甲"), jreg);
+ok("取消參加後 joined 回到 null", pick(await L(mkU("孫甲|", "孫甲")), jEv.id).joined === null);
+const joinedB = (await handleMember("cal_list", W, db, { club: "乙社", key: "李|", name: "李", nickname: "" }, jreg)).events;
+ok("別社的趙不在乙社名單，乙社的李 joined 為 null；社內行程不會洩漏給別社", pick(joinedB, jEv.id).joined === null && pick(await L(mkU("趙|", "趙")), jClub.id) === undefined);

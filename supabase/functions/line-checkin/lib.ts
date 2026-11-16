@@ -319,9 +319,11 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
   if (action.startsWith("cal_")) {
     try {
       const b = await getBinding(deps, user.sub);
+      let cached: Any = null;      // 同一次請求內只讀一次報名資料（月曆一次可能有很多個對應活動）
       const reg = {
         roster: async (eventKey: string) => {
-          const roster = Core.buildRoster(await loadState(deps, false), eventKey);
+          if (!cached) cached = await loadState(deps, false);
+          const roster = Core.buildRoster(cached, eventKey);
           return { ok: !!roster.ok, title: roster.title || "", persons: roster.persons || [] };
         },
       };

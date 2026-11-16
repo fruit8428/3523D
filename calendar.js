@@ -56,6 +56,11 @@ function calRange() {
         const f = base - back * DAY + calOffset * 7 * DAY;
         return { from: f, to: f + 7 * DAY, label: `${fmtDayTitle(ymd(f))} ～ ${fmtDayTitle(ymd(f + 6 * DAY))}` };
     }
+    if (calPrefs.range === 'two') {                       // 二週：本週一起算的連續 14 天；按 ‹ › 一次翻兩週
+        const back = (t.wd + 6) % 7;
+        const f = base - back * DAY + calOffset * 14 * DAY;
+        return { from: f, to: f + 14 * DAY, label: `${fmtDayTitle(ymd(f))} ～ ${fmtDayTitle(ymd(f + 13 * DAY))}` };
+    }
     const mm = tpParts(tpMs(t.y, t.m + calOffset, 1, 0, 0));       // 本月：畫出完整的週（週一～週日）
     const first = tpMs(mm.y, mm.m, 1, 0, 0), next = tpMs(mm.y, mm.m + 1, 1, 0, 0);
     const gf = first - ((tpParts(first).wd + 6) % 7) * DAY;
@@ -84,7 +89,7 @@ function calPhone(s) { return String(s || '').replace(/[^0-9+#*]/g, ''); }
 // ---------- 小工具 ----------
 function calErrText(code) { return CAL_ERR[code] || (typeof errText === 'function' ? errText(code) : '系統忙碌中，請稍後再試。'); }
 function calLoadPrefs() {
-    try { const p = JSON.parse(localStorage.getItem(CAL_PREF_KEY) || '{}'); if (['all', 'district', 'club', 'private'].includes(p.layer)) calPrefs.layer = p.layer; if (['today', 'three', 'week', 'month'].includes(p.range)) calPrefs.range = p.range; } catch (e) { /* 沒有記憶也能用 */ }
+    try { const p = JSON.parse(localStorage.getItem(CAL_PREF_KEY) || '{}'); if (['all', 'district', 'club', 'private'].includes(p.layer)) calPrefs.layer = p.layer; if (['today', 'three', 'week', 'two', 'month'].includes(p.range)) calPrefs.range = p.range; } catch (e) { /* 沒有記憶也能用 */ }
 }
 function calSavePrefs() { try { localStorage.setItem(CAL_PREF_KEY, JSON.stringify(calPrefs)); } catch (e) { /* 忽略 */ } }
 function calTypeName(id) { const t = calTypes.find(x => x.id === id); return t ? t.name : ''; }
@@ -126,7 +131,7 @@ function calShell() {
                 <div class="shrink-0 flex gap-2"><button type="button" onclick="calGoToday()" class="text-sm font-bold text-blue-700 border border-blue-200 bg-white rounded-lg px-3 py-1.5">回到今天</button><button type="button" onclick="calOpenSettings()" class="text-lg border border-slate-300 bg-white rounded-lg px-2.5 py-1" aria-label="設定">⚙️</button></div>
             </div>
             <div id="calLayerTabs" class="grid grid-cols-4 gap-1.5"></div>
-            <div id="calRangeTabs" class="grid grid-cols-4 gap-1.5 mt-2"></div>
+            <div id="calRangeTabs" class="grid grid-cols-5 gap-1.5 mt-2"></div>
             <div class="flex items-center justify-between mt-3 bg-white rounded-xl border border-slate-200">
                 <button type="button" onclick="calShift(-1)" class="px-5 py-3 text-xl font-black text-slate-700" aria-label="上一段">‹</button>
                 <div id="calLabel" class="font-black text-base text-center"></div>
@@ -141,8 +146,8 @@ function calShell() {
 function calRenderTabs() {
     const L = [['all', '所有行程'], ['district', '地區'], ['club', '社內'], ['private', '私人']];
     $('calLayerTabs').innerHTML = L.map(x => `<button type="button" onclick="calSetLayer('${x[0]}')" class="rounded-xl py-3 text-base font-black border ${calPrefs.layer === x[0] ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-slate-700 border-slate-300'}">${x[1]}</button>`).join('');
-    const R = [['today', '今天'], ['three', '三天'], ['week', '本週'], ['month', '本月']];
-    $('calRangeTabs').innerHTML = R.map(x => `<button type="button" onclick="calSetRange('${x[0]}')" class="rounded-xl py-3 text-base font-black border ${calPrefs.range === x[0] ? 'bg-amber-400 text-slate-900 border-amber-400' : 'bg-white text-slate-700 border-slate-300'}">${x[1]}</button>`).join('');
+    const R = [['today', '今天'], ['three', '三天'], ['week', '本週'], ['two', '二週'], ['month', '本月']];
+    $('calRangeTabs').innerHTML = R.map(x => `<button type="button" onclick="calSetRange('${x[0]}')" class="rounded-xl py-3 text-[15px] font-black border ${calPrefs.range === x[0] ? 'bg-amber-400 text-slate-900 border-amber-400' : 'bg-white text-slate-700 border-slate-300'}">${x[1]}</button>`).join('');
 }
 function calSetLayer(l) { calPrefs.layer = l; calSavePrefs(); calRenderTabs(); calRenderBody(); }
 function calSetRange(r) { calPrefs.range = r; calOffset = 0; calSelDay = ymd(Date.now()); calSavePrefs(); calRenderTabs(); calReload(); }
@@ -162,7 +167,10 @@ async function calReload() {
     calEvents = r.events || [];
     calRenderBody();
 }
-function calVisible() { return calEvents.filter(e => calPrefs.layer === 'all' || e.layer === calPrefs.layer); }
+// 「私人」頁＝我自己的私人行程＋我參加的地區／社內活動（已被執秘報名，或我按了「我要參加」），後者標 🔗 並保留原層級的顏色
+function calVisible() {
+    return calEvents.filter(e => calPrefs.layer === 'all' || e.layer === calPrefs.layer || (calPrefs.layer === 'private' && !!e.joined));
+}
 
 function calRenderBody() {
     const rg = calRange(), list = calVisible(), box = $('calBody');
@@ -187,7 +195,7 @@ function calCard(e, day) {
     return `<button type="button" onclick="calOpenDetail('${E(e.id)}')" class="w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm active:bg-slate-50 flex overflow-hidden">
         <span class="shrink-0 w-2" style="background:${L.color}"></span>
         <span class="min-w-0 flex-1 px-3 py-3">
-            <span class="block text-sm font-bold text-slate-500">${E(calTimeText(e, day))}　<span class="font-black" style="color:${L.text}">${E(calLayerLabel(e))}</span>${cancelled ? '　<span class="text-rose-600">已取消</span>' : ''}</span>
+            <span class="block text-sm font-bold text-slate-500">${E(calTimeText(e, day))}　<span class="font-black" style="color:${L.text}">${calPrefs.layer === 'private' && e.layer !== 'private' ? '🔗 ' : ''}${E(calLayerLabel(e))}</span>${e.joined === 'registered' ? '　<span class="text-emerald-700">✅ 已報名</span>' : e.joined === 'interested' ? '　<span class="text-amber-700">🙋 已表示參加</span>' : ''}${cancelled ? '　<span class="text-rose-600">已取消</span>' : ''}</span>
             <span class="block font-black text-lg leading-snug mt-0.5 ${cancelled ? 'line-through text-slate-400' : ''}">${E(e.title)}</span>
             ${e.location ? `<span class="block text-sm text-slate-600 mt-0.5 truncate">📍 ${E(e.location)}</span>` : ''}
         </span></button>`;
@@ -222,6 +230,7 @@ function calBack() {
     $('calSub').classList.add('hidden'); $('calSub').innerHTML = '';
     $('calMain').classList.remove('hidden'); $('calFab').classList.remove('hidden');
     calCurrent = null;
+    if ($('calBody') && calEvents.length) calRenderBody();      // 在詳細頁按了「我要參加」等之後，返回列表要立刻反映（不用重新連網）
 }
 function calOpenDetail(id) {
     const e = calEvents.find(x => x.id === id);
@@ -294,6 +303,7 @@ function calRegRender(id, r) {
     if (!r.ok) { box.innerHTML = `<div class="bg-white rounded-2xl border border-rose-200 p-4 text-center text-rose-700 font-bold">${E(r.code === 'NETWORK' ? '網路連線不穩，無法讀取報名狀況。' : calErrText(r.code))}</div>`; return; }
     if (!r.linked) { box.innerHTML = ''; calRegSig = ''; return; }
     calRegSig = JSON.stringify([r.mine, r.open, r.people]);     // 自動更新時用來判斷名單有沒有變
+    const ce = calEvents.find(x => x.id === id); if (ce) ce.joined = r.mine || null;   // 返回列表／「私人」頁時，立刻反映我是否參加
     const reg = (r.people || []).filter(p => p.status === 'registered'), want = (r.people || []).filter(p => p.status === 'interested');
     const chip = (p, cls) => `<span class="inline-block rounded-full px-3 py-1 text-base font-bold ${cls} ${p.key === binding.key ? 'ring-2 ring-offset-1 ring-blue-600' : ''}">${E(p.name)}${p.nickname ? `<span class="ml-1 text-sm font-normal opacity-80">${E(p.nickname)}</span>` : ''}${p.key === binding.key ? ' （我）' : ''}</span>`;
     let action = '';

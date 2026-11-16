@@ -81,12 +81,13 @@ function dbFail(error: Any): never {
   return fail("SERVER_ERROR");
 }
 
-const toView = (r: Any, canEdit: boolean) => ({
+const toView = (r: Any, canEdit: boolean, joined: string | null = null) => ({
   id: r.id, layer: r.layer, club: r.club_name || "", title: r.title,
   start: r.start_at, end: r.end_at, allDay: !!r.all_day, typeId: r.event_type_id,
   location: r.location || "", address: r.address || "", dressCode: r.dress_code || "",
   contactPerson: r.contact_person || "", contactPhone: r.contact_phone || "", notes: r.notes || "",
   status: r.status, updatedAt: r.updated_at, canEdit, registrationKey: r.registration_key || "",
+  joined,      // 我參加的活動：'registered'＝執秘已送出正式報名、'interested'＝我按了「我要參加」、null＝沒參加（私人行事曆會顯示 registered／interested 的活動）
 });
 
 async function loadRoles(admin: Any, me: CalMe): Promise<CalRoles> {
@@ -125,6 +126,26 @@ async function rsvpStatus(admin: Any, ev: Any, me: CalMe, reg: RegDeps | undefin
   return { linked: true, title: roster.title, open: ev.status !== "cancelled", mine: mine ? mine.status : null, people, registeredCount: formal.length, interestedCount: people.length - formal.length };
 }
 
+// 這批行程裡「我參加的」：地區／社內行程中，我已被執秘正式報名（名單算法與報到、推播相同），或我按了「我要參加」。
+// 結果用來讓這些活動也出現在「私人」行事曆。報名名單每個對應活動只算一次。
+async function joinedMap(admin: Any, rows: Any[], me: CalMe, reg: RegDeps | undefined): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const shared = rows.filter((r: Any) => r.layer !== "private");
+  if (!shared.length) return out;
+  const { data, error } = await admin.from("calendar_rsvp").select("event_id").eq("club_name", me.club).eq("person_key", me.key).in("event_id", shared.map((r: Any) => r.id));
+  if (error) dbFail(error);
+  for (const x of data || []) out.set(x.event_id, "interested");
+  if (reg) {
+    const formal = new Map<string, boolean>();
+    for (const key of new Set<string>(shared.map((r: Any) => String(r.registration_key || "")).filter(Boolean))) {
+      const roster = await reg.roster(key);
+      formal.set(key, !!roster.ok && roster.persons.some((p: Any) => p.club === me.club && (p.key === me.key || p.name === me.name)));
+    }
+    for (const r of shared) if (r.registration_key && formal.get(String(r.registration_key))) out.set(r.id, "registered");     // 正式報名優先於意願
+  }
+  return out;
+}
+
 export async function handleMember(action: string, body: Any, admin: Any, me: CalMe | null, reg?: RegDeps): Promise<Any> {
   if (!me) return fail("NOT_BOUND");
   const roles = await loadRoles(admin, me);
@@ -147,7 +168,8 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
     for (const r of [d, c, p]) if (r.error) dbFail(r.error);
     const rows = [...(d.data || []), ...(c.data || []), ...(p.data || [])]
       .sort((a: Any, b: Any) => String(a.start_at).localeCompare(String(b.start_at)));
-    return { ok: true, events: rows.map((r: Any) => toView(r, canWrite(r.layer, r, me, roles))) };
+    const joined = await joinedMap(admin, rows, me, reg);
+    return { ok: true, events: rows.map((r: Any) => toView(r, canWrite(r.layer, r, me, roles), joined.get(r.id) || null)) };
   }
 
   if (action === "cal_save") {
