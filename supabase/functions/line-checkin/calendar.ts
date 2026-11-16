@@ -329,7 +329,14 @@ export async function icsFeed(admin: Any, token: string): Promise<string | null>
 //   adminPassword            ＝行事曆後台密碼 → 可管理地區行程，以及任何一社的社內行程
 //   club + clubPassword      ＝社的登入密碼（與 LINE 綁定名單同一做法）→ 只能管理「自己那一社」的社內行程
 // 私人行程一律不開放（只有本人在 LINE 裡看得到）。
-export interface DeskCtx { admin: Any; password: string; checkClub: (club: string, password: string) => Promise<void> }
+export interface DeskCtx {
+  admin: Any; password: string;
+  checkClub: (club: string, password: string) => Promise<void>;
+  roster?: RegDeps["roster"];                                        // 報名活動資料（確認這個活動存在、取得名稱）
+  isChair?: (club: string, eventKey: string) => Promise<boolean>;     // 這一社是不是該活動的主委
+}
+// 由「主委活動設定」自動建立的行程，用這個標記辨識（只有這種行程會被自動更新／移除，手動建立的不會被動到）
+export const AUTO_SYNC_MARK = "主委活動設定（自動連動）";
 
 export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promise<Any> {
   const admin = ctx.admin;
@@ -372,6 +379,45 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
     const seen = new Set<string>(), people: Any[] = [];
     for (const r of data || []) if (!seen.has(r.person_key)) { seen.add(r.person_key); people.push({ key: r.person_key, name: r.full_name, nickname: r.nickname || "", at: r.created_at }); }
     return { ok: true, linked: true, people };
+  }
+
+  // 主委在「活動設定與費用金額」填了活動日期 → 同步成一筆地區行程（對應該報名活動）。
+  // 認證：後台密碼，或「這個活動的主委社」的社登入密碼。日期留空＝移除自動建立的那筆（手動建立的行程不動）。
+  if (action === "cal_desk_sync") {
+    const key = String(body.key || "");
+    if (!key) fail("BAD_REQUEST");
+    if (!isAdmin && !(ctx.isChair && await ctx.isChair(club, key))) fail("CAL_FORBIDDEN");
+    const roster = ctx.roster ? await ctx.roster(key) : { ok: false, title: "", persons: [] };
+    if (!roster.ok) fail("CAL_REG_UNAVAILABLE");              // 活動不存在，或是不需要報名的分攤金／配合款
+    const { data: found, error } = await admin.from("calendar_events").select("*").eq("layer", "district").eq("registration_key", key).order("created_at");
+    if (error) dbFail(error);
+    const ex = (found || [])[0] || null;
+    const date = String(body.date || "").trim();
+    if (!date) {
+      if (ex && ex.created_by === AUTO_SYNC_MARK) {
+        const { error: e0 } = await admin.from("calendar_events").delete().eq("id", ex.id);
+        if (e0) dbFail(e0);
+        return { ok: true, removed: true };
+      }
+      return { ok: true, removed: false };
+    }
+    const st = String(body.startTime || "").trim(), et = String(body.endTime || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (st && !/^\d{2}:\d{2}$/.test(st)) || (et && !/^\d{2}:\d{2}$/.test(et))) fail("CAL_BAD_TIME");
+    const allDay = !st;                                         // 沒填開始時間＝全天
+    const start = Date.parse(`${date}T${st || "00:00"}:00+08:00`);
+    const end = Date.parse(`${date}T${allDay ? "23:59" : (et || st)}:00+08:00`);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) fail("CAL_BAD_TIME");
+    if (end < start) fail("CAL_END_BEFORE_START");
+    const times = { start_at: new Date(start).toISOString(), end_at: new Date(end).toISOString(), all_day: allDay };
+    if (ex) {
+      // 只更新日期時間；標題、地點等已經被行事曆管理者改過的內容不動
+      const { data, error: e1 } = await admin.from("calendar_events").update({ ...times, updated_by: by, updated_at: new Date().toISOString() }).eq("id", ex.id).select().single();
+      if (e1) dbFail(e1);
+      return { ok: true, created: false, event: toView(data, true) };
+    }
+    const { data, error: e2 } = await admin.from("calendar_events").insert({ layer: "district", club_name: "", owner_key: "", title: roster.title || key.split("::")[1] || "活動", ...times, registration_key: key, created_by: AUTO_SYNC_MARK, updated_by: by }).select().single();
+    if (e2) dbFail(e2);
+    return { ok: true, created: true, event: toView(data, true) };
   }
 
   if (action === "cal_desk_save") {

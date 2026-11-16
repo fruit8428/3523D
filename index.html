@@ -1003,6 +1003,25 @@
                     </div>
                 </div>
 
+                <!-- 活動日期：儲存後會同步成行事曆（LINE）裡的地區行程，社友在行事曆就看得到這個活動 -->
+                <div id="cfgEventDateRow" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">📅 活動日期：</label>
+                        <input type="date" id="cfgEventDate" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">開始時間（選填）：</label>
+                        <input type="time" id="cfgEventStart" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">結束時間（選填）：</label>
+                        <input type="time" id="cfgEventEnd" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium">
+                    </div>
+                    <div class="flex items-end">
+                        <p id="cfgEventDateHint" class="text-[11px] text-slate-500 leading-relaxed">填了活動日期，按「儲存主委設定」後，會自動出現在 LINE 行事曆，社友可在那裡按「我要參加」。沒填開始時間＝全天。</p>
+                    </div>
+                </div>
+
                 <!-- Custom Sponsor Fee Tier Settings (Visible if enabled) -->
                 <div id="chairSponsorFeeInputs" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3 pt-3 border-t border-dashed border-slate-200">
                     <div id="cfgFeeBox1">
@@ -2573,6 +2592,7 @@
             feeMealOnly: 1000,     // 只用餐 1000 元
             startDate: '2026-09-01T09:00',
             eventDMs: {},          // 活動 DM 檔案清單，key 為「大類id::子活動名稱」
+            eventDates: {},        // 活動日期 { 'date': 'YYYY-MM-DD', start: 'HH:mm', end: 'HH:mm' }，key 為「大類id::子活動名稱」；儲存時同步成行事曆的地區行程
             bankAccount: { bankName: '上海商業儲蓄銀行', bankCode: '011', branch: '', accountName: '', accountNo: '' } // 匯款帳號（全部活動共用）
         };
 
@@ -2700,6 +2720,7 @@
                         }, parsed.chairConfig);
                     }
                     if (!chairConfig.eventDMs || typeof chairConfig.eventDMs !== 'object') chairConfig.eventDMs = {};
+                    if (!chairConfig.eventDates || typeof chairConfig.eventDates !== 'object') chairConfig.eventDates = {};
                     chairConfig.bankAccount = Object.assign({ bankName: '上海商業儲蓄銀行', bankCode: '011', branch: '', accountName: '', accountNo: '' }, chairConfig.bankAccount || {});
                     if (parsed.appAuthData) {
                         appAuthData = parsed.appAuthData;
@@ -2743,6 +2764,7 @@
                     feeMealOnly: 1000,
                     startDate: '2026-09-01T09:00',
                     eventDMs: {},
+                    eventDates: {},
                     bankAccount: { bankName: '上海商業儲蓄銀行', bankCode: '011', branch: '', accountName: '', accountNo: '' }
                 };
                 // 繳費紀錄與對帳信件也一併清空（含獨立儲存的 key），不再塞回示範資料
@@ -3789,6 +3811,10 @@
                 const el = document.getElementById(id);
                 if (el) el.innerText = `$${Number(val).toLocaleString()}`;
             };
+            const evDate = (chairConfig.eventDates || {})[currentSubEventFeeKey()] || {};
+            setInput('cfgEventDate', evDate.date || ''); setInput('cfgEventStart', evDate.start || ''); setInput('cfgEventEnd', evDate.end || '');
+            const evRow = document.getElementById('cfgEventDateRow');   // 分攤金／配合款不是「活動」，不需要活動日期
+            if (evRow) { const c = categoriesData.find(x => x.id === currentCatId); const sub = (c && c.subEvents && c.subEvents[currentSubEventIndex]) || ''; evRow.classList.toggle('hidden', !!(c && CheckinCore.isApportionEvent(c.name, sub))); }
             setInput('cfgFeeFlower', getFlowerFee());
             setInput('cfgFeeAnnivMeal', getAnnivMealFee());
             setInput('cfgFeeCompete', getCompeteFee());
@@ -5010,6 +5036,13 @@
             if (compInput && !isNaN(parseFloat(compInput.value))) setSubEventFee('feeCompete', parseFloat(compInput.value));
             if (mealInput && !isNaN(parseFloat(mealInput.value))) setSubEventFee('feeMealOnly', parseFloat(mealInput.value));
 
+            // 活動日期（依子活動分別儲存；改了活動名稱後 key 也會跟著變，所以這裡用「已更新名稱後」的 key）
+            if (!chairConfig.eventDates || typeof chairConfig.eventDates !== 'object') chairConfig.eventDates = {};
+            const evKey = currentSubEventFeeKey();
+            const evNew = { date: (document.getElementById('cfgEventDate') || {}).value || '', start: (document.getElementById('cfgEventStart') || {}).value || '', end: (document.getElementById('cfgEventEnd') || {}).value || '' };
+            const evHadDate = !!(chairConfig.eventDates[evKey] && chairConfig.eventDates[evKey].date);
+            if (evNew.date) chairConfig.eventDates[evKey] = evNew; else delete chairConfig.eventDates[evKey];
+
             // 更新執秘端贊助門檻卡片上的金額
             refreshSubEventFeeInputs();
 
@@ -5017,6 +5050,7 @@
             const recalc = recalcSubmittedOrdersForCurrentEvent();
             saveToStorage();
             showToast('💾 主委設定已成功更新！' + recalcResultText(recalc));
+            if ((evNew.date || evHadDate) && typeof syncEventDateToCalendar === 'function') syncEventDateToCalendar(evKey, evNew); // 活動日期連動行事曆（地區行程）；從沒填過日期的活動不必連網
             if (recalc.changed > 0) { renderDivisionPaymentSection(); updateRolePermissionsUI(); }
             renderSelectedMembersTable();
             updateTotalFeeSummaryDisplay();

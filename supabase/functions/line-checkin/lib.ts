@@ -302,6 +302,16 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
           try { checkClubPassword(deps, await loadState(deps, true), club, password); }
           catch (e) { await sleep(1000); throw e; }      // 密碼錯誤故意慢 1 秒
         },
+        roster: async (eventKey: string) => {
+          const roster = Core.buildRoster(await loadState(deps, false), eventKey);
+          return { ok: !!roster.ok, title: roster.title || "", persons: roster.persons || [] };
+        },
+        // 主委：appAuthData.eventChairs 以「大類id」（整個大類）或「大類id::子活動名稱」（單一子活動）為 key，值是社名陣列
+        isChair: async (club: string, eventKey: string) => {
+          const chairs = ((await loadState(deps, true)).auth || {}).eventChairs || {};
+          const catId = eventKey.split("::")[0];
+          return [chairs[catId], chairs[eventKey]].some((a) => Array.isArray(a) && a.includes(club));
+        },
       });
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
   }

@@ -348,3 +348,42 @@ function cdRsvpAddMany(keys) {
     renderMemberMasterTable(); renderSelectedMembersTable(); updateLinePreviewText();
     cdToast(`已加入 ${added} 位到報名名單，請確認欄位後按「送出本社報名表」` + (missing.length ? `（${missing.join('、')} 不在社友庫，請先新增）` : ''));
 }
+
+// ---------- 主委的「活動日期」→ 同步成行事曆的地區行程 ----------
+// 由 index.html 的 saveChairSettings() 在存檔後呼叫。只送「這個活動」的日期時間，不碰報名資料；
+// 失敗不影響主委設定的儲存（日期已經存進報名系統），只提示「尚未同步到行事曆」。
+// 認證：最高管理員用行事曆後台密碼（第一次會詢問）；主委社用本社登入密碼（雲端會確認這一社確實是該活動的主委）。
+async function syncEventDateToCalendar(key, ev) {
+    if (!(DISTRICT && DISTRICT.calendarEnabled) || !key) return;
+    let auth;
+    if (cdIsSuper()) {
+        if (!cdeskAdminPw) {
+            const v = window.prompt('活動日期要同步到行事曆，請輸入「行事曆後台密碼」\n（按取消＝日期只存在報名系統，不同步）');
+            if (!v) { cdToast('日期已儲存，但尚未同步到行事曆', '⚠️'); return; }
+            cdeskAdminPw = v;
+        }
+        auth = { adminPassword: cdeskAdminPw };
+    } else {
+        const club = (loggedInUser && loggedInUser.club) || '';
+        auth = { club: club, clubPassword: ((typeof appAuthData !== 'undefined' && appAuthData.clubPasswords) || {})[club] || (typeof DEFAULT_CLUB_PASSWORD !== 'undefined' ? DEFAULT_CLUB_PASSWORD : '') || '' };
+    }
+    const hint = document.getElementById('cfgEventDateHint');
+    try {
+        const res = await fetch(SUPABASE_URL + '/functions/v1/line-checkin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+            body: JSON.stringify(Object.assign({ action: 'cal_desk_sync', key: key, date: ev.date || '', startTime: ev.start || '', endTime: ev.end || '' }, auth))
+        });
+        const r = res.status === 404 ? { ok: false, code: 'LINE_NOT_CONFIGURED' } : await res.json();
+        if (r.ok) {
+            const msg = r.removed ? '已從行事曆移除這個活動' : (ev.date ? (r.created ? '已建立行事曆行程' : '已更新行事曆行程') : '');
+            if (msg) cdToast('📅 ' + msg + '，社友在 LINE 行事曆看得到');
+            if (hint) hint.textContent = ev.date ? `✅ ${msg}（${ev.date}${ev.start ? ' ' + ev.start : '（全天）'}）。` : '填了活動日期，按「儲存主委設定」後，會自動出現在 LINE 行事曆，社友可在那裡按「我要參加」。';
+        } else if (r.code === 'CAL_REG_UNAVAILABLE') {
+            /* 分攤金／配合款等不需要報名的項目，不同步 */
+        } else {
+            if (r.code === 'CAL_ADMIN_AUTH_FAILED') cdeskAdminPw = '';
+            cdToast('日期已儲存，但同步行事曆失敗：' + cdErr(r.code === 'CAL_FORBIDDEN' ? 'CAL_FORBIDDEN' : r.code), '⚠️');
+        }
+    } catch (e) { cdToast('日期已儲存，但同步行事曆失敗：網路連線不穩', '⚠️'); }
+}

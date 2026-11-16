@@ -1,4 +1,4 @@
-import { handleMember, handleAdmin, handleDesk, icsFeed, buildIcs } from "../functions/line-checkin/calendar.ts";
+import { handleMember, handleAdmin, handleDesk, icsFeed, buildIcs, AUTO_SYNC_MARK } from "../functions/line-checkin/calendar.ts";
 // 極簡假資料庫：支援 select/insert/update/delete/upsert + eq/gte/lte/order/limit/maybeSingle/single
 function fake(tables: Record<string, any[]>) {
   let seq = 1000;
@@ -140,3 +140,29 @@ ok("執秘讀到本社的意願名單（王、丙）", dr.people.map((p: any) =>
 ok("執秘讀不到別社的意願", (await desk("cal_desk_rsvp", { club: "乙社", clubPassword: "b123", key: "cat::高球賽" })).people.length === 0);
 ok("LINE 手機版編輯行程不會清掉報名對應", (await handleMember("cal_save", { event: { ...ev({ title: "改標題" }), id: rsvpEv.id } }, db, B)).event.registrationKey === "cat::高球賽");
 ok("刪除行程後意願名單一併刪除（資料庫 cascade；此處驗證行程可刪）", (await handleMember("cal_delete", { id: rsvpEv.id }, db, B)).ok);
+
+// ---------- 主委活動日期 → 同步成地區行程（cal_desk_sync） ----------
+const sync = (extra: any) => handleDesk("cal_desk_sync", extra, {
+  admin: db, password: "pw",
+  checkClub: async (c: string, p: string) => { if (!(c === "甲社" && p === "a123") && !(c === "乙社" && p === "b123")) { const e: any = new Error("x"); e.code = "CLUB_AUTH_FAILED"; throw e; } },
+  roster: async (k: string) => k.startsWith("sports::") ? { ok: true, title: k.split("::")[1], persons: [] } : { ok: false, title: "", persons: [] },
+  isChair: async (c: string, k: string) => c === "甲社" && k.startsWith("sports::"),    // 甲社是運動賽事的主委
+});
+const SK = "sports::1. 地區高爾夫球聯誼賽";
+const dsyn = (extra: any) => T.calendar_events.filter((e) => e.registration_key === SK);
+ok("非主委的社不能同步日期", await code(sync({ club: "乙社", clubPassword: "b123", key: SK, date: "2026-12-20" })) === "CAL_FORBIDDEN");
+ok("主委社密碼錯誤被擋", await code(sync({ club: "甲社", clubPassword: "bad", key: SK, date: "2026-12-20" })) === "CLUB_AUTH_FAILED");
+ok("不需要報名的活動（分攤金等）不能同步", await code(sync({ club: "甲社", clubPassword: "a123", key: "apportion::x", date: "2026-12-20" })) === "CAL_FORBIDDEN" && await code(sync({ adminPassword: "pw", key: "apportion::x", date: "2026-12-20" })) === "CAL_REG_UNAVAILABLE");
+const s1 = await sync({ club: "甲社", clubPassword: "a123", key: SK, date: "2026-12-20", startTime: "07:30", endTime: "17:00" });
+ok("主委填日期時間 → 建立地區行程、對應報名活動、標題為活動名", s1.created && s1.event.layer === "district" && s1.event.title === "1. 地區高爾夫球聯誼賽" && s1.event.registrationKey === SK && !s1.event.allDay && s1.event.start === "2026-12-19T23:30:00.000Z");
+const s2 = await sync({ club: "甲社", clubPassword: "a123", key: SK, date: "2026-12-21" });
+ok("改日期 → 更新同一筆（不重複建立），沒填時間＝全天", !s2.created && dsyn({}).length === 1 && s2.event.allDay && s2.event.start === "2026-12-20T16:00:00.000Z");
+T.calendar_events.find((e) => e.registration_key === SK).title = "管理者改過的標題";
+await sync({ club: "甲社", clubPassword: "a123", key: SK, date: "2026-12-22", startTime: "09:00" });
+ok("再同步不會蓋掉管理者改過的標題", T.calendar_events.find((e) => e.registration_key === SK).title === "管理者改過的標題");
+ok("結束早於開始被擋、格式錯誤被擋", await code(sync({ adminPassword: "pw", key: SK, date: "2026-12-22", startTime: "10:00", endTime: "08:00" })) === "CAL_END_BEFORE_START" && await code(sync({ adminPassword: "pw", key: SK, date: "12/22" })) === "CAL_BAD_TIME");
+ok("日期清空 → 移除自動建立的行程", (await sync({ club: "甲社", clubPassword: "a123", key: SK, date: "" })).removed === true && dsyn({}).length === 0);
+// 手動建立的行程（非自動）不會被清空日期刪掉，而且會被當作同一筆更新日期
+T.calendar_events.push({ id: "manualX", layer: "district", club_name: "", owner_key: "", title: "手動建立", start_at: "2026-12-01T00:00:00.000Z", end_at: "2026-12-01T01:00:00.000Z", all_day: false, status: "confirmed", registration_key: SK, created_by: "某人（地區）", updated_at: "x" });
+ok("手動建立的行程：清空日期不會被刪", (await sync({ adminPassword: "pw", key: SK, date: "" })).removed === false && dsyn({}).length === 1);
+ok("手動建立的行程：填日期時更新它，不另外新增", !(await sync({ adminPassword: "pw", key: SK, date: "2026-12-25", startTime: "13:00" })).created && dsyn({}).length === 1 && AUTO_SYNC_MARK.length > 0);
