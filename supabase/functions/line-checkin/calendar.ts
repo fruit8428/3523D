@@ -56,7 +56,7 @@ export function normalizeEvent(input: Any): Any {
   if (end < start) fail("CAL_END_BEFORE_START");
   if (end - start > 366 * 86400_000) fail("CAL_BAD_TIME");
   const typeId = Number(e.typeId);
-  return {
+  const out: Any = {
     title,
     start_at: new Date(start).toISOString(),
     end_at: new Date(end).toISOString(),
@@ -69,6 +69,8 @@ export function normalizeEvent(input: Any): Any {
     contact_phone: clip(e.contactPhone, LIMITS.contactPhone),
     notes: clip(e.notes, LIMITS.notes),
   };
+  if (e.registrationKey !== undefined) out.registration_key = clip(e.registrationKey, 200) || null;   // 對應報名系統的「大類id::子活動名稱」
+  return out;
 }
 
 function dbFail(error: Any): never {
@@ -84,7 +86,7 @@ const toView = (r: Any, canEdit: boolean) => ({
   start: r.start_at, end: r.end_at, allDay: !!r.all_day, typeId: r.event_type_id,
   location: r.location || "", address: r.address || "", dressCode: r.dress_code || "",
   contactPerson: r.contact_person || "", contactPhone: r.contact_phone || "", notes: r.notes || "",
-  status: r.status, updatedAt: r.updated_at, canEdit,
+  status: r.status, updatedAt: r.updated_at, canEdit, registrationKey: r.registration_key || "",
 });
 
 async function loadRoles(admin: Any, me: CalMe): Promise<CalRoles> {
@@ -102,7 +104,28 @@ const byMe = (me: CalMe) => `${me.name}（${me.club}）`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- 社友動作 ----------
-export async function handleMember(action: string, body: Any, admin: Any, me: CalMe | null): Promise<Any> {
+// 報名系統的名單（由 lib.ts 以 CheckinCore.buildRoster 算出，與報到、推播同一套算法）
+export interface RegDeps { roster: (eventKey: string) => Promise<{ ok: boolean; title: string; persons: Any[] }> }
+
+// 目前這個行程裡「我們社」有哪些人報名／表示參加
+async function rsvpStatus(admin: Any, ev: Any, me: CalMe, reg: RegDeps | undefined) {
+  const key = String(ev.registration_key || "");
+  if (!key || !reg) return { linked: false };
+  const roster = await reg.roster(key);
+  if (!roster.ok) return { linked: false };
+  const formal = roster.persons.filter((p: Any) => p.club === me.club);
+  const { data, error } = await admin.from("calendar_rsvp").select("person_key,full_name,nickname,created_at").eq("event_id", ev.id).eq("club_name", me.club).order("created_at");
+  if (error) dbFail(error);
+  const formalKeys = new Set(formal.map((p: Any) => p.key));
+  const people = [
+    ...formal.map((p: Any) => ({ key: p.key, name: p.name || p.nickname, nickname: p.name ? p.nickname : "", status: "registered" })),
+    ...(data || []).filter((r: Any) => !formalKeys.has(r.person_key)).map((r: Any) => ({ key: r.person_key, name: r.full_name, nickname: r.nickname || "", status: "interested" })),
+  ];
+  const mine = people.find((p) => p.key === me.key) || people.find((p) => p.name === me.name && formal.some((f: Any) => f.name === me.name));
+  return { linked: true, title: roster.title, open: ev.status !== "cancelled", mine: mine ? mine.status : null, people, registeredCount: formal.length, interestedCount: people.length - formal.length };
+}
+
+export async function handleMember(action: string, body: Any, admin: Any, me: CalMe | null, reg?: RegDeps): Promise<Any> {
   if (!me) return fail("NOT_BOUND");
   const roles = await loadRoles(admin, me);
 
@@ -137,6 +160,7 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
       if (error) dbFail(error);
       if (!old) fail("CAL_NOT_FOUND");
       if (!canWrite(old.layer, old, me, roles)) fail("CAL_FORBIDDEN");
+      if (old.layer === "private") delete fields.registration_key;      // 私人行程不能對應報名
       const { data, error: e2 } = await admin.from("calendar_events").update({ ...fields, updated_by: byMe(me), updated_at: new Date().toISOString() }).eq("id", id).select().single();
       if (e2) dbFail(e2);
       return { ok: true, event: toView(data, true) };
@@ -144,12 +168,39 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
     const layer = String(input.layer || "");
     if (!LAYERS.includes(layer)) fail("CAL_BAD_LAYER");
     const row: Any = { layer, club_name: "", owner_key: "" };
+    if (layer === "private") delete fields.registration_key;
     if (layer === "club") row.club_name = String(input.club || (roles.clubs.length === 1 ? roles.clubs[0] : ""));
     if (layer === "private") { row.club_name = me.club; row.owner_key = me.key; }
     if (!canWrite(layer, row, me, roles)) fail("CAL_FORBIDDEN");
     const { data, error } = await admin.from("calendar_events").insert({ ...row, ...fields, created_by: byMe(me), updated_by: byMe(me) }).select().single();
     if (error) dbFail(error);
     return { ok: true, event: toView(data, true) };
+  }
+
+  // ---------- 社內已報名名單、我要參加 ----------
+  if (action === "cal_rsvp_status" || action === "cal_rsvp_set") {
+    const { data: ev, error } = await admin.from("calendar_events").select("*").eq("id", String(body.id || "")).maybeSingle();
+    if (error) dbFail(error);
+    // 只有「看得到的」行程才查得到：地區行程，或本社的社內行程（私人行程沒有報名）
+    if (!ev || ev.layer === "private" || (ev.layer === "club" && ev.club_name !== me.club)) fail("CAL_NOT_FOUND");
+    if (action === "cal_rsvp_set") {
+      const st0: Any = await rsvpStatus(admin, ev, me, reg);
+      if (!st0.linked) fail("CAL_REG_UNAVAILABLE");
+      if (body.join === true) {
+        if (ev.status === "cancelled") fail("CAL_EVENT_CANCELLED");
+        if (!st0.mine) {
+          const { error: e1 } = await admin.from("calendar_rsvp").upsert(
+            { event_id: ev.id, club_name: me.club, person_key: me.key, full_name: me.name, nickname: me.nickname || "" },
+            { onConflict: "event_id,club_name,person_key", ignoreDuplicates: true });
+          if (e1) dbFail(e1);
+        }
+      } else {
+        if (st0.mine === "registered") fail("CAL_RSVP_LOCKED");       // 已由執秘送出正式報名，要取消請洽執秘
+        const { error: e2 } = await admin.from("calendar_rsvp").delete().eq("event_id", ev.id).eq("club_name", me.club).eq("person_key", me.key);
+        if (e2) dbFail(e2);
+      }
+    }
+    return { ok: true, ...(await rsvpStatus(admin, ev, me, reg)) };
   }
 
   // ---------- 訂閱到手機行事曆（.ics）的開關 ----------
@@ -306,6 +357,21 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
     const { data, error } = await q;
     if (error) dbFail(error);
     return { ok: true, events: (data || []).map((r: Any) => toView(r, true)), types: await loadTypes(admin) };
+  }
+
+  // 執秘：這個報名活動（大類id::子活動名稱）裡，本社社友在 LINE 按了「我要參加」的名單
+  if (action === "cal_desk_rsvp") {
+    const key = String(body.key || ""), target = isAdmin ? String(body.targetClub || "") : club;
+    if (!key || !target) fail("BAD_REQUEST");
+    const { data: evs, error } = await admin.from("calendar_events").select("id,title,layer,club_name,status").eq("registration_key", key);
+    if (error) dbFail(error);
+    const ids = (evs || []).filter((e: Any) => e.status !== "cancelled" && (e.layer === "district" || (e.layer === "club" && e.club_name === target))).map((e: Any) => e.id);
+    if (!ids.length) return { ok: true, people: [], linked: (evs || []).length > 0 };
+    const { data, error: e2 } = await admin.from("calendar_rsvp").select("event_id,person_key,full_name,nickname,created_at").in("event_id", ids).eq("club_name", target).order("created_at");
+    if (e2) dbFail(e2);
+    const seen = new Set<string>(), people: Any[] = [];
+    for (const r of data || []) if (!seen.has(r.person_key)) { seen.add(r.person_key); people.push({ key: r.person_key, name: r.full_name, nickname: r.nickname || "", at: r.created_at }); }
+    return { ok: true, linked: true, people };
   }
 
   if (action === "cal_desk_save") {

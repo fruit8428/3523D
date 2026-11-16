@@ -309,7 +309,13 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
   if (action.startsWith("cal_")) {
     try {
       const b = await getBinding(deps, user.sub);
-      return await calMember(action, body, deps.admin, b ? { club: b.club, key: b.key, name: b.name, nickname: b.nickname } : null);
+      const reg = {
+        roster: async (eventKey: string) => {
+          const roster = Core.buildRoster(await loadState(deps, false), eventKey);
+          return { ok: !!roster.ok, title: roster.title || "", persons: roster.persons || [] };
+        },
+      };
+      return await calMember(action, body, deps.admin, b ? { club: b.club, key: b.key, name: b.name, nickname: b.nickname } : null, reg);
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
   }
 

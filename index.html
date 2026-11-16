@@ -658,6 +658,7 @@
                         </div>
 
                         <!-- Selected Participants Table -->
+                        <div id="calRsvpBox" class="hidden mb-3"></div>
                         <div id="selectedParticipantsBox" class="mb-4">
                             <div class="flex flex-wrap justify-between items-center mb-2 gap-1.5">
                                 <h4 class="text-xs font-bold text-slate-700" id="selectedRosterTitle">本次出席社友名冊:</h4>
@@ -3581,6 +3582,7 @@
         }
 
         function renderSelectedMembersTable() {
+            if (typeof renderCalRsvpBox === 'function') renderCalRsvpBox(); // 社友在 LINE 行事曆表示要參加的人（只用快取，不會每次連網）
             const isGolf = isCurrentEventGolf();
             const isSports = isCurrentEventSports();
             const showFee = isSports || isAnniversaryMode() || isPelsMode();

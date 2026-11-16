@@ -19,6 +19,9 @@ const CAL_ERR = {
     CAL_BAD_TIME: '時間格式不正確，請檢查日期與時間。',
     CAL_END_BEFORE_START: '結束時間不能早於開始時間。',
     CAL_BAD_LAYER: '請選擇行程層級。',
+    CAL_REG_UNAVAILABLE: '這個行程目前不能報名，請洽執秘。',
+    CAL_EVENT_CANCELLED: '這個行程已取消，無法再報名。',
+    CAL_RSVP_LOCKED: '執秘已經幫您送出正式報名，如要取消請洽執秘。',
     CAL_TABLE_MISSING: '行事曆尚未啟用（雲端資料表未建立），請洽地區辦公室。'
 };
 
@@ -229,6 +232,7 @@ function calOpenDetail(id) {
     const s = Date.parse(e.start), en = Date.parse(e.end);
     const when = e.allDay ? (ymd(s) === ymd(en) ? fmtFull(s).replace(/\d\d:\d\d$/, '') + ' 全天' : `${fmtFull(s).replace(/\d\d:\d\d$/, '')} ～ ${fmtFull(en).replace(/\d\d:\d\d$/, '')}（全天）`) : (s === en ? fmtFull(s) : `${fmtFull(s)}<br>～ ${ymd(s) === ymd(en) ? fmtHM(en) : fmtFull(en)}`);
     const ph = calPhone(e.contactPhone);
+    const hasReg = !!(e.registrationKey && e.layer !== 'private');
     const maps = e.address || e.location;
     calSubShow(`<button type="button" onclick="calBack()" class="text-base font-bold text-blue-700 py-2">‹ 返回行事曆</button>
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-1">
@@ -247,12 +251,51 @@ function calOpenDetail(id) {
                 </div>
             </div>
         </div>
+        ${e.registrationKey && e.layer !== 'private' ? '<div id="calReg" class="mt-4"></div>' : ''}
         ${e.canEdit ? `<div class="grid grid-cols-2 gap-2 mt-4">
             <button type="button" onclick="calOpenForm('edit')" class="bg-blue-700 active:bg-blue-800 text-white font-black text-base rounded-xl py-3.5">編輯</button>
             <button type="button" onclick="calOpenForm('copy')" class="bg-white border border-slate-300 font-black text-base rounded-xl py-3.5">複製</button>
             <button type="button" onclick="calToggleCancel()" class="bg-white border border-amber-400 text-amber-800 font-black text-base rounded-xl py-3.5">${cancelled ? '恢復行程' : '取消行程'}</button>
             <button type="button" onclick="calDelete()" class="bg-white border border-rose-300 text-rose-700 font-black text-base rounded-xl py-3.5">刪除</button>
         </div>` : ''}`);
+    if (hasReg) calLoadReg(e.id);
+}
+// ---------- 社內報名狀況、我要參加 ----------
+// 行程有對應報名活動時，顯示「本社」誰已報名（執秘送出的正式報名）或表示要參加（社友在這裡按的），
+// 讓社內的人都知道；別社的人看不到。社友按「我要參加」只是留下意願，正式報名由執秘在報名系統確認後送出。
+async function calLoadReg(id) {
+    const box = $('calReg'); if (!box) return;
+    box.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-4 text-center text-slate-500 font-bold">讀取報名狀況…</div>';
+    const r = await api('cal_rsvp_status', { id: id });
+    calRegRender(id, r);
+}
+function calRegRender(id, r) {
+    const box = $('calReg'); if (!box || !calCurrent || calCurrent.id !== id) return;
+    if (!r.ok) { box.innerHTML = `<div class="bg-white rounded-2xl border border-rose-200 p-4 text-center text-rose-700 font-bold">${E(r.code === 'NETWORK' ? '網路連線不穩，無法讀取報名狀況。' : calErrText(r.code))}</div>`; return; }
+    if (!r.linked) { box.innerHTML = ''; return; }
+    const reg = (r.people || []).filter(p => p.status === 'registered'), want = (r.people || []).filter(p => p.status === 'interested');
+    const chip = (p, cls) => `<span class="inline-block rounded-full px-3 py-1 text-base font-bold ${cls} ${p.key === binding.key ? 'ring-2 ring-offset-1 ring-blue-600' : ''}">${E(p.name)}${p.nickname ? `<span class="ml-1 text-sm font-normal opacity-80">${E(p.nickname)}</span>` : ''}${p.key === binding.key ? ' （我）' : ''}</span>`;
+    let action = '';
+    if (r.mine === 'registered') action = '<div class="mt-3 text-center bg-emerald-50 border border-emerald-300 text-emerald-800 font-black rounded-xl py-3">✅ 您已報名</div>';
+    else if (!r.open) action = '<div class="mt-3 text-center text-slate-500 font-bold">行程已取消，無法報名</div>';
+    else if (r.mine === 'interested') action = `<div class="mt-3 text-center bg-amber-50 border border-amber-300 text-amber-900 font-black rounded-xl py-3">🙋 您已表示要參加</div><div class="mt-1 text-xs text-slate-500 text-center">正式報名由貴社執秘確認後送出。</div><button type="button" onclick="calRsvp(false)" class="mt-2 w-full bg-white border border-slate-300 text-slate-700 font-bold rounded-xl py-3">取消參加</button>`;
+    else action = `<button type="button" onclick="calRsvp(true)" class="mt-3 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black text-xl rounded-xl py-4 shadow">🙋 我要參加</button><div class="mt-1 text-xs text-slate-500 text-center">按下後，社內社友都看得到您要參加；正式報名由貴社執秘確認後送出。</div>`;
+    box.innerHTML = `<div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+        <div class="font-black text-lg">📋 ${E(binding.club)} 報名狀況</div>
+        <div class="text-sm text-slate-600 mt-0.5">活動：${E(r.title)}　已報名 <b>${r.registeredCount}</b> 人${want.length ? `　表示參加 <b>${want.length}</b> 人` : ''}</div>
+        ${action}
+        ${reg.length ? `<div class="mt-4 text-sm font-bold text-slate-700">✅ 已報名</div><div class="mt-1 flex flex-wrap gap-1.5">${reg.map(p => chip(p, 'bg-emerald-100 text-emerald-900')).join('')}</div>` : ''}
+        ${want.length ? `<div class="mt-3 text-sm font-bold text-slate-700">🙋 表示要參加（待執秘確認）</div><div class="mt-1 flex flex-wrap gap-1.5">${want.map(p => chip(p, 'bg-amber-100 text-amber-900')).join('')}</div>` : ''}
+        ${!reg.length && !want.length ? '<div class="mt-4 text-base text-slate-500 text-center py-2">目前社內還沒有人報名。</div>' : ''}
+    </div>`;
+}
+async function calRsvp(join) {
+    const e = calCurrent; if (!e || busy) return;
+    if (!join && !confirm('要取消「表示參加」嗎？')) return;
+    busy = true; const r = await api('cal_rsvp_set', { id: e.id, join: join }); busy = false;
+    if (!r.ok) { toast(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : calErrText(r.code)); return calLoadReg(e.id); }
+    toast(join ? '已表示要參加，社內社友都看得到' : '已取消參加');
+    calRegRender(e.id, r);
 }
 async function calToggleCancel() {
     const e = calCurrent; if (!e || busy) return;

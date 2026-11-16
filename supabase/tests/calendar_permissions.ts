@@ -3,18 +3,18 @@ import { handleMember, handleAdmin, handleDesk, icsFeed, buildIcs } from "../fun
 function fake(tables: Record<string, any[]>) {
   let seq = 1000;
   return { from(t: string) {
-    tables[t] ||= []; const f: any[] = []; let op = "select", payload: any = null, one = "";
+    tables[t] ||= []; const f: any[] = []; let op = "select", payload: any = null, one = "", conflict: string[] | null = null;
     const run = () => {
       const m = (r: any) => f.every((x) => x(r));
       if (op === "insert") { const r = { id: t === "calendar_events" ? "ev" + (seq++) : seq++, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), status: "confirmed", ...payload }; tables[t].push(r); return [r]; }
-      if (op === "upsert") { const dup = tables[t].find((r) => ["club_name","person_key","role","managed_club"].every((k) => r[k] === payload[k])); if (!dup) tables[t].push({ id: seq++, granted_at: "x", ...payload }); return []; }
+      if (op === "upsert") { const dup = tables[t].find((r) => (conflict || ["club_name","person_key","role","managed_club"]).every((k) => r[k] === payload[k])); if (!dup) tables[t].push({ id: seq++, granted_at: "x", ...payload }); return []; }
       if (op === "update") { const rs = tables[t].filter(m); rs.forEach((r) => Object.assign(r, payload)); return rs; }
       if (op === "delete") { const keep = tables[t].filter((r) => !m(r)); tables[t].length = 0; tables[t].push(...keep); return []; }
       return tables[t].filter(m);
     };
     const b: any = {
       select() { return b; }, insert(p: any) { op = "insert"; payload = p; return b; }, update(p: any) { op = "update"; payload = p; return b; },
-      upsert(p: any) { op = "upsert"; payload = p; return b; }, delete() { op = "delete"; return b; },
+      upsert(p: any, o: any) { op = "upsert"; payload = p; conflict = o && o.onConflict ? o.onConflict.split(",") : null; return b; }, in(k: string, vs: any[]) { f.push((r: any) => vs.includes(r[k])); return b; }, delete() { op = "delete"; return b; },
       eq(k: string, v: any) { f.push((r: any) => r[k] === v); return b; }, gte(k: string, v: any) { f.push((r: any) => r[k] >= v); return b; }, lte(k: string, v: any) { f.push((r: any) => r[k] <= v); return b; },
       order() { return b; }, limit() { return b; }, maybeSingle() { one = "maybe"; return b; }, single() { one = "single"; return b; },
       then(res: any) { const d = run(); res({ data: one ? d[0] || null : d, error: null }); },
@@ -105,3 +105,38 @@ const privId = T.calendar_events.find((e) => e.layer === "private").id;
 ok("連後台密碼也不能動私人行程", await code(desk("cal_desk_delete", { adminPassword: "pw", id: privId })) === "CAL_FORBIDDEN");
 ok("取消、恢復、刪除", (await desk("cal_desk_cancel", { adminPassword: "pw", id: dd.id })).event.status === "cancelled" && (await desk("cal_desk_cancel", { adminPassword: "pw", id: dd.id, cancelled: false })).event.status === "confirmed" && (await desk("cal_desk_delete", { adminPassword: "pw", id: dd.id })).ok);
 ok("沒設後台密碼的地區：後台功能關閉", await code(handleDesk("cal_desk_list", { adminPassword: "x", layer: "district", ...W }, { admin: db, password: "", checkClub: async () => {} })) === "CAL_ADMIN_DISABLED");
+
+// ---------- 社內已報名名單／我要參加 ----------
+// 假的報名名單：甲社已正式報名 王（me A）以外的 趙、錢；乙社報名 孫
+const ROSTER = [{ club: "甲社", key: "趙|", name: "趙", nickname: "" }, { club: "甲社", key: "錢|", name: "錢", nickname: "Q" }, { club: "乙社", key: "孫|", name: "孫", nickname: "" }];
+const reg = { roster: async (k: string) => k === "cat::高球賽" ? { ok: true, title: "高球賽", persons: ROSTER } : { ok: false, title: "", persons: [] } };
+const rsvpEv = (await handleMember("cal_save", { event: { ...ev({ layer: "district", title: "地區高爾夫球比賽", registrationKey: "cat::高球賽" }) } }, db, B)).event;
+ok("地區管理者可設定對應報名活動", rsvpEv.registrationKey === "cat::高球賽");
+const plainEv = (await handleMember("cal_save", { event: { ...ev({ layer: "district", title: "沒有對應" }) } }, db, B)).event;
+ok("沒對應報名活動的行程 linked=false", (await handleMember("cal_rsvp_status", { id: plainEv.id }, db, A, reg)).linked === false);
+let rs = await handleMember("cal_rsvp_status", { id: rsvpEv.id }, db, A, reg);
+ok("甲社只看到甲社已報名的人（趙、錢），看不到乙社的孫", rs.linked && rs.people.map((p: any) => p.name).join() === "趙,錢" && rs.mine === null && rs.registeredCount === 2);
+rs = await handleMember("cal_rsvp_set", { id: rsvpEv.id, join: true }, db, A, reg);
+ok("我要參加後，名單立刻多一位「表示參加」", rs.mine === "interested" && rs.people.some((p: any) => p.name === "王" && p.status === "interested") && rs.interestedCount === 1);
+rs = await handleMember("cal_rsvp_set", { id: rsvpEv.id, join: true }, db, A, reg);
+ok("重複按不會多一筆", rs.interestedCount === 1 && T.calendar_rsvp.length === 1);
+const stB = await handleMember("cal_rsvp_status", { id: rsvpEv.id }, db, B, reg);
+ok("乙社看不到甲社的王", !stB.people.some((p: any) => p.name === "王") && stB.people.map((p: any) => p.name).join() === "孫");
+rs = await handleMember("cal_rsvp_set", { id: rsvpEv.id, join: false }, db, A, reg);
+ok("可以取消參加", rs.mine === null && rs.interestedCount === 0);
+ROSTER.push({ club: "甲社", key: "王|", name: "王", nickname: "" });
+ok("執秘送出正式報名後顯示「已報名」，且不能自己取消", (await handleMember("cal_rsvp_status", { id: rsvpEv.id }, db, A, reg)).mine === "registered" && await code(handleMember("cal_rsvp_set", { id: rsvpEv.id, join: false }, db, A, reg)) === "CAL_RSVP_LOCKED");
+ROSTER.pop();
+await handleMember("cal_rsvp_set", { id: rsvpEv.id, join: true }, db, A, reg);
+await handleMember("cal_cancel", { id: rsvpEv.id }, db, B);
+ok("行程取消後不能再按我要參加", await code(handleMember("cal_rsvp_set", { id: rsvpEv.id, join: true }, db, { ...A, key: "丙|", name: "丙" }, reg)) === "CAL_EVENT_CANCELLED");
+await handleMember("cal_cancel", { id: rsvpEv.id, cancelled: false }, db, B);
+const myPriv = T.calendar_events.find((e) => e.layer === "private" && e.owner_key === "王|");
+ok("私人行程沒有報名名單功能", await code(handleMember("cal_rsvp_status", { id: myPriv.id }, db, A, reg)) === "CAL_NOT_FOUND");
+// 執秘端：讀本社的意願名單
+await handleMember("cal_rsvp_set", { id: rsvpEv.id, join: true }, db, { ...A, key: "丙|", name: "丙" }, reg);
+const dr = await desk("cal_desk_rsvp", { club: "甲社", clubPassword: "a123", key: "cat::高球賽" });
+ok("執秘讀到本社的意願名單（王、丙）", dr.people.map((p: any) => p.name).sort().join() === "丙,王");
+ok("執秘讀不到別社的意願", (await desk("cal_desk_rsvp", { club: "乙社", clubPassword: "b123", key: "cat::高球賽" })).people.length === 0);
+ok("LINE 手機版編輯行程不會清掉報名對應", (await handleMember("cal_save", { event: { ...ev({ title: "改標題" }), id: rsvpEv.id } }, db, B)).event.registrationKey === "cat::高球賽");
+ok("刪除行程後意願名單一併刪除（資料庫 cascade；此處驗證行程可刪）", (await handleMember("cal_delete", { id: rsvpEv.id }, db, B)).ok);

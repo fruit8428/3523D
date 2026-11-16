@@ -190,16 +190,30 @@ async function cdeskDelete(i) {
     cdToast('已刪除'); cdeskReload();
 }
 
+// ---------- 對應報名活動 ----------
+// 行程對應到報名系統的某個活動（大類id::子活動名稱）後，社友在 LINE 看到這個行程就有「我要參加」，
+// 並看得到本社誰已報名。分攤金／配合款不需要報名，不列入。
+function cdeskRegOptions(current) {
+    const opts = [];
+    const isApp = (typeof CheckinCore !== 'undefined' && CheckinCore.isApportionEvent) ? CheckinCore.isApportionEvent : () => false;
+    (typeof categoriesData !== 'undefined' ? categoriesData : []).forEach(cat => (cat.subEvents || []).forEach(sub => {
+        if (isApp(cat.name, sub)) return;
+        opts.push({ key: `${cat.id}::${sub}`, label: `${cat.name} › ${sub}` });
+    }));
+    if (current && !opts.some(o => o.key === current)) opts.push({ key: current, label: `（報名活動已不存在）${current}` });
+    return opts;
+}
+
 // ---------- 新增／編輯／複製 ----------
 function cdeskOpenForm(mode, i) {
     const src = (mode === 'edit' || mode === 'copy') ? cdeskEvents[i] : null;
     let v;
     if (src) {
         const s = Date.parse(src.start), e = Date.parse(src.end);
-        v = { id: mode === 'edit' ? src.id : '', title: src.title, typeId: src.typeId, allDay: src.allDay, sd: cdYmd(s), st: src.allDay ? '09:00' : cdHm(s), ed: cdYmd(e), et: src.allDay ? '10:00' : cdHm(e), location: src.location, address: src.address, dressCode: src.dressCode, contactPerson: src.contactPerson, contactPhone: src.contactPhone, notes: src.notes };
+        v = { id: mode === 'edit' ? src.id : '', title: src.title, typeId: src.typeId, registrationKey: src.registrationKey || '', allDay: src.allDay, sd: cdYmd(s), st: src.allDay ? '09:00' : cdHm(s), ed: cdYmd(e), et: src.allDay ? '10:00' : cdHm(e), location: src.location, address: src.address, dressCode: src.dressCode, contactPerson: src.contactPerson, contactPhone: src.contactPhone, notes: src.notes };
     } else {
         const d = cdYmd(Date.now());
-        v = { id: '', title: '', typeId: null, allDay: false, sd: d, st: '09:00', ed: d, et: '10:00', location: '', address: '', dressCode: '', contactPerson: '', contactPhone: '', notes: '' };
+        v = { id: '', title: '', typeId: null, registrationKey: '', allDay: false, sd: d, st: '09:00', ed: d, et: '10:00', location: '', address: '', dressCode: '', contactPerson: '', contactPhone: '', notes: '' };
     }
     const inp = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white', lab = 'block text-xs font-bold text-slate-600 mb-1 mt-3';
     const where = cdeskTab === 'district' ? '地區行程' : `${cdMyClub()} 社內行程`;
@@ -209,6 +223,7 @@ function cdeskOpenForm(mode, i) {
             ${mode === 'copy' ? '<p class="text-xs text-slate-500 mt-1">已帶入原行程的資料，請修改日期等欄位後儲存。</p>' : ''}
             <label class="${lab}" for="cdTitle">標題 <span class="text-rose-600">*</span></label><input id="cdTitle" type="text" maxlength="100" value="${cdE(v.title)}" class="${inp}" placeholder="例：松景社授證典禮">
             <label class="${lab}" for="cdType">活動類型</label><select id="cdType" class="${inp}"><option value="">未分類</option>${cdeskTypes.map(t => `<option value="${t.id}" ${v.typeId === t.id ? 'selected' : ''}>${cdE(t.name)}</option>`).join('')}</select>
+            <label class="${lab}" for="cdReg">對應報名活動（選填）</label><select id="cdReg" class="${inp}"><option value="">不對應（社友只能查看，沒有「我要參加」）</option>${cdeskRegOptions(v.registrationKey).map(o => `<option value="${cdE(o.key)}" ${v.registrationKey === o.key ? 'selected' : ''}>${cdE(o.label)}</option>`).join('')}</select><p class="text-[11px] text-slate-500 mt-1">選了之後，社友在 LINE 看到這個行程會有「我要參加」按鈕，並看得到本社誰已報名。</p>
             <label class="flex items-center gap-2 mt-3 text-sm font-bold text-slate-700"><input id="cdAllDay" type="checkbox" onchange="cdeskAllDay()" class="w-4 h-4" ${v.allDay ? 'checked' : ''}> 全天行程</label>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div><label class="${lab}" for="cdSd">開始日期</label><input id="cdSd" type="date" value="${v.sd}" class="${inp}"></div>
@@ -238,7 +253,7 @@ async function cdeskSave(id) {
     const start = allDay ? `${g('cdSd')}T00:00:00+08:00` : `${g('cdSd')}T${g('cdSt')}:00+08:00`;
     const end = allDay ? `${ed}T23:59:00+08:00` : `${ed}T${g('cdEt') || g('cdSt')}:00+08:00`;
     if (Date.parse(end) < Date.parse(start)) return err('結束時間不能早於開始時間。');
-    const ev = { title: g('cdTitle'), typeId: g('cdType') ? Number(g('cdType')) : null, allDay: allDay, start: start, end: end, location: g('cdLoc'), address: g('cdAddr'), dressCode: g('cdDress'), contactPerson: g('cdCP'), contactPhone: g('cdPh'), notes: g('cdNotes') };
+    const ev = { title: g('cdTitle'), typeId: g('cdType') ? Number(g('cdType')) : null, allDay: allDay, registrationKey: g('cdReg'), start: start, end: end, location: g('cdLoc'), address: g('cdAddr'), dressCode: g('cdDress'), contactPerson: g('cdCP'), contactPhone: g('cdPh'), notes: g('cdNotes') };
     if (id) ev.id = id; else { ev.layer = cdeskTab; if (cdeskTab === 'club') ev.club = cdMyClub(); }
     const btn = document.getElementById('cdSave'); cdeskBusy = true; btn.disabled = true; btn.textContent = '儲存中…';
     const r = await cdApi('cal_desk_save', cdeskTab, { event: ev });
@@ -260,4 +275,76 @@ function cdeskCopyLiff() {
     const el = document.getElementById('cdeskLiff'); if (!el) return;
     el.select();
     try { navigator.clipboard.writeText(el.value).then(() => cdToast('已複製網址'), () => { document.execCommand('copy'); cdToast('已複製網址'); }); } catch (e) { try { document.execCommand('copy'); cdToast('已複製網址'); } catch (e2) { /* 手動複製 */ } }
+}
+
+// ---------- 執秘端：社友在 LINE 按了「我要參加」的名單 ----------
+// 顯示在報名表上方（#calRsvpBox）。每位社友可一鍵「加入報名名單」＝勾進目前的報名表（不會自動送出，
+// 執秘仍要確認欄位後按「送出本社報名表」）。已經在報名表（或已送出的報名）裡的人不會再列出。
+// 這個提示只讀取、不寫入；renderCalRsvpBox() 由 renderSelectedMembersTable() 呼叫，所以只用快取畫，過期才重新連網。
+let cdRsvp = { key: '', club: '', at: 0, loading: false, people: [], linked: false, err: '' };
+function cdRsvpKey() { try { return getActivePaymentKey(); } catch (e) { return ''; } }
+function cdRsvpAuth(club) {
+    if (cdIsSuper() && cdeskAdminPw) return { adminPassword: cdeskAdminPw, targetClub: club };
+    return { club: club, clubPassword: ((typeof appAuthData !== 'undefined' && appAuthData.clubPasswords) || {})[club] || (typeof DEFAULT_CLUB_PASSWORD !== 'undefined' ? DEFAULT_CLUB_PASSWORD : '') || '' };
+}
+async function cdRsvpFetch(force) {
+    const key = cdRsvpKey(), club = (typeof selectedClubName === 'string') ? selectedClubName : '';
+    if (!key || !club || !(DISTRICT && DISTRICT.calendarEnabled)) return;
+    if (cdRsvp.loading && cdRsvp.key === key && cdRsvp.club === club) return;      // 同一個活動正在讀取中
+    if (!force && cdRsvp.key === key && cdRsvp.club === club && Date.now() - cdRsvp.at < 30000) return;
+    const mine = cdRsvp = { key: key, club: club, at: Date.now(), loading: true, people: [], linked: false, err: '' };
+    try {
+        const res = await fetch(SUPABASE_URL + '/functions/v1/line-checkin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+            body: JSON.stringify(Object.assign({ action: 'cal_desk_rsvp', key: key }, cdRsvpAuth(club)))
+        });
+        const j = res.status === 404 ? { ok: false } : await res.json();
+        mine.people = j.ok ? (j.people || []) : []; mine.linked = !!(j.ok && j.linked); mine.err = j.ok ? '' : (j.code || 'ERR');
+    } catch (e) { mine.err = 'NETWORK'; }
+    mine.loading = false;       // 只更新「這一次」的狀態：回來時如果已經換了活動，舊結果不會污染新的
+    if (cdRsvp === mine) renderCalRsvpBox();
+}
+function cdRsvpPending() {   // 還沒進報名表的人
+    const club = cdRsvp.club;
+    const sub = (cdRsvp.key.split('::')[1]) || '';
+    const submitted = (((typeof registrationOrders !== 'undefined' && registrationOrders[sub]) || []).find(o => o && o.clubName === club) || {}).items || [];
+    const has = p => (typeof currentFormSelectedMembers !== 'undefined' ? currentFormSelectedMembers : []).concat(submitted).some(m => m && (m.name || '') === p.name && (m.nickname || '') === (p.nickname || ''));
+    return cdRsvp.people.filter(p => !has(p));
+}
+function renderCalRsvpBox() {
+    const box = document.getElementById('calRsvpBox');
+    if (!box) return;
+    if (!(DISTRICT && DISTRICT.calendarEnabled)) { box.classList.add('hidden'); return; }
+    const key = cdRsvpKey(), club = (typeof selectedClubName === 'string') ? selectedClubName : '';
+    if (cdRsvp.key !== key || cdRsvp.club !== club || Date.now() - cdRsvp.at >= 30000) cdRsvpFetch(false);
+    const list = (cdRsvp.key === key && cdRsvp.club === club) ? cdRsvpPending() : [];
+    if (!list.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+    box.classList.remove('hidden');
+    box.innerHTML = `<div class="border border-amber-300 bg-amber-50 rounded-lg px-3 py-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="text-xs font-bold text-amber-900">📱 社友在 LINE 行事曆按了「我要參加」（${list.length} 位，尚未進報名表）</div>
+            <button type="button" onclick="cdRsvpAddAll()" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-xs font-bold">全部加入報名名單</button>
+        </div>
+        <div class="mt-2 flex flex-wrap gap-1.5">${list.map(p => `<button type="button" data-key="${cdE(p.key)}" onclick="cdRsvpAdd(this.dataset.key)" class="px-2.5 py-1 bg-white border border-amber-300 hover:bg-amber-100 rounded-full text-xs font-bold text-slate-800" title="加入報名名單">＋ ${cdE(p.name)}${p.nickname ? ' ' + cdE(p.nickname) : ''}</button>`).join('')}</div>
+        <p class="text-[11px] text-amber-800 mt-1.5">加入後請確認參賽／葷素等欄位，再按「送出本社報名表」才算正式報名。</p>
+    </div>`;
+}
+function cdRsvpAdd(key) { cdRsvpAddMany([key]); }
+function cdRsvpAddAll() { cdRsvpAddMany(cdRsvpPending().map(p => p.key)); }
+function cdRsvpAddMany(keys) {
+    if (typeof isEventLockedToday !== 'undefined' && isEventLockedToday) { alert('⚠️ 本活動今日已封存（唯讀狀態），無法增刪人員！'); return; }
+    const members = (clubMemberDatabase[selectedClubName] || []);
+    let added = 0; const missing = [];
+    keys.forEach(k => {
+        const p = cdRsvp.people.find(x => x.key === k); if (!p) return;
+        const t = members.find(m => m.name === p.name && (m.nickname || '') === (p.nickname || ''));
+        if (!t) { missing.push(p.name); return; }
+        if (currentFormSelectedMembers.some(sm => sm.name === t.name && sm.nickname === t.nickname)) return;
+        // 欄位與 toggleMemberSelection 新增時一致
+        currentFormSelectedMembers.push({ role: t.role, nickname: t.nickname, name: t.name, diet: t.diet, veganNote: t.veganNote, handicap: t.handicap !== undefined ? t.handicap : '', participation: '參賽' });
+        added++;
+    });
+    renderMemberMasterTable(); renderSelectedMembersTable(); updateLinePreviewText();
+    cdToast(`已加入 ${added} 位到報名名單，請確認欄位後按「送出本社報名表」` + (missing.length ? `（${missing.join('、')} 不在社友庫，請先新增）` : ''));
 }
