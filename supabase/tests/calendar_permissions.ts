@@ -1,4 +1,4 @@
-import { handleMember, handleAdmin, icsFeed, buildIcs } from "../functions/line-checkin/calendar.ts";
+import { handleMember, handleAdmin, handleDesk, icsFeed, buildIcs } from "../functions/line-checkin/calendar.ts";
 // 極簡假資料庫：支援 select/insert/update/delete/upsert + eq/gte/lte/order/limit/maybeSingle/single
 function fake(tables: Record<string, any[]>) {
   let seq = 1000;
@@ -86,3 +86,22 @@ ok("關閉後網址立刻失效", (await icsFeed(db, rot.token)) === null && (aw
 ok("再開啟沿用同一組網址", (await handleMember("cal_ics_set", { enabled: true }, db, A)).token === rot.token);
 ok("亂猜的 token 無效", (await icsFeed(db, "x".repeat(32))) === null && (await icsFeed(db, "")) === null);
 ok("乙社的 token 看不到甲社私人", !((await icsFeed(db, (await handleMember("cal_ics_set", { enabled: true }, db, B)).token)) || "").includes("icsA"));
+
+// ---------- 報名系統裡的行事曆管理（cal_desk_*） ----------
+const desk = (action: string, extra: any) => handleDesk(action, extra, { admin: db, password: "pw", checkClub: async (c: string, p: string) => { if (!(c === "甲社" && p === "a123") && !(c === "乙社" && p === "b123")) { const e: any = new Error("x"); e.code = "CLUB_AUTH_FAILED"; throw e; } } });
+const dev = (o: any) => ({ title: "桌面行程", start: "2026-12-10T09:00:00+08:00", end: "2026-12-10T10:00:00+08:00", ...o });
+ok("社密碼錯誤被擋", await code(desk("cal_desk_list", { club: "甲社", clubPassword: "bad", layer: "club", ...W })) === "CLUB_AUTH_FAILED");
+ok("執秘用社密碼可新增本社行程", (await desk("cal_desk_save", { club: "甲社", clubPassword: "a123", event: dev({ layer: "club", club: "甲社", title: "甲社桌面" }) })).event.club === "甲社");
+ok("執秘不能新增別社行程", await code(desk("cal_desk_save", { club: "甲社", clubPassword: "a123", event: dev({ layer: "club", club: "乙社" }) })) === "CAL_FORBIDDEN");
+ok("執秘不能新增地區行程", await code(desk("cal_desk_save", { club: "甲社", clubPassword: "a123", event: dev({ layer: "district" }) })) === "CAL_FORBIDDEN");
+ok("執秘不能列出別社行程", await code(desk("cal_desk_list", { club: "甲社", clubPassword: "a123", layer: "club", targetClub: "乙社", ...W })) === "CAL_FORBIDDEN");
+ok("不能用 desk 建立私人行程", await code(desk("cal_desk_save", { adminPassword: "pw", event: dev({ layer: "private" }) })) === "CAL_BAD_LAYER");
+ok("後台密碼錯誤被擋", await code(desk("cal_desk_list", { adminPassword: "nope", layer: "district", ...W })) === "CAL_ADMIN_AUTH_FAILED");
+const dd = (await desk("cal_desk_save", { adminPassword: "pw", event: dev({ layer: "district", title: "地區桌面" }) })).event;
+ok("後台密碼可新增地區行程並列出", (await desk("cal_desk_list", { adminPassword: "pw", layer: "district", ...W })).events.some((e: any) => e.id === dd.id));
+ok("後台密碼可管理任何一社", (await desk("cal_desk_list", { adminPassword: "pw", layer: "club", targetClub: "乙社", ...W })).ok === true);
+ok("執秘不能改／刪地區行程", await code(desk("cal_desk_delete", { club: "甲社", clubPassword: "a123", id: dd.id })) === "CAL_FORBIDDEN" && await code(desk("cal_desk_cancel", { club: "甲社", clubPassword: "a123", id: dd.id })) === "CAL_FORBIDDEN");
+const privId = T.calendar_events.find((e) => e.layer === "private").id;
+ok("連後台密碼也不能動私人行程", await code(desk("cal_desk_delete", { adminPassword: "pw", id: privId })) === "CAL_FORBIDDEN");
+ok("取消、恢復、刪除", (await desk("cal_desk_cancel", { adminPassword: "pw", id: dd.id })).event.status === "cancelled" && (await desk("cal_desk_cancel", { adminPassword: "pw", id: dd.id, cancelled: false })).event.status === "confirmed" && (await desk("cal_desk_delete", { adminPassword: "pw", id: dd.id })).ok);
+ok("沒設後台密碼的地區：後台功能關閉", await code(handleDesk("cal_desk_list", { adminPassword: "x", layer: "district", ...W }, { admin: db, password: "", checkClub: async () => {} })) === "CAL_ADMIN_DISABLED");

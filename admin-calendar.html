@@ -96,6 +96,7 @@
         if (!r.ok) { err.textContent = errText(r.code); err.classList.remove('hidden'); password = ''; return; }
         $('loginBox').classList.add('hidden'); $('app').classList.remove('hidden');
         state = r; render();
+        try { if (window.parent !== window) window.parent.cdeskAdminPw = password; } catch (e) { /* 不在報名系統裡時略過 */ }   // 嵌在報名系統裡時，讓「地區行程」分頁共用這次輸入的密碼
     }
     async function refresh() { const r = await api('cal_admin_state'); if (r.ok) { state = r; render(); } else alert(errText(r.code)); }
     function render() {
@@ -143,6 +144,8 @@
     async function renameType(id) { const v = $('type_' + id).value.trim(); if (!v) return; const r = await api('cal_admin_type_save', { id: id, name: v }); if (!r.ok) return alert(r.code === 'SERVER_ERROR' ? '改名失敗，可能名稱重複。' : errText(r.code)); await refresh(); alert('已改名'); }
     async function delType(id) { if (!confirm('確定刪除這個活動類型？使用它的行程會變成「未分類」。')) return; const r = await api('cal_admin_type_delete', { id: id }); if (!r.ok) return alert(errText(r.code)); await refresh(); }
     $('hdDistrict').textContent = D.name || '';
+    // 嵌在報名系統的「行事曆管理」裡時，若上面已經輸入過後台密碼就直接登入（同一個網站，只放記憶體）
+    try { if (window.parent !== window && window.parent.cdeskAdminPw) { $('pw').value = window.parent.cdeskAdminPw; login(); } } catch (e) { /* 忽略 */ }
 </script>
 </body>
 </html>

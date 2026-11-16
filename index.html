@@ -18,6 +18,7 @@
     <script src="./district-config.js"></script>
     <!-- 報到系統共用邏輯（應到名單與統計的算法，與櫃台報到頁 checkin.html 共用） -->
     <script src="./checkin-core.js"></script>
+    <script src="./calendar-desk.js"></script>
     <script>
         if (!window.DISTRICT) {
             console.error('找不到 district-config.js，請執行 node scripts/build-config.js');
@@ -483,6 +484,9 @@
                     <button id="changePasswordBtn" onclick="changeMyClubPassword()" class="hidden px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold rounded-md transition flex items-center gap-1" title="修改本社的登入密碼">
                         🔑 修改密碼
                     </button>
+                    <button id="calendarDeskBtn" onclick="openCalendarDesk()" class="hidden px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white border border-sky-700 font-bold rounded-md transition flex items-center gap-1 shadow-sm" title="新增、修改本社或地區的行程；社友會在 LINE 行事曆看到">
+                        🗓️ 行事曆管理
+                    </button>
                     <button onclick="downloadICS()" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 font-bold rounded-md transition flex items-center gap-1">
                         📅 加入手機/電腦行事曆 (.ics)
                     </button>
@@ -727,6 +731,16 @@
                     <button type="button" onclick="setAllPanels('viewSuperAdmin', true)" class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-md font-bold text-slate-700">📂 全部展開</button>
                     <button type="button" onclick="setAllPanels('viewSuperAdmin', false)" class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-md font-bold text-slate-700">📁 全部收合</button>
                 </span>
+            </div>
+            <div id="calendarDeskCard" class="hidden bg-white rounded-xl shadow-sm border border-sky-200 p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-start gap-3 min-w-0">
+                    <div class="w-9 h-9 rounded-lg bg-sky-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">🗓️</div>
+                    <div class="min-w-0">
+                        <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">扶輪行事曆</div>
+                        <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>新增、修改地區與各社的行程、指定哪些人可以管理行事曆、管理活動類型，並取得貼到 LINE 圖文選單的行事曆網址。</p>
+                    </div>
+                </div>
+                <button type="button" onclick="openCalendarDesk()" class="shrink-0 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg text-sm shadow-sm">開啟行事曆管理</button>
             </div>
             <div data-panel="adminChairAssign" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
                 <!-- 面板標題列（永遠顯示）：白話說明點開能做什麼，方便每年換屆的新主委 -->
@@ -6220,6 +6234,11 @@
         function initRagAssistantButton() {
             const btn = document.getElementById('ragAssistantBtn');
             if (btn) btn.classList.toggle('hidden', !RAG_ASSISTANT_URL);
+            // 行事曆管理：地區設定檔 calendarEnabled 為 true 才顯示（該地區的 Supabase 要先執行過 calendar.sql 並部署雲端小程式）
+            const calBtn = document.getElementById('calendarDeskBtn');
+            if (calBtn) calBtn.classList.toggle('hidden', !DISTRICT.calendarEnabled);
+            const calCard = document.getElementById('calendarDeskCard');
+            if (calCard) calCard.classList.toggle('hidden', !DISTRICT.calendarEnabled);
         }
 
         // 把地區設定填進畫面：標題、手機捷徑名稱、Logo，以及所有 data-district-text / data-district-html 樣板

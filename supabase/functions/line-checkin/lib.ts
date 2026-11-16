@@ -9,7 +9,7 @@
 //    這個資料夾裡的 checkin-core.js 是專案根目錄那一份的複本，根目錄的改了要一起複製過來。
 // =====================================================================
 import "./checkin-core.js";
-import { CalError, handleAdmin as calAdmin, handleMember as calMember } from "./calendar.ts";
+import { CalError, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
 // deno-lint-ignore no-explicit-any
 type Any = any;
 const Core = (globalThis as Any).CheckinCore;
@@ -290,6 +290,18 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
         admin: deps.admin, password: deps.calendarAdminPassword || "",
         members: async () => (await loadState(deps, true)).members,
         clubInfos: async () => ((await loadState(deps, false)).divisionsData || []).flatMap((d: Any) => (d.clubs || []).map((c: Any) => ({ name: c.name, division: d.name || `第 ${d.id} 分區`, code: c.code || "" }))),
+      });
+    } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
+  }
+  // 報名系統裡的行事曆管理（電腦版，不經 LINE）：後台密碼或社的登入密碼
+  if (action.startsWith("cal_desk_")) {
+    try {
+      return await calDesk(action, body, {
+        admin: deps.admin, password: deps.calendarAdminPassword || "",
+        checkClub: async (club: string, password: string) => {
+          try { checkClubPassword(deps, await loadState(deps, true), club, password); }
+          catch (e) { await sleep(1000); throw e; }      // 密碼錯誤故意慢 1 秒
+        },
       });
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
   }

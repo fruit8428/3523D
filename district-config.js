@@ -12,6 +12,7 @@ window.DISTRICT = {
   "ragAssistantUrl": "https://agentic-rag-dusky.vercel.app",
   "lineLiffId": "2012610534-bqToE4Jl",
   "linePushEnabled": true,
+  "calendarEnabled": true,
   "emailDomain": "rotary3523.org",
   "divisions": [
     {

@@ -99,6 +99,8 @@ async function loadTypes(admin: Any) {
 }
 const byMe = (me: CalMe) => `${me.name}（${me.club}）`;
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 // ---------- 社友動作 ----------
 export async function handleMember(action: string, body: Any, admin: Any, me: CalMe | null): Promise<Any> {
   if (!me) return fail("NOT_BOUND");
@@ -271,9 +273,83 @@ export async function icsFeed(admin: Any, token: string): Promise<string | null>
   return buildIcs([...(d.data || []), ...(c.data || []), ...(p.data || [])], types, "扶輪行事曆");
 }
 
+// ---------- 報名系統裡的「行事曆管理」（電腦版，不需 LINE） ----------
+// 認證二擇一：
+//   adminPassword            ＝行事曆後台密碼 → 可管理地區行程，以及任何一社的社內行程
+//   club + clubPassword      ＝社的登入密碼（與 LINE 綁定名單同一做法）→ 只能管理「自己那一社」的社內行程
+// 私人行程一律不開放（只有本人在 LINE 裡看得到）。
+export interface DeskCtx { admin: Any; password: string; checkClub: (club: string, password: string) => Promise<void> }
+
+export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promise<Any> {
+  const admin = ctx.admin;
+  let isAdmin = false, club = "";
+  if (String(body.adminPassword || "")) {
+    if (!ctx.password) fail("CAL_ADMIN_DISABLED");
+    if (String(body.adminPassword) !== ctx.password) { await sleep(1000); fail("CAL_ADMIN_AUTH_FAILED"); }
+    isAdmin = true;
+  } else {
+    club = String(body.club || "");
+    await ctx.checkClub(club, String(body.clubPassword || ""));   // 失敗會丟出 CLUB_AUTH_FAILED
+  }
+  const can = (layer: string, rowClub: string) => layer === "district" ? isAdmin : layer === "club" ? (isAdmin || (!!club && rowClub === club)) : false;
+  const by = isAdmin ? "報名系統（後台）" : `報名系統（${club}）`;
+
+  if (action === "cal_desk_list") {
+    const layer = String(body.layer || "");
+    const target = layer === "club" ? String(body.targetClub || club) : "";
+    if (layer !== "district" && layer !== "club") fail("CAL_BAD_LAYER");
+    if (!can(layer, target)) fail("CAL_FORBIDDEN");
+    const from = Date.parse(String(body.from || "")), to = Date.parse(String(body.to || ""));
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to < from || to - from > MAX_RANGE_MS) fail("CAL_BAD_TIME");
+    let q = admin.from("calendar_events").select("*").eq("layer", layer).gte("end_at", new Date(from).toISOString()).lte("start_at", new Date(to).toISOString()).order("start_at").limit(1000);
+    if (layer === "club") q = q.eq("club_name", target);
+    const { data, error } = await q;
+    if (error) dbFail(error);
+    return { ok: true, events: (data || []).map((r: Any) => toView(r, true)), types: await loadTypes(admin) };
+  }
+
+  if (action === "cal_desk_save") {
+    const input = body.event || {};
+    const fields = normalizeEvent(input);
+    if (input.id) {
+      const { data: old, error } = await admin.from("calendar_events").select("*").eq("id", String(input.id)).maybeSingle();
+      if (error) dbFail(error);
+      if (!old) fail("CAL_NOT_FOUND");
+      if (!can(old.layer, old.club_name)) fail("CAL_FORBIDDEN");
+      const { data, error: e2 } = await admin.from("calendar_events").update({ ...fields, updated_by: by, updated_at: new Date().toISOString() }).eq("id", old.id).select().single();
+      if (e2) dbFail(e2);
+      return { ok: true, event: toView(data, true) };
+    }
+    const layer = String(input.layer || "");
+    if (layer !== "district" && layer !== "club") fail("CAL_BAD_LAYER");
+    const target = layer === "club" ? String(input.club || club) : "";
+    if (layer === "club" && !target) fail("CAL_BAD_LAYER");
+    if (!can(layer, target)) fail("CAL_FORBIDDEN");
+    const { data, error } = await admin.from("calendar_events").insert({ layer, club_name: target, owner_key: "", ...fields, created_by: by, updated_by: by }).select().single();
+    if (error) dbFail(error);
+    return { ok: true, event: toView(data, true) };
+  }
+
+  if (action === "cal_desk_cancel" || action === "cal_desk_delete") {
+    const { data: old, error } = await admin.from("calendar_events").select("*").eq("id", String(body.id || "")).maybeSingle();
+    if (error) dbFail(error);
+    if (!old) fail("CAL_NOT_FOUND");
+    if (!can(old.layer, old.club_name)) fail("CAL_FORBIDDEN");    // 私人行程在 can() 裡一律 false
+    if (action === "cal_desk_delete") {
+      const { error: e2 } = await admin.from("calendar_events").delete().eq("id", old.id);
+      if (e2) dbFail(e2);
+      return { ok: true };
+    }
+    const status = body.cancelled === false ? "confirmed" : "cancelled";
+    const { data, error: e3 } = await admin.from("calendar_events").update({ status, updated_by: by, updated_at: new Date().toISOString() }).eq("id", old.id).select().single();
+    if (e3) dbFail(e3);
+    return { ok: true, event: toView(data, true) };
+  }
+  return fail("BAD_REQUEST");
+}
+
 // ---------- 後台動作（電腦版 admin-calendar.html，用後台密碼把關） ----------
 export interface AdminCtx { admin: Any; password: string; members: () => Promise<Record<string, Any[]>>; clubInfos: () => Promise<{ name: string; division: string; code: string }[]> }
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const personKey = (p: Any) => `${(p && p.name) || ""}|${(p && p.nickname) || ""}`;
 
 export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Promise<Any> {
