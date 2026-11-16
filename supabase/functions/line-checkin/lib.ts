@@ -9,6 +9,7 @@
 //    這個資料夾裡的 checkin-core.js 是專案根目錄那一份的複本，根目錄的改了要一起複製過來。
 // =====================================================================
 import "./checkin-core.js";
+import { CalError, handleAdmin as calAdmin, handleMember as calMember } from "./calendar.ts";
 // deno-lint-ignore no-explicit-any
 type Any = any;
 const Core = (globalThis as Any).CheckinCore;
@@ -22,6 +23,7 @@ export interface Deps {
   broadcast: (eventKey: string) => Promise<void>;      // 通知櫃台報到頁有人報到（失敗沒關係，櫃台 8 秒內會自己抓到）
   defaultClubPassword: string;                         // 地區的各社預設密碼（沒有就空字串）
   push?: PushDeps;                                     // LINE 推播（沒有開放的地區不提供）
+  calendarAdminPassword?: string;                      // 行事曆後台密碼（secret CALENDAR_ADMIN_PASSWORD；空字串＝後台關閉）
 }
 // LINE 推播：要用「LINE 官方帳號」的 Messaging API 才能主動傳訊息給社友（LINE Login 頻道不行）。
 // token 或 password 任一個是空的＝這個地區沒有開放推播。
@@ -281,7 +283,23 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
   }
 
   // ---------- 以下都要先向 LINE 驗證身分 ----------
+  // 行事曆（階段 1）：後台動作用後台密碼；社友動作要先向 LINE 驗證並查出綁定的社友
+  if (action.startsWith("cal_admin_")) {
+    try {
+      return await calAdmin(action, body, {
+        admin: deps.admin, password: deps.calendarAdminPassword || "",
+        members: async () => (await loadState(deps, true)).members,
+        clubNames: async () => ((await loadState(deps, false)).divisionsData || []).flatMap((d: Any) => (d.clubs || []).map((c: Any) => c.name)),
+      });
+    } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
+  }
   const user = await deps.verify(String((body && body.idToken) || ""));
+  if (action.startsWith("cal_")) {
+    try {
+      const b = await getBinding(deps, user.sub);
+      return await calMember(action, body, deps.admin, b ? { club: b.club, key: b.key, name: b.name, nickname: b.nickname } : null);
+    } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
+  }
 
   if (action === "init") {
     const state = await loadState(deps, true);

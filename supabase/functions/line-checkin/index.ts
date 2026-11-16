@@ -5,6 +5,7 @@
 // 需要的 secrets：
 //   LINE_LOGIN_CHANNEL_ID   LINE Login 頻道的 Channel ID（LIFF 所屬的頻道；不是密碼，但必須由伺服器端固定）
 //   DEFAULT_CLUB_PASSWORD   （選填）地區的各社預設密碼，與地區設定檔的 defaultClubPassword 相同
+//   CALENDAR_ADMIN_PASSWORD （選填）行事曆後台（admin-calendar.html）的密碼；沒設定＝後台關閉
 //   LINE_MESSAGING_ACCESS_TOKEN、LINE_PUSH_PASSWORD   （選填）LINE 推播用：官方帳號 Messaging API 的 Channel access token
 //                           與推播密碼。兩個都有設定，這個地區才算「開放推播」；系統管理者要關閉時把它們刪掉即可。
 // =====================================================================
@@ -32,6 +33,7 @@ const lineApi = async (path: string, init?: RequestInit) => {
 
 const deps: Deps = {
   admin,
+  calendarAdminPassword: (Deno.env.get("CALENDAR_ADMIN_PASSWORD") || "").trim(),
   push: {
     token: PUSH_TOKEN,
     password: (Deno.env.get("LINE_PUSH_PASSWORD") || "").trim(),

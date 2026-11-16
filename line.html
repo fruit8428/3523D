@@ -84,10 +84,14 @@
 
         <!-- 報到 -->
         <div id="viewEvent" class="hidden"></div>
+
+        <!-- 扶輪行事曆（?p=calendar，畫面與邏輯在 calendar.js） -->
+        <div id="viewCalendar" class="hidden pb-24"></div>
     </main>
 
     <div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-6 z-50 px-4 py-2.5 rounded-xl shadow-lg text-sm font-bold text-white bg-slate-900 opacity-0 pointer-events-none transition-opacity duration-300 max-w-[92vw] text-center"></div>
 
+    <script src="./calendar.js"></script>
     <script>
         // ================= 基本設定 =================
         const D = window.DISTRICT || {};
@@ -102,6 +106,7 @@
         let divisions = [];        // [{ name, clubs: [社名] }]
         let eventInfo = null;      // 雲端回傳的活動與報到狀態
         let busy = false;
+        let page = '';             // 網址參數 p：calendar＝扶輪行事曆；沒有＝報到／綁定
 
         // ================= 小工具 =================
         const $ = id => document.getElementById(id);
@@ -115,7 +120,7 @@
             const t = $('toast'); t.textContent = msg; t.style.opacity = '1';
             clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.style.opacity = '0'; }, 3500);
         }
-        const VIEWS = ['viewLoading', 'viewMessage', 'viewBind', 'viewHome', 'viewEvent'];
+        const VIEWS = ['viewLoading', 'viewMessage', 'viewBind', 'viewHome', 'viewEvent', 'viewCalendar'];
         function show(id) { VIEWS.forEach(v => $(v).classList.toggle('hidden', v !== id)); }
         function showMessage(icon, title, body, retry) {
             $('msgIcon').textContent = icon; $('msgTitle').textContent = title; $('msgBody').textContent = body;
@@ -313,7 +318,8 @@
             divisions = r.divisions || [];
             eventInfo = r.event || null;
             if (eventInfo && eventInfo.title) $('hdTitle').textContent = eventInfo.title + ' 報到';
-            if (!binding) return showBind('');
+            if (!binding) return showBind(page === 'calendar' ? '請先綁定身分，才能使用行事曆。' : '');
+            if (page === 'calendar') return calendarStart();
             renderIdCard();
             if (eventInfo) return renderEvent();
             show('viewHome');
@@ -329,6 +335,8 @@
             }
             // 活動代碼由 QR Code 的網址帶入（LIFF 會把參數原樣帶到這一頁）
             eventKey = new URLSearchParams(location.search).get('e') || '';
+            page = new URLSearchParams(location.search).get('p') || '';
+            if (page === 'calendar') $('hdTitle').textContent = '扶輪行事曆';
             if (!liff.isLoggedIn()) {   // 用一般瀏覽器開啟時要先登入 LINE；在 LINE 裡開啟會自動登入
                 $('loadingText').textContent = '前往 LINE 登入…';
                 liff.login({ redirectUri: location.href });

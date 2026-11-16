@@ -204,6 +204,15 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - **面板有輸入框，所以不跟著 `updateRolePermissionsUI()` 重畫內容**：`renderLinePushPanel()` 只切換顯示，`linePushKey` 變了（換活動）才重設對象清單與預設訊息。條件一改就 `linePushInvalidate()`，要重新預覽才能按發送；推播密碼只放記憶體（`linePushPassword`），不進 localStorage。面板的任何操作都不呼叫 `saveToStorage()`。
 - 限制：社友要把官方帳號加為好友才收得到，系統無法得知誰沒加；官方帳號的 Messaging API 頻道要與 LINE Login 頻道在同一個 Provider（使用者代碼才相同）。
 
+### 扶輪行事曆（2026-11-16，階段 1：基礎行事曆）
+
+規格在 `行事曆.md`（原規格寫 Next.js，**已決定改沿用現有架構**，不另開專案）。分階段：1 基礎（已做）→ 2 Excel 匯入＋一鍵加入私人行事曆 → 3 「我要參加」串接報名 → 4 總監每日推播＋代理人。
+- **進入點**：社友在 LINE 開 `https://liff.line.me/<LIFF ID>?p=calendar` → `line.html?p=calendar`（LIFF 只能指到一頁，所以行事曆放在 `line.html` 裡，畫面與邏輯在 `calendar.js`）。未綁定 LINE 身分的人會先走綁定流程。電腦版後台 `admin-calendar.html`（指派管理者、活動類型）。
+- **資料表**（`supabase/sql/calendar.sql`，**要先在 Supabase 執行才能用**）：`calendar_event_types`、`calendar_roles`、`calendar_events`，RLS 開啟、無 policy、anon 完全讀不到（私人行程才不會外洩）。**行程不放進 `app_storage`**（整包覆寫會互蓋）。認人同 LINE 報到：社名＋`姓名|Nick Name`，不用 uuid；原規格的 `members`／`clubs` 表不建立。
+- **後端**：`supabase/functions/line-checkin/calendar.ts`，由 `lib.ts` 的 `handle()` 轉送 `cal_*` 動作。社友動作先向 LINE 驗證 idToken、查 `line_bindings` 找出是誰，再依 `calendar_roles` 判斷權限（`canWrite()` 集中判斷：地區＝district_editor、社內＝managed_club 相符的 club_editor、私人＝本人）。`cal_admin_*` 用 secret `CALENDAR_ADMIN_PASSWORD` 把關（沒設＝後台關閉；**不要用最高管理員密碼**，它寫在前端）。錯誤碼 `CAL_*`，前端 `CAL_ERR` 轉中文。
+- 時間一律存 timestamptz、前後端都用台灣時間（UTC+8）計算；全天行程 `end_at` 為當天 23:59；沒填結束時間＝開始時間。取消行程只改 `status='cancelled'`。列表查詢用「地區＋本社＋本人私人」三次查詢合併（不用 `.or()` 字串，避免社名符號弄壞查詢）。
+- 測試：權限＝`deno run --no-check --node-modules-dir=none -A supabase/tests/calendar_permissions.ts`（假資料庫，17 項）；畫面＝`node check_calendar_ui.js`（puppeteer 塞假的 `api()`，17 項，不需 8000 埠）。改了雲端小程式要重新部署：Finder 點兩下 `部署行事曆.command`。
+
 ### UI 慣例
 
 - 主委後台（`viewChair`）與最高權限頁（`viewSuperAdmin`）的每張卡片都是「可收合面板」：卡片外層有 `data-panel="id"`，內容包在 `#panelBody_<id>`（預設 `hidden`），標題列由 `togglePanel(id)` 切換並記在 localStorage（`rotary_3523_panel_open_<id>`）；`initCollapsiblePanels()` 在 DOMContentLoaded 還原狀態。新增卡片時比照加上標題列與一句「點開可以：…」的白話說明。KPI 四格固定在 `viewChair` 最上方，不收合。

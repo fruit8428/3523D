@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>行事曆後台管理</title>
+    <meta name="robots" content="noindex">
+    <!--
+        扶輪行事曆後台（電腦版，只有地區最高管理者使用）。
+        - 用「行事曆後台密碼」登入（雲端小程式的 secret CALENDAR_ADMIN_PASSWORD，不寫在程式裡）。
+        - 功能：指定／移除行事曆管理者（社內、地區、總監）、列出沒有管理者的社、管理活動類型。
+        - 不直接碰資料庫，全部透過雲端小程式 line-checkin 的 cal_admin_* 動作。
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="./district-config.js"></script>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen">
+<header class="bg-blue-900 text-white">
+    <div class="max-w-4xl mx-auto px-4 py-4">
+        <div class="text-xs text-blue-200" id="hdDistrict"></div>
+        <h1 class="font-black text-xl">行事曆後台管理</h1>
+    </div>
+</header>
+<main class="max-w-4xl mx-auto px-4 py-6 space-y-6">
+    <section id="loginBox" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 max-w-md">
+        <div class="font-black text-lg">請輸入行事曆後台密碼</div>
+        <input id="pw" type="password" class="mt-3 w-full border border-slate-300 rounded-lg px-3 py-3 text-base" placeholder="後台密碼" onkeydown="if(event.key==='Enter')login()">
+        <div id="loginErr" class="hidden mt-3 text-sm font-bold text-rose-700"></div>
+        <button type="button" onclick="login()" class="mt-4 w-full bg-blue-700 text-white font-black rounded-lg py-3">登入</button>
+    </section>
+
+    <div id="app" class="hidden space-y-6">
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h2 class="font-black text-lg">① 指定行事曆管理者</h2>
+            <p class="text-sm text-slate-600 mt-1 leading-relaxed">管理者不是依職稱自動給予，由這裡指定。<b>社內管理者</b>可新增／修改本社行程（通常是社長、執秘）；<b>地區管理者</b>可管理地區行程（地區辦公室、總監秘書）；<b>總監</b>供之後的每日推播使用。被指定的人必須在報名系統的社友庫裡，而且要在 LINE 綁定過身分。</p>
+            <div class="mt-4 flex gap-2">
+                <input id="q" type="text" class="flex-1 border border-slate-300 rounded-lg px-3 py-2.5 text-base" placeholder="輸入姓名、Nick Name 或社名搜尋" onkeydown="if(event.key==='Enter')search()">
+                <button type="button" onclick="search()" class="bg-slate-800 text-white font-bold rounded-lg px-5">搜尋</button>
+            </div>
+            <div id="results" class="mt-3 space-y-2"></div>
+        </section>
+
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h2 class="font-black text-lg">② 目前的管理者</h2>
+            <div id="roleList" class="mt-3"></div>
+            <h3 class="font-bold text-sm mt-5 text-rose-700">還沒有社內管理者的社（<span id="noEditorCount">0</span>）</h3>
+            <div id="noEditor" class="mt-2 flex flex-wrap gap-1.5 text-sm"></div>
+        </section>
+
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h2 class="font-black text-lg">③ 活動類型</h2>
+            <p class="text-sm text-slate-600 mt-1">刪除某個類型後，使用它的行程會變成「未分類」。</p>
+            <div id="typeList" class="mt-3 space-y-2"></div>
+            <div class="mt-3 flex gap-2">
+                <input id="newType" type="text" maxlength="30" class="flex-1 border border-slate-300 rounded-lg px-3 py-2.5" placeholder="新增活動類型" onkeydown="if(event.key==='Enter')addType()">
+                <button type="button" onclick="addType()" class="bg-blue-700 text-white font-bold rounded-lg px-5">新增</button>
+            </div>
+        </section>
+    </div>
+</main>
+<script>
+    const D = window.DISTRICT || {};
+    const FN_URL = (D.supabaseUrl || '') + '/functions/v1/line-checkin';
+    const $ = id => document.getElementById(id);
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const ROLE_NAME = { club_editor: '社內管理者', district_editor: '地區管理者', governor: '總監' };
+    const ERR = {
+        CAL_ADMIN_DISABLED: '行事曆後台尚未啟用（雲端小程式沒有設定 CALENDAR_ADMIN_PASSWORD）。',
+        CAL_ADMIN_AUTH_FAILED: '密碼不正確。',
+        CAL_TABLE_MISSING: '行事曆資料表還沒建立，請先在 Supabase 執行 supabase/sql/calendar.sql。',
+        MEMBER_NOT_FOUND: '社友庫裡找不到這個人。',
+        NETWORK: '網路連線不穩，請再試一次。',
+        BAD_REQUEST: '操作失敗，請重新整理後再試。'
+    };
+    let password = '', state = null, found = [];
+
+    async function api(action, extra) {
+        try {
+            const res = await fetch(FN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: D.supabaseAnonKey || '', Authorization: 'Bearer ' + (D.supabaseAnonKey || '') }, body: JSON.stringify(Object.assign({ action: action, adminPassword: password }, extra || {})) });
+            if (res.status === 404) return { ok: false, code: 'CAL_ADMIN_DISABLED' };
+            const j = await res.json();
+            return j && typeof j.ok === 'boolean' ? j : { ok: false, code: 'SERVER_ERROR' };
+        } catch (e) { return { ok: false, code: 'NETWORK' }; }
+    }
+    const errText = c => ERR[c] || '系統忙碌中，請稍後再試。';
+
+    async function login() {
+        password = $('pw').value;
+        const r = await api('cal_admin_state');
+        const err = $('loginErr');
+        if (!r.ok) { err.textContent = errText(r.code); err.classList.remove('hidden'); password = ''; return; }
+        $('loginBox').classList.add('hidden'); $('app').classList.remove('hidden');
+        state = r; render();
+    }
+    async function refresh() { const r = await api('cal_admin_state'); if (r.ok) { state = r; render(); } else alert(errText(r.code)); }
+    function render() {
+        $('roleList').innerHTML = state.roles.length ? `<table class="w-full text-sm"><thead><tr class="text-left text-slate-500 border-b"><th class="py-2">姓名</th><th>所屬社</th><th>角色</th><th>管理範圍</th><th></th></tr></thead><tbody>${state.roles.map(r => `<tr class="border-b border-slate-100"><td class="py-2 font-bold">${E(r.name)}${r.nickname ? `<span class="ml-1 font-normal text-slate-500">${E(r.nickname)}</span>` : ''}</td><td>${E(r.club)}</td><td>${E(ROLE_NAME[r.role] || r.role)}</td><td>${E(r.role === 'club_editor' ? r.managedClub : r.role === 'district_editor' ? '全地區' : '')}</td><td class="text-right"><button type="button" onclick="revoke(${Number(r.id)})" class="text-rose-700 font-bold">移除</button></td></tr>`).join('')}</tbody></table>` : '<div class="text-slate-500 text-sm">還沒有指定任何管理者。</div>';
+        $('noEditorCount').textContent = state.clubsWithoutEditor.length;
+        $('noEditor').innerHTML = state.clubsWithoutEditor.map(c => `<span class="text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-0.5">${E(c)}</span>`).join('') || '<span class="text-emerald-700 font-bold">每一社都有管理者 ✅</span>';
+        $('typeList').innerHTML = state.types.map(t => `<div class="flex gap-2"><input type="text" id="type_${t.id}" value="${E(t.name)}" maxlength="30" class="flex-1 border border-slate-300 rounded-lg px-3 py-2"><button type="button" onclick="renameType(${t.id})" class="border border-slate-300 rounded-lg px-4 font-bold">改名</button><button type="button" onclick="delType(${t.id})" class="border border-rose-300 text-rose-700 rounded-lg px-4 font-bold">刪除</button></div>`).join('');
+        renderResults();
+    }
+    async function search() {
+        const q = $('q').value.trim(); if (!q) return;
+        const r = await api('cal_admin_members', { q: q });
+        if (!r.ok) return alert(errText(r.code));
+        found = r.members; renderResults();
+        if (!found.length) $('results').innerHTML = '<div class="text-slate-500 text-sm">找不到符合的社友。</div>';
+    }
+    function renderResults() {
+        $('results').innerHTML = found.map((m, i) => `<div class="border border-slate-200 rounded-lg p-3 flex flex-wrap items-center gap-2"><div class="min-w-0 flex-1"><span class="font-black">${E(m.name)}</span>${m.nickname ? `<span class="ml-1 text-slate-500">${E(m.nickname)}</span>` : ''}<div class="text-sm text-slate-500">${E(m.club)}${m.role ? '・' + E(m.role) : ''}</div></div>
+            <button type="button" onclick="grant(${i},'club_editor')" class="bg-amber-400 font-bold rounded-lg px-3 py-2 text-sm">設為本社管理者</button>
+            <button type="button" onclick="grant(${i},'district_editor')" class="bg-blue-700 text-white font-bold rounded-lg px-3 py-2 text-sm">設為地區管理者</button>
+            <button type="button" onclick="grant(${i},'governor')" class="border border-slate-300 font-bold rounded-lg px-3 py-2 text-sm">設為總監</button></div>`).join('');
+    }
+    async function grant(i, role) {
+        const m = found[i]; if (!m) return;
+        let managedClub = m.club;
+        if (role === 'club_editor') {   // 預設管理自己的社；若要管別的社可在輸入框改
+            const v = prompt(`要讓 ${m.name} 管理哪一社的行程？\n（預設是他自己的社，直接按確定即可）`, m.club);
+            if (v === null) return; managedClub = v.trim() || m.club;
+            if (!state.clubs.includes(managedClub)) return alert('名單裡沒有「' + managedClub + '」這個社，請輸入完整社名。');
+        }
+        const r = await api('cal_admin_grant', { club: m.club, personKey: m.key, role: role, managedClub: managedClub });
+        if (!r.ok) return alert(errText(r.code));
+        await refresh();
+    }
+    async function revoke(id) { if (!confirm('確定要移除這位管理者嗎？移除後他立刻不能新增或修改行程。')) return; const r = await api('cal_admin_revoke', { id: id }); if (!r.ok) return alert(errText(r.code)); await refresh(); }
+    async function addType() { const v = $('newType').value.trim(); if (!v) return; const r = await api('cal_admin_type_save', { name: v }); if (!r.ok) return alert(r.code === 'SERVER_ERROR' ? '新增失敗，可能名稱重複。' : errText(r.code)); $('newType').value = ''; await refresh(); }
+    async function renameType(id) { const v = $('type_' + id).value.trim(); if (!v) return; const r = await api('cal_admin_type_save', { id: id, name: v }); if (!r.ok) return alert(r.code === 'SERVER_ERROR' ? '改名失敗，可能名稱重複。' : errText(r.code)); await refresh(); alert('已改名'); }
+    async function delType(id) { if (!confirm('確定刪除這個活動類型？使用它的行程會變成「未分類」。')) return; const r = await api('cal_admin_type_delete', { id: id }); if (!r.ok) return alert(errText(r.code)); await refresh(); }
+    $('hdDistrict').textContent = D.name || '';
+</script>
+</body>
+</html>
