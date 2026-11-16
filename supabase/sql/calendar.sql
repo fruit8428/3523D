@@ -88,6 +88,14 @@ create table if not exists public.calendar_rsvp (
     primary key (event_id, club_name, person_key)
 );
 
+-- 後來新增的欄位（舊資料表用 alter 補上，可重複執行）
+--   calendar_events.rsvp_enabled：開放社友按「我要參加」（社內例會等不需要走報名系統的活動；有對應報名活動的行程也可以開）
+--   calendar_rsvp.guest_of：這一筆是某位社友帶來的寶尊眷時，填那位社友的 person_key；本人自己的那筆為空字串
+--   calendar_rsvp.guest_role：寶尊眷的稱謂（社友庫裡的職務，例如「寶(尊)眷」）
+alter table public.calendar_events add column if not exists rsvp_enabled boolean not null default false;
+alter table public.calendar_rsvp   add column if not exists guest_of   text not null default '';
+alter table public.calendar_rsvp   add column if not exists guest_role text not null default '';
+
 alter table public.calendar_rsvp        enable row level security;
 alter table public.calendar_ics         enable row level security;
 alter table public.calendar_event_types enable row level security;

@@ -186,3 +186,46 @@ await handleMember("cal_rsvp_set", { id: jEv.id, join: false }, db, mkU("孫甲|
 ok("取消參加後 joined 回到 null", pick(await L(mkU("孫甲|", "孫甲")), jEv.id).joined === null);
 const joinedB = (await handleMember("cal_list", W, db, { club: "乙社", key: "李|", name: "李", nickname: "" }, jreg)).events;
 ok("別社的趙不在乙社名單，乙社的李 joined 為 null；社內行程不會洩漏給別社", pick(joinedB, jEv.id).joined === null && pick(await L(mkU("趙|", "趙")), jClub.id) === undefined);
+
+// ---------- 社內例會：開放參加（不需報名活動）＋ 寶尊眷 ----------
+const FAM: Record<string, any[]> = { "王|": [{ key: "王妻|", name: "王妻", nickname: "", role: "寶(尊)眷" }, { key: "王子|", name: "王子", nickname: "", role: "寶(尊)眷" }] };
+const freg = { roster: jreg.roster, family: async (_c: string, k: string) => FAM[k] || [] };
+const meet = (await desk("cal_desk_save", { adminPassword: "pw", event: dev({ layer: "club", club: "甲社", title: "甲社例會(開放參加)", rsvpEnabled: true }) })).event;
+const meetClosed = (await desk("cal_desk_save", { adminPassword: "pw", event: dev({ layer: "club", club: "甲社", title: "甲社例會(未開放)" }) })).event;
+ok("行程可開放參加（rsvpEnabled）", meet.rsvpEnabled === true && meetClosed.rsvpEnabled === false);
+const ME = mkU("王|", "王");
+ok("沒開放、也沒對應報名的行程：不能參加", (await handleMember("cal_rsvp_status", { id: meetClosed.id }, db, ME, freg)).linked === false && await code(handleMember("cal_rsvp_set", { id: meetClosed.id, join: true }, db, ME, freg)) === "CAL_REG_UNAVAILABLE");
+let m1 = await handleMember("cal_rsvp_status", { id: meet.id }, db, ME, freg);
+ok("開放參加的例會：可參加，並列出我的寶尊眷選項（社友庫帶出名字）", m1.linked && m1.mine === null && m1.family.map((f: any) => f.name).join() === "王妻,王子");
+ok("自動更新（poll）不讀家人名單", (await handleMember("cal_rsvp_status", { id: meet.id, poll: true }, db, ME, freg)).family === undefined);
+m1 = await handleMember("cal_rsvp_set", { id: meet.id, join: true, guestKeys: ["王妻|", "鬼|", "王|"] }, db, ME, freg);
+ok("勾選寶眷參加：登記本人＋王妻；不在家人名單的鬼、重複的本人被忽略", m1.mine === "interested" && m1.people.map((p: any) => p.name).sort().join() === "王,王妻" && m1.people.find((p: any) => p.name === "王妻").guestOf === "王|" && m1.people.find((p: any) => p.name === "王妻").role === "寶(尊)眷" && m1.interestedCount === 2);
+ok("myGuests 記錄我帶的寶尊眷", m1.myGuests.join() === "王妻|");
+m1 = await handleMember("cal_rsvp_set", { id: meet.id, join: true, guestKeys: ["王子|"] }, db, ME, freg);
+ok("再更新：改成只帶王子（王妻被取消、王子加入）", m1.people.map((p: any) => p.name).sort().join() === "王,王子");
+const spouseView = await handleMember("cal_rsvp_status", { id: meet.id }, db, mkU("王子|", "王子"), freg);
+ok("寶尊眷本人（若有綁 LINE）看到自己已在參加名單", spouseView.mine === "interested");
+const other = await handleMember("cal_rsvp_status", { id: meet.id }, db, mkU("李四|", "李四"), freg);
+ok("同社其他人看得到「王子」是誰的寶尊眷、人數含寶尊眷", other.people.some((p: any) => p.name === "王子" && p.guestOf === "王|") && other.interestedCount === 2);
+const otherClub = await handleMember("cal_rsvp_status", { id: meet.id }, db, { club: "乙社", key: "李|", name: "李", nickname: "" }, freg).catch((e: any) => e.code);
+ok("例會是社內行程：別社看不到", otherClub === "CAL_NOT_FOUND");
+// 已正式報名的寶眷不重複登記
+const regGuestEv = (await handleMember("cal_save", { event: ev({ layer: "district", title: "地區羽球賽2", registrationKey: "cat::羽球賽", rsvpEnabled: true }) }, db, B)).event;
+jr.push({ club: "甲社", key: "王妻|", name: "王妻", nickname: "" });
+const rg = await handleMember("cal_rsvp_set", { id: regGuestEv.id, join: true, guestKeys: ["王妻|", "王子|"] }, db, ME, freg);
+ok("執秘已正式報名的寶眷：不重複登記，仍顯示為已報名", rg.people.filter((p: any) => p.name === "王妻").length === 1 && rg.people.find((p: any) => p.name === "王妻").status === "registered" && rg.people.find((p: any) => p.name === "王子").status === "interested");
+jr.pop();
+// 後台：人數與名單
+const dl = (await desk("cal_desk_list", { club: "甲社", clubPassword: "a123", layer: "club", ...W })).events.find((e: any) => e.id === meet.id);
+ok("後台行程列表顯示參加人數（含寶尊眷）", dl.rsvpCount === 2);
+const dn = await desk("cal_desk_event_rsvp", { club: "甲社", clubPassword: "a123", id: meet.id });
+ok("後台可看參加名單（標示寶尊眷）", dn.people.length === 2 && dn.people.some((p: any) => p.name === "王子" && p.guest === true && p.role === "寶(尊)眷"));
+ok("乙社執秘看不到甲社例會名單", await code(desk("cal_desk_event_rsvp", { club: "乙社", clubPassword: "b123", id: meet.id })) === "CAL_FORBIDDEN");
+m1 = await handleMember("cal_rsvp_set", { id: meet.id, join: false }, db, ME, freg);
+ok("取消參加：本人與我帶的寶尊眷一併取消", m1.mine === null && m1.people.length === 0);
+await adm("cal_admin_grant", { club: "甲社", personKey: "王|", role: "club_editor" });
+const phoneMeet = (await handleMember("cal_save", { event: ev({ layer: "club", club: "甲社", title: "手機開的例會", rsvpEnabled: true }) }, db, A)).event;
+ok("手機版：社內管理者新增的例會可開放參加", phoneMeet.rsvpEnabled === true);
+const phonePriv = (await handleMember("cal_save", { event: ev({ layer: "private", title: "私人想開放", rsvpEnabled: true }) }, db, A)).event;
+ok("私人行程不能開放參加", phonePriv.rsvpEnabled === false);
+ok("手機版編輯時不帶 rsvpEnabled 不會把開放關掉", (await handleMember("cal_save", { event: { ...ev({ title: "改標題" }), id: phoneMeet.id } }, db, A)).event.rsvpEnabled === true);

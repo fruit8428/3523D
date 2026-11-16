@@ -319,12 +319,20 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
   if (action.startsWith("cal_")) {
     try {
       const b = await getBinding(deps, user.sub);
+      let cachedFull: Any = null;
       let cached: Any = null;      // 同一次請求內只讀一次報名資料（月曆一次可能有很多個對應活動）
       const reg = {
         roster: async (eventKey: string) => {
           if (!cached) cached = await loadState(deps, false);
           const roster = Core.buildRoster(cached, eventKey);
           return { ok: !!roster.ok, title: roster.title || "", persons: roster.persons || [] };
+        },
+        // 家人＝社友庫裡互為寶(尊)眷的人（與 LINE 報到的同行家人同一套規則，見 familyKeys）
+        family: async (club: string, key: string, name: string) => {
+          if (!cachedFull) cachedFull = await loadState(deps, true);
+          const list: Any[] = Array.isArray(cachedFull.members[club]) ? cachedFull.members[club] : [];
+          const keys = familyKeys(list, key, name);
+          return list.filter((m) => m && m.name && keys.includes(personKey(m))).map((m) => ({ key: personKey(m), name: m.name, nickname: m.nickname || "", role: m.role || "" }));
         },
       };
       return await calMember(action, body, deps.admin, b ? { club: b.club, key: b.key, name: b.name, nickname: b.nickname } : null, reg);

@@ -165,6 +165,7 @@ function cdeskRenderList() {
                     <div class="text-xs font-bold text-slate-500">${cdE(cdWhen(e))}${cdeskTypeName(e.typeId) ? `　<span class="text-blue-700">${cdE(cdeskTypeName(e.typeId))}</span>` : ''}${cancelled ? '　<span class="text-rose-600">已取消</span>' : ''}${past && !cancelled ? '　<span class="text-slate-400">已過</span>' : ''}</div>
                     <div class="font-bold text-slate-900 ${cancelled ? 'line-through text-slate-400' : ''}">${cdE(e.title)}</div>
                     ${e.location ? `<div class="text-xs text-slate-600">📍 ${cdE(e.location)}</div>` : ''}
+                    ${(e.rsvpEnabled || e.registrationKey) ? `<div class="mt-1 text-xs"><button type="button" onclick="cdeskShowRsvp(${i})" class="px-2 py-0.5 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-full font-bold hover:bg-emerald-100">🙋 表示參加 ${e.rsvpCount || 0} 人（含寶尊眷）・看名單</button></div>` : ''}
                 </div>
                 <div class="flex flex-wrap gap-1.5 shrink-0 text-xs font-bold">
                     <button type="button" onclick="cdeskOpenForm('edit',${i})" class="px-2.5 py-1.5 bg-white border border-slate-300 rounded-md hover:bg-slate-50">編輯</button>
@@ -210,10 +211,10 @@ function cdeskOpenForm(mode, i) {
     let v;
     if (src) {
         const s = Date.parse(src.start), e = Date.parse(src.end);
-        v = { id: mode === 'edit' ? src.id : '', title: src.title, typeId: src.typeId, registrationKey: src.registrationKey || '', allDay: src.allDay, sd: cdYmd(s), st: src.allDay ? '09:00' : cdHm(s), ed: cdYmd(e), et: src.allDay ? '10:00' : cdHm(e), location: src.location, address: src.address, dressCode: src.dressCode, contactPerson: src.contactPerson, contactPhone: src.contactPhone, notes: src.notes };
+        v = { id: mode === 'edit' ? src.id : '', title: src.title, typeId: src.typeId, registrationKey: src.registrationKey || '', rsvpEnabled: !!src.rsvpEnabled, allDay: src.allDay, sd: cdYmd(s), st: src.allDay ? '09:00' : cdHm(s), ed: cdYmd(e), et: src.allDay ? '10:00' : cdHm(e), location: src.location, address: src.address, dressCode: src.dressCode, contactPerson: src.contactPerson, contactPhone: src.contactPhone, notes: src.notes };
     } else {
         const d = cdYmd(Date.now());
-        v = { id: '', title: '', typeId: null, registrationKey: '', allDay: false, sd: d, st: '09:00', ed: d, et: '10:00', location: '', address: '', dressCode: '', contactPerson: '', contactPhone: '', notes: '' };
+        v = { id: '', title: '', typeId: null, registrationKey: '', rsvpEnabled: cdeskTab === 'club', allDay: false, sd: d, st: '09:00', ed: d, et: '10:00', location: '', address: '', dressCode: '', contactPerson: '', contactPhone: '', notes: '' };
     }
     const inp = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white', lab = 'block text-xs font-bold text-slate-600 mb-1 mt-3';
     const where = cdeskTab === 'district' ? '地區行程' : `${cdMyClub()} 社內行程`;
@@ -224,6 +225,7 @@ function cdeskOpenForm(mode, i) {
             <label class="${lab}" for="cdTitle">標題 <span class="text-rose-600">*</span></label><input id="cdTitle" type="text" maxlength="100" value="${cdE(v.title)}" class="${inp}" placeholder="例：松景社授證典禮">
             <label class="${lab}" for="cdType">活動類型</label><select id="cdType" class="${inp}"><option value="">未分類</option>${cdeskTypes.map(t => `<option value="${t.id}" ${v.typeId === t.id ? 'selected' : ''}>${cdE(t.name)}</option>`).join('')}</select>
             <label class="${lab}" for="cdReg">對應報名活動（選填）</label><select id="cdReg" class="${inp}"><option value="">不對應（社友只能查看，沒有「我要參加」）</option>${cdeskRegOptions(v.registrationKey).map(o => `<option value="${cdE(o.key)}" ${v.registrationKey === o.key ? 'selected' : ''}>${cdE(o.label)}</option>`).join('')}</select><p class="text-[11px] text-slate-500 mt-1">選了之後，社友在 LINE 看到這個行程會有「我要參加」按鈕，並看得到本社誰已報名。</p>
+            <label class="flex items-start gap-2 mt-3 text-sm font-bold text-slate-700 border border-emerald-300 bg-emerald-50 rounded-lg px-3 py-2"><input id="cdRsvpOn" type="checkbox" class="w-4 h-4 mt-0.5" ${v.rsvpEnabled ? 'checked' : ''}><span>開放社友按「我要參加」<span class="block text-[11px] font-normal text-slate-600">適合社內例會、聯誼等不需要報名的活動。社友在 LINE 按了就看得到社內名單，並可一起勾選寶尊眷（名字從社友庫帶出）。選了上面的「對應報名活動」時，也可以開啟。</span></span></label>
             <label class="flex items-center gap-2 mt-3 text-sm font-bold text-slate-700"><input id="cdAllDay" type="checkbox" onchange="cdeskAllDay()" class="w-4 h-4" ${v.allDay ? 'checked' : ''}> 全天行程</label>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div><label class="${lab}" for="cdSd">開始日期</label><input id="cdSd" type="date" value="${v.sd}" class="${inp}"></div>
@@ -253,7 +255,7 @@ async function cdeskSave(id) {
     const start = allDay ? `${g('cdSd')}T00:00:00+08:00` : `${g('cdSd')}T${g('cdSt')}:00+08:00`;
     const end = allDay ? `${ed}T23:59:00+08:00` : `${ed}T${g('cdEt') || g('cdSt')}:00+08:00`;
     if (Date.parse(end) < Date.parse(start)) return err('結束時間不能早於開始時間。');
-    const ev = { title: g('cdTitle'), typeId: g('cdType') ? Number(g('cdType')) : null, allDay: allDay, registrationKey: g('cdReg'), start: start, end: end, location: g('cdLoc'), address: g('cdAddr'), dressCode: g('cdDress'), contactPerson: g('cdCP'), contactPhone: g('cdPh'), notes: g('cdNotes') };
+    const ev = { title: g('cdTitle'), typeId: g('cdType') ? Number(g('cdType')) : null, allDay: allDay, registrationKey: g('cdReg'), rsvpEnabled: document.getElementById('cdRsvpOn').checked, start: start, end: end, location: g('cdLoc'), address: g('cdAddr'), dressCode: g('cdDress'), contactPerson: g('cdCP'), contactPhone: g('cdPh'), notes: g('cdNotes') };
     if (id) ev.id = id; else { ev.layer = cdeskTab; if (cdeskTab === 'club') ev.club = cdMyClub(); }
     const btn = document.getElementById('cdSave'); cdeskBusy = true; btn.disabled = true; btn.textContent = '儲存中…';
     const r = await cdApi('cal_desk_save', cdeskTab, { event: ev });
@@ -386,4 +388,27 @@ async function syncEventDateToCalendar(key, ev) {
             cdToast('日期已儲存，但同步行事曆失敗：' + cdErr(r.code === 'CAL_FORBIDDEN' ? 'CAL_FORBIDDEN' : r.code), '⚠️');
         }
     } catch (e) { cdToast('日期已儲存，但同步行事曆失敗：網路連線不穩', '⚠️'); }
+}
+
+// ---------- 某個行程的「表示參加」名單（含寶尊眷），可複製貼到 LINE ----------
+async function cdeskShowRsvp(i) {
+    const e = cdeskEvents[i]; if (!e) return;
+    const box = document.getElementById('cdeskBody');
+    box.innerHTML = '<div class="text-sm text-slate-500 py-6 text-center">讀取名單中…</div>';
+    const r = await cdApi('cal_desk_event_rsvp', cdeskTab, { id: e.id });
+    if (!r.ok) { cdToast(cdErr(r.code), '⚠️'); return cdeskReload(); }
+    const people = r.people || [];
+    const line = p => `${p.name}${p.nickname ? ' ' + p.nickname : ''}${p.guest ? `（${/眷/.test(p.role) ? '寶尊眷' : '眷屬'}）` : ''}`;
+    const byClub = {}; people.forEach(p => { (byClub[p.club] = byClub[p.club] || []).push(p); });
+    const text = `${r.title} 參加名單（${people.length} 人）\n` + Object.keys(byClub).map(c => (cdeskTab === 'district' ? `【${c}】\n` : '') + byClub[c].map((p, n) => `${n + 1}. ${line(p)}`).join('\n')).join('\n');
+    window.__cdeskRsvpText = text;
+    box.innerHTML = `<button type="button" onclick="cdeskReload()" class="text-sm font-bold text-blue-700">‹ 返回列表</button>
+        <div class="mt-2 flex flex-wrap items-center justify-between gap-2"><h4 class="font-black text-lg text-slate-900">🙋 ${cdE(r.title)}　參加名單（${people.length} 人）</h4>
+        <button type="button" onclick="cdeskCopyRsvp()" class="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold">複製名單</button></div>
+        ${people.length ? Object.keys(byClub).map(c => `<div class="mt-3">${cdeskTab === 'district' ? `<div class="text-xs font-black text-slate-700">${cdE(c)}（${byClub[c].length}）</div>` : ''}<div class="mt-1 flex flex-wrap gap-1.5">${byClub[c].map(p => `<span class="px-2.5 py-1 rounded-full text-sm font-bold ${p.guest ? 'bg-pink-50 border border-pink-200 text-pink-900' : 'bg-amber-50 border border-amber-200 text-amber-900'}">${cdE(line(p))}</span>`).join('')}</div></div>`).join('') : '<div class="mt-4 text-sm text-slate-500 border border-dashed border-slate-300 rounded-lg px-3 py-6 text-center">目前還沒有人表示參加。</div>'}
+        <p class="text-[11px] text-slate-500 mt-4">這是社友在 LINE 按「我要參加」留下的名單；有對應報名活動的行程，正式報名仍以報名表為準。</p>`;
+}
+function cdeskCopyRsvp() {
+    const t = window.__cdeskRsvpText || '';
+    try { navigator.clipboard.writeText(t).then(() => cdToast('已複製名單'), () => cdToast('無法自動複製，請手動選取', '⚠️')); } catch (e) { cdToast('無法自動複製，請手動選取', '⚠️'); }
 }

@@ -241,7 +241,7 @@ function calOpenDetail(id) {
     const s = Date.parse(e.start), en = Date.parse(e.end);
     const when = e.allDay ? (ymd(s) === ymd(en) ? fmtFull(s).replace(/\d\d:\d\d$/, '') + ' 全天' : `${fmtFull(s).replace(/\d\d:\d\d$/, '')} ～ ${fmtFull(en).replace(/\d\d:\d\d$/, '')}（全天）`) : (s === en ? fmtFull(s) : `${fmtFull(s)}<br>～ ${ymd(s) === ymd(en) ? fmtHM(en) : fmtFull(en)}`);
     const ph = calPhone(e.contactPhone);
-    const hasReg = !!(e.registrationKey && e.layer !== 'private');
+    const hasReg = !!((e.registrationKey || e.rsvpEnabled) && e.layer !== 'private');
     const maps = e.address || e.location;
     calSubShow(`<button type="button" onclick="calBack()" class="text-base font-bold text-blue-700 py-2">‹ 返回行事曆</button>
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-1">
@@ -260,7 +260,7 @@ function calOpenDetail(id) {
                 </div>
             </div>
         </div>
-        ${e.registrationKey && e.layer !== 'private' ? '<div id="calReg" class="mt-4"></div>' : ''}
+        ${(e.registrationKey || e.rsvpEnabled) && e.layer !== 'private' ? '<div id="calReg" class="mt-4"></div>' : ''}
         ${e.canEdit ? `<div class="grid grid-cols-2 gap-2 mt-4">
             <button type="button" onclick="calOpenForm('edit')" class="bg-blue-700 active:bg-blue-800 text-white font-black text-base rounded-xl py-3.5">編輯</button>
             <button type="button" onclick="calOpenForm('copy')" class="bg-white border border-slate-300 font-black text-base rounded-xl py-3.5">複製</button>
@@ -274,9 +274,12 @@ function calOpenDetail(id) {
 // 讓社內的人都知道；別社的人看不到。社友按「我要參加」只是留下意願，正式報名由執秘在報名系統確認後送出。
 let calRegTimer = null, calRegSig = '', calRegPolling = false;
 const CAL_REG_POLL_MS = 10000;      // 停在行程詳細頁時，每 10 秒自動更新一次社內報名名單
+let calFamily = [];            // 我的寶尊眷選項（社友庫帶出）；自動更新的回應不含這個欄位，沿用第一次讀到的
+let calGuestSel = null;        // 使用者正在勾選的寶尊眷（Set）；null＝沒動過，以雲端記錄為準。避免自動更新時把正在勾的選項洗掉
 async function calLoadReg(id) {
     const box = $('calReg'); if (!box) return;
-    box.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-4 text-center text-slate-500 font-bold">讀取報名狀況…</div>';
+    box.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-4 text-center text-slate-500 font-bold">讀取參加狀況…</div>';
+    calFamily = []; calGuestSel = null; calRegSig = '';
     const r = await api('cal_rsvp_status', { id: id });
     calRegRender(id, r);
     calRegStartPolling();
@@ -294,38 +297,53 @@ async function calRegPoll() {
     if (document.hidden || busy || calRegPolling) return;
     calRegPolling = true;
     try {
-        const r = await api('cal_rsvp_status', { id: e.id });
+        const r = await api('cal_rsvp_status', { id: e.id, poll: true });       // poll：不用重讀家人名單
         if (r.ok && calCurrent && calCurrent.id === e.id && JSON.stringify([r.mine, r.open, r.people]) !== calRegSig) calRegRender(e.id, r);
     } finally { calRegPolling = false; }
 }
+function calGuestToggle(key, on) { if (!calGuestSel) calGuestSel = new Set(calGuestBase()); on ? calGuestSel.add(key) : calGuestSel.delete(key); }
+function calGuestBase() { return (window.__calRegLast && window.__calRegLast.myGuests) || []; }
 function calRegRender(id, r) {
     const box = $('calReg'); if (!box || !calCurrent || calCurrent.id !== id) return;
-    if (!r.ok) { box.innerHTML = `<div class="bg-white rounded-2xl border border-rose-200 p-4 text-center text-rose-700 font-bold">${E(r.code === 'NETWORK' ? '網路連線不穩，無法讀取報名狀況。' : calErrText(r.code))}</div>`; return; }
+    if (!r.ok) { box.innerHTML = `<div class="bg-white rounded-2xl border border-rose-200 p-4 text-center text-rose-700 font-bold">${E(r.code === 'NETWORK' ? '網路連線不穩，無法讀取參加狀況。' : calErrText(r.code))}</div>`; return; }
     if (!r.linked) { box.innerHTML = ''; calRegSig = ''; return; }
     calRegSig = JSON.stringify([r.mine, r.open, r.people]);     // 自動更新時用來判斷名單有沒有變
+    if (r.family) calFamily = r.family;
+    window.__calRegLast = r;
     const ce = calEvents.find(x => x.id === id); if (ce) ce.joined = r.mine || null;   // 返回列表／「私人」頁時，立刻反映我是否參加
     const reg = (r.people || []).filter(p => p.status === 'registered'), want = (r.people || []).filter(p => p.status === 'interested');
-    const chip = (p, cls) => `<span class="inline-block rounded-full px-3 py-1 text-base font-bold ${cls} ${p.key === binding.key ? 'ring-2 ring-offset-1 ring-blue-600' : ''}">${E(p.name)}${p.nickname ? `<span class="ml-1 text-sm font-normal opacity-80">${E(p.nickname)}</span>` : ''}${p.key === binding.key ? ' （我）' : ''}</span>`;
+    const withReg = !!(calCurrent.registrationKey);      // 有對應報名活動才有「已報名」，例會等只有「表示參加」
+    const chip = (p, cls) => `<span class="inline-block rounded-full px-3 py-1 text-base font-bold ${cls} ${p.key === binding.key ? 'ring-2 ring-offset-1 ring-blue-600' : ''}">${E(p.name)}${p.nickname ? `<span class="ml-1 text-sm font-normal opacity-80">${E(p.nickname)}</span>` : ''}${p.key === binding.key ? ' （我）' : ''}${p.guestOf ? `<span class="ml-1 text-xs font-bold opacity-80">（${E(p.role && /眷/.test(p.role) ? '寶尊眷' : '眷屬')}）</span>` : ''}</span>`;
+    // 寶尊眷：社友庫裡我的家人；已由執秘正式報名的不能再勾
+    const selected = calGuestSel || new Set(r.myGuests || []);
+    const canEditGuests = r.open && calFamily.length > 0;
+    const guestBox = canEditGuests ? `<div class="mt-3 text-left border border-slate-200 rounded-xl px-3 py-2.5">
+            <div class="text-sm font-bold text-slate-700">👪 寶尊眷一起參加（可複選）</div>
+            ${calFamily.map(f => `<label class="flex items-center gap-3 py-2 ${f.registered ? 'opacity-60' : ''}"><input type="checkbox" class="w-6 h-6" ${selected.has(f.key) || f.registered ? 'checked' : ''} ${f.registered ? 'disabled' : ''} onchange="calGuestToggle(this.dataset.key, this.checked)" data-key="${E(f.key)}"><span class="text-base font-bold">${E(f.name)}${f.nickname ? `<span class="ml-1 text-sm font-normal text-slate-500">${E(f.nickname)}</span>` : ''}${f.registered ? '<span class="ml-2 text-xs text-emerald-700">已報名</span>' : ''}</span></label>`).join('')}
+        </div>` : '';
     let action = '';
-    if (r.mine === 'registered') action = '<div class="mt-3 text-center bg-emerald-50 border border-emerald-300 text-emerald-800 font-black rounded-xl py-3">✅ 您已報名</div>';
-    else if (!r.open) action = '<div class="mt-3 text-center text-slate-500 font-bold">行程已取消，無法報名</div>';
-    else if (r.mine === 'interested') action = `<div class="mt-3 text-center bg-amber-50 border border-amber-300 text-amber-900 font-black rounded-xl py-3">🙋 您已表示要參加</div><div class="mt-1 text-xs text-slate-500 text-center">正式報名由貴社執秘確認後送出。</div><button type="button" onclick="calRsvp(false)" class="mt-2 w-full bg-white border border-slate-300 text-slate-700 font-bold rounded-xl py-3">取消參加</button>`;
-    else action = `<button type="button" onclick="calRsvp(true)" class="mt-3 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black text-xl rounded-xl py-4 shadow">🙋 我要參加</button><div class="mt-1 text-xs text-slate-500 text-center">按下後，社內社友都看得到您要參加；正式報名由貴社執秘確認後送出。</div>`;
+    if (!r.open) action = '<div class="mt-3 text-center text-slate-500 font-bold">行程已取消，無法報名</div>';
+    else if (r.mine === 'registered') action = `<div class="mt-3 text-center bg-emerald-50 border border-emerald-300 text-emerald-800 font-black rounded-xl py-3">✅ 您已報名</div>${canEditGuests ? guestBox + '<button type="button" onclick="calRsvp(true)" class="mt-2 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black rounded-xl py-3">更新寶尊眷</button>' : ''}`;
+    else if (r.mine === 'interested') action = `<div class="mt-3 text-center bg-amber-50 border border-amber-300 text-amber-900 font-black rounded-xl py-3">🙋 您已表示要參加</div>${withReg ? '<div class="mt-1 text-xs text-slate-500 text-center">正式報名由貴社執秘確認後送出。</div>' : ''}${canEditGuests ? guestBox + '<button type="button" onclick="calRsvp(true)" class="mt-2 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black rounded-xl py-3">更新寶尊眷</button>' : ''}<button type="button" onclick="calRsvp(false)" class="mt-2 w-full bg-white border border-slate-300 text-slate-700 font-bold rounded-xl py-3">取消參加</button>`;
+    else action = `${guestBox}<button type="button" onclick="calRsvp(true)" class="mt-3 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black text-xl rounded-xl py-4 shadow">🙋 我要參加</button><div class="mt-1 text-xs text-slate-500 text-center">按下後，社內社友都看得到您要參加${withReg ? '；正式報名由貴社執秘確認後送出' : ''}。</div>`;
+    const people = want.length + reg.length;
     box.innerHTML = `<div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-        <div class="font-black text-lg">📋 ${E(binding.club)} 報名狀況</div>
-        <div class="text-sm text-slate-600 mt-0.5">活動：${E(r.title)}　已報名 <b>${r.registeredCount}</b> 人${want.length ? `　表示參加 <b>${want.length}</b> 人` : ''}</div>
+        <div class="font-black text-lg">📋 ${E(binding.club)} ${withReg ? '報名狀況' : '參加狀況'}</div>
+        <div class="text-sm text-slate-600 mt-0.5">${withReg ? `活動：${E(r.title)}　已報名 <b>${r.registeredCount}</b> 人${want.length ? `　表示參加 <b>${want.length}</b> 人` : ''}` : `表示參加 <b>${want.length}</b> 人（含寶尊眷）`}</div>
         ${action}
         ${reg.length ? `<div class="mt-4 text-sm font-bold text-slate-700">✅ 已報名</div><div class="mt-1 flex flex-wrap gap-1.5">${reg.map(p => chip(p, 'bg-emerald-100 text-emerald-900')).join('')}</div>` : ''}
-        ${want.length ? `<div class="mt-3 text-sm font-bold text-slate-700">🙋 表示要參加（待執秘確認）</div><div class="mt-1 flex flex-wrap gap-1.5">${want.map(p => chip(p, 'bg-amber-100 text-amber-900')).join('')}</div>` : ''}
-        ${!reg.length && !want.length ? '<div class="mt-4 text-base text-slate-500 text-center py-2">目前社內還沒有人報名。</div>' : ''}
+        ${want.length ? `<div class="mt-3 text-sm font-bold text-slate-700">🙋 表示要參加${withReg ? '（待執秘確認）' : ''}</div><div class="mt-1 flex flex-wrap gap-1.5">${want.map(p => chip(p, 'bg-amber-100 text-amber-900')).join('')}</div>` : ''}
+        ${!people ? `<div class="mt-4 text-base text-slate-500 text-center py-2">目前社內還沒有人${withReg ? '報名' : '表示參加'}。</div>` : ''}
     </div>`;
 }
 async function calRsvp(join) {
     const e = calCurrent; if (!e || busy) return;
-    if (!join && !confirm('要取消「表示參加」嗎？')) return;
-    busy = true; const r = await api('cal_rsvp_set', { id: e.id, join: join }); busy = false;
+    if (!join && !confirm('要取消「表示參加」嗎？\n您帶的寶尊眷也會一併取消。')) return;
+    const guests = join ? Array.from(calGuestSel || new Set(calGuestBase())) : [];
+    busy = true; const r = await api('cal_rsvp_set', { id: e.id, join: join, guestKeys: guests }); busy = false;
     if (!r.ok) { toast(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : calErrText(r.code)); return calLoadReg(e.id); }
-    toast(join ? '已表示要參加，社內社友都看得到' : '已取消參加');
+    calGuestSel = null;
+    toast(join ? (guests.length ? `已表示要參加（含 ${guests.length} 位寶尊眷），社內社友都看得到` : '已表示要參加，社內社友都看得到') : '已取消參加');
     calRegRender(e.id, r);
 }
 async function calToggleCancel() {
@@ -354,14 +372,15 @@ function calOpenForm(mode) {
     let v;
     if (src) {
         const s = Date.parse(src.start), e = Date.parse(src.end);
-        v = { layer: src.layer, club: src.club, title: src.title, typeId: src.typeId, allDay: src.allDay, sd: ymd(s), st: fmtHM(s), ed: ymd(e), et: fmtHM(e), location: src.location, address: src.address, dressCode: src.dressCode, contactPerson: src.contactPerson, contactPhone: src.contactPhone, notes: src.notes };
+        v = { layer: src.layer, club: src.club, title: src.title, typeId: src.typeId, rsvpEnabled: !!src.rsvpEnabled, allDay: src.allDay, sd: ymd(s), st: fmtHM(s), ed: ymd(e), et: fmtHM(e), location: src.location, address: src.address, dressCode: src.dressCode, contactPerson: src.contactPerson, contactPhone: src.contactPhone, notes: src.notes };
         if (src.allDay) { v.st = '09:00'; v.et = '10:00'; }
     } else {
         const day = calPrefs.range === 'month' ? calSelDay : ymd(Date.now());
         const pre = calPrefs.layer !== 'all' && layers.includes(calPrefs.layer) ? calPrefs.layer : layers[0];
-        v = { layer: pre, club: calRoles.clubs[0] || '', title: '', typeId: null, allDay: false, sd: day, st: '09:00', ed: day, et: '10:00', location: '', address: '', dressCode: '', contactPerson: '', contactPhone: '', notes: '' };
+        v = { layer: pre, club: calRoles.clubs[0] || '', title: '', typeId: null, rsvpEnabled: pre === 'club', allDay: false, sd: day, st: '09:00', ed: day, et: '10:00', location: '', address: '', dressCode: '', contactPerson: '', contactPhone: '', notes: '' };
     }
     const editing = mode === 'edit';
+    calRsvpTouched = !!src;        // 編輯／複製時尊重原本的設定，不要自動改
     const inp = 'w-full border border-slate-300 rounded-xl px-3 py-3 text-base bg-white';
     const lab = 'block text-sm font-bold text-slate-700 mb-1 mt-4';
     calSubShow(`<button type="button" onclick="calCancelForm()" class="text-base font-bold text-blue-700 py-2">‹ 取消，不儲存</button>
@@ -376,6 +395,7 @@ function calOpenForm(mode) {
             <input id="cfTitle" type="text" maxlength="100" value="${E(v.title)}" class="${inp}" placeholder="例：松景社授證典禮">
             <label class="${lab}" for="cfType">活動類型</label>
             <select id="cfType" class="${inp}"><option value="">未分類</option>${calTypes.map(t => `<option value="${t.id}" ${v.typeId === t.id ? 'selected' : ''}>${E(t.name)}</option>`).join('')}</select>
+            <div id="cfRsvpBox" class="${v.layer === 'private' ? 'hidden' : ''}"><label class="flex items-start gap-3 mt-4 border border-emerald-300 bg-emerald-50 rounded-xl px-3 py-3"><input id="cfRsvp" type="checkbox" onchange="calRsvpTouched = true" class="w-6 h-6 mt-0.5" ${v.rsvpEnabled ? 'checked' : ''}><span><span class="font-bold text-base">開放社友按「我要參加」</span><span class="block text-sm text-slate-600">適合例會、聯誼等不需要報名的活動；社友可一起勾選寶尊眷，名單社內都看得到。</span></span></label></div>
             <label class="flex items-center gap-3 mt-4 border border-slate-200 rounded-xl px-3 py-3"><input id="cfAllDay" type="checkbox" onchange="calFormAllDay()" class="w-6 h-6" ${v.allDay ? 'checked' : ''}><span class="font-bold text-base">全天行程</span></label>
             <div class="grid grid-cols-2 gap-2">
                 <div><label class="${lab}" for="cfSd">開始日期</label><input id="cfSd" type="date" value="${v.sd}" class="${inp}"></div>
@@ -396,7 +416,13 @@ function calOpenForm(mode) {
         </div>`);
     calFormAllDay();
 }
-function calFormLayerChanged() { const l = $('cfLayer').value; $('cfClubBox').classList.toggle('hidden', !(l === 'club' && calRoles.clubs.length > 1)); }
+function calFormLayerChanged() {
+    const l = $('cfLayer').value; $('cfClubBox').classList.toggle('hidden', !(l === 'club' && calRoles.clubs.length > 1));
+    $('cfRsvpBox').classList.toggle('hidden', l === 'private');                 // 私人行程不能開放別人參加
+    if (l === 'club' && !calRsvpTouched) $('cfRsvp').checked = true;            // 社內行程（例會等）預設開放參加
+    if (l !== 'club' && !calRsvpTouched) $('cfRsvp').checked = false;
+}
+let calRsvpTouched = false;
 function calFormAllDay() { const a = $('cfAllDay').checked; $('cfStBox').classList.toggle('hidden', a); $('cfEtBox').classList.toggle('hidden', a); }
 function calCancelForm() { if (calCurrent) calOpenDetail(calCurrent.id); else calBack(); }
 async function calSaveForm(id) {
@@ -410,7 +436,7 @@ async function calSaveForm(id) {
     const start = allDay ? `${g('cfSd')}T00:00:00+08:00` : `${g('cfSd')}T${g('cfSt')}:00+08:00`;
     const end = allDay ? `${ed}T23:59:00+08:00` : `${ed}T${g('cfEt') || g('cfSt')}:00+08:00`;
     if (Date.parse(end) < Date.parse(start)) return err('結束時間不能早於開始時間。');
-    const ev = { title: g('cfTitle'), typeId: g('cfType') ? Number(g('cfType')) : null, allDay: allDay, start: start, end: end, location: g('cfLoc'), address: g('cfAddr'), dressCode: g('cfDress'), contactPerson: g('cfCP'), contactPhone: g('cfPh'), notes: g('cfNotes') };
+    const ev = { title: g('cfTitle'), typeId: g('cfType') ? Number(g('cfType')) : null, allDay: allDay, start: start, end: end, rsvpEnabled: !!($('cfRsvp') && $('cfRsvp').checked && !($('cfRsvpBox') && $('cfRsvpBox').classList.contains('hidden'))), location: g('cfLoc'), address: g('cfAddr'), dressCode: g('cfDress'), contactPerson: g('cfCP'), contactPhone: g('cfPh'), notes: g('cfNotes') };
     if (id) ev.id = id; else { ev.layer = g('cfLayer'); if (ev.layer === 'club') ev.club = $('cfClub') ? g('cfClub') : calRoles.clubs[0]; }
     const btn = $('cfSave'); busy = true; btn.disabled = true; btn.textContent = '儲存中…';
     const r = await api('cal_save', { event: ev });
