@@ -306,6 +306,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
           const roster = Core.buildRoster(await loadState(deps, false), eventKey);
           return { ok: !!roster.ok, title: roster.title || "", persons: roster.persons || [] };
         },
+        members: async (club: string) => { const all = (await loadState(deps, true)).members || {}; return Array.isArray(all[club]) ? all[club] : []; },
         // 主委：appAuthData.eventChairs 以「大類id」（整個大類）或「大類id::子活動名稱」（單一子活動）為 key，值是社名陣列
         isChair: async (club: string, eventKey: string) => {
           const chairs = ((await loadState(deps, true)).auth || {}).eventChairs || {};

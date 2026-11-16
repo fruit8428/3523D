@@ -96,11 +96,27 @@ alter table public.calendar_events add column if not exists rsvp_enabled boolean
 alter table public.calendar_rsvp   add column if not exists guest_of   text not null default '';
 alter table public.calendar_rsvp   add column if not exists guest_role text not null default '';
 
+-- 社內例會的「實際出席」紀錄：由執秘在報名系統的「行事曆管理」勾選後儲存（不是社友自己按的「表示參加」）。
+-- 一個行程、一個社、一個人一筆；重新儲存時整批取代。行程刪除時一併刪除。anon 讀不到。
+create table if not exists public.calendar_attendance (
+    event_id   uuid not null references public.calendar_events(id) on delete cascade,
+    club_name  text not null,
+    person_key text not null,             -- 姓名|Nick Name
+    full_name  text not null,
+    nickname   text not null default '',
+    role       text not null default '',  -- 社友庫的職務（寶尊眷為「寶(尊)眷」）
+    is_guest   boolean not null default false,   -- 寶尊眷
+    marked_by  text not null default '',
+    marked_at  timestamptz not null default now(),
+    primary key (event_id, club_name, person_key)
+);
+alter table public.calendar_attendance  enable row level security;
+
 alter table public.calendar_rsvp        enable row level security;
 alter table public.calendar_ics         enable row level security;
 alter table public.calendar_event_types enable row level security;
 alter table public.calendar_roles       enable row level security;
 alter table public.calendar_events      enable row level security;
-revoke all on public.calendar_event_types, public.calendar_roles, public.calendar_events, public.calendar_ics, public.calendar_rsvp from anon, authenticated;
+revoke all on public.calendar_event_types, public.calendar_roles, public.calendar_events, public.calendar_ics, public.calendar_rsvp, public.calendar_attendance from anon, authenticated;
 revoke all on sequence public.calendar_event_types_id_seq, public.calendar_roles_id_seq from anon, authenticated;
 notify pgrst, 'reload schema';

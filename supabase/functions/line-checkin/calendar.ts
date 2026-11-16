@@ -390,6 +390,7 @@ export interface DeskCtx {
   checkClub: (club: string, password: string) => Promise<void>;
   roster?: RegDeps["roster"];                                        // 報名活動資料（確認這個活動存在、取得名稱）
   isChair?: (club: string, eventKey: string) => Promise<boolean>;     // 這一社是不是該活動的主委
+  members?: (club: string) => Promise<Any[]>;                         // 該社的社友庫（記錄實際出席時用來確認名單）
 }
 // 由「主委活動設定」自動建立的行程，用這個標記辨識（只有這種行程會被自動更新／移除，手動建立的不會被動到）
 export const AUTO_SYNC_MARK = "主委活動設定（自動連動）";
@@ -426,6 +427,69 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
       for (const x of rs || []) counts.set(x.event_id, (counts.get(x.event_id) || 0) + 1);
     }
     return { ok: true, events: (data || []).map((r: Any) => ({ ...toView(r, true), rsvpCount: counts.get(r.id) || 0 })), types: await loadTypes(admin) };
+  }
+
+  // ---------- 社內例會：實際出席紀錄 ----------
+  // 只限社內行程（地區活動的出席請用報到系統）。讀取：回傳已記錄的出席者與「表示參加」名單；
+  // 儲存：body.keys＝實際出席者的 person_key（社友庫裡的人，含寶尊眷），整批取代這個行程的出席紀錄。
+  if (action === "cal_desk_attend_get" || action === "cal_desk_attend_save") {
+    const { data: ev, error } = await admin.from("calendar_events").select("*").eq("id", String(body.id || "")).maybeSingle();
+    if (error) dbFail(error);
+    if (!ev || ev.layer !== "club") fail("CAL_NOT_FOUND");
+    if (!can("club", ev.club_name)) fail("CAL_FORBIDDEN");
+    if (action === "cal_desk_attend_save") {
+      const list: Any[] = ctx.members ? await ctx.members(ev.club_name) : [];
+      const byKey = new Map<string, Any>(list.filter((m: Any) => m && m.name).map((m: Any) => [personKey(m), m]));
+      const keys = [...new Set<string>((Array.isArray(body.keys) ? body.keys : []).map(String))].filter((k) => byKey.has(k));   // 只接受社友庫裡的人
+      const { error: e1 } = await admin.from("calendar_attendance").delete().eq("event_id", ev.id).eq("club_name", ev.club_name);
+      if (e1) dbFail(e1);
+      if (keys.length) {
+        const rows = keys.map((k) => { const m = byKey.get(k); const guest = !!m.spouseOfId || /眷/.test(String(m.role || "")); return { event_id: ev.id, club_name: ev.club_name, person_key: k, full_name: m.name, nickname: m.nickname || "", role: m.role || "", is_guest: guest, marked_by: by }; });
+        const { error: e2 } = await admin.from("calendar_attendance").insert(rows);
+        if (e2) dbFail(e2);
+      }
+    }
+    const [a, r] = await Promise.all([
+      admin.from("calendar_attendance").select("person_key").eq("event_id", ev.id).eq("club_name", ev.club_name),
+      admin.from("calendar_rsvp").select("person_key,full_name,nickname,guest_of").eq("event_id", ev.id).eq("club_name", ev.club_name),
+    ]);
+    if (a.error) dbFail(a.error);
+    if (r.error) dbFail(r.error);
+    return { ok: true, title: ev.title, start: ev.start_at, club: ev.club_name, attended: (a.data || []).map((x: Any) => x.person_key), recorded: (a.data || []).length > 0, rsvp: (r.data || []).map((x: Any) => ({ key: x.person_key, name: x.full_name, nickname: x.nickname || "", guest: !!x.guest_of })) };
+  }
+
+  // ---------- 社內例會統計（某段期間） ----------
+  // 回傳期間內本社的社內行程（開放參加、或有人表示參加、或已記錄出席；已取消的不算），每場的「表示參加」與「實際出席」名單，
+  // 由前端彙整成「每位社友的參加次數」與 Excel。
+  if (action === "cal_desk_stats") {
+    const target = isAdmin ? String(body.targetClub || "") : club;
+    if (!target) fail("BAD_REQUEST");
+    const from = Date.parse(String(body.from || "")), to = Date.parse(String(body.to || ""));
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to < from || to - from > MAX_RANGE_MS) fail("CAL_BAD_TIME");
+    const { data: evs, error } = await admin.from("calendar_events").select("*").eq("layer", "club").eq("club_name", target)
+      .gte("end_at", new Date(from).toISOString()).lte("start_at", new Date(to).toISOString()).order("start_at").limit(1000);
+    if (error) dbFail(error);
+    const live = (evs || []).filter((e: Any) => e.status !== "cancelled");
+    const ids = live.map((e: Any) => e.id);
+    let rs: Any[] = [], at: Any[] = [];
+    if (ids.length) {
+      const [r1, r2] = await Promise.all([
+        admin.from("calendar_rsvp").select("event_id,person_key,full_name,nickname,guest_of,guest_role").in("event_id", ids).eq("club_name", target),
+        admin.from("calendar_attendance").select("event_id,person_key,full_name,nickname,role,is_guest").in("event_id", ids).eq("club_name", target),
+      ]);
+      if (r1.error) dbFail(r1.error);
+      if (r2.error) dbFail(r2.error);
+      rs = r1.data || []; at = r2.data || [];
+    }
+    const people: Record<string, Any> = {};
+    for (const x of rs) people[x.person_key] = people[x.person_key] || { name: x.full_name, nickname: x.nickname || "", role: x.guest_role || "", guest: !!x.guest_of };
+    for (const x of at) people[x.person_key] = { name: x.full_name, nickname: x.nickname || "", role: x.role || "", guest: !!x.is_guest };
+    const events = live.map((e: Any) => {
+      const rsvp = rs.filter((x) => x.event_id === e.id).map((x) => x.person_key);
+      const attended = at.filter((x) => x.event_id === e.id).map((x) => x.person_key);
+      return { id: e.id, title: e.title, start: e.start_at, end: e.end_at, allDay: !!e.all_day, rsvpEnabled: !!e.rsvp_enabled, typeId: e.event_type_id, rsvp, attended, recorded: attended.length > 0 };
+    }).filter((e: Any) => e.rsvpEnabled || e.rsvp.length || e.attended.length);
+    return { ok: true, club: target, events, people, types: await loadTypes(admin) };
   }
 
   // 某個行程目前有誰表示要參加（含寶尊眷）。社內行程只有該社；地區行程是各社合併（只有後台密碼可看）

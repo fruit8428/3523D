@@ -6,7 +6,7 @@ function fake(tables: Record<string, any[]>) {
     tables[t] ||= []; const f: any[] = []; let op = "select", payload: any = null, one = "", conflict: string[] | null = null;
     const run = () => {
       const m = (r: any) => f.every((x) => x(r));
-      if (op === "insert") { const r = { id: t === "calendar_events" ? "ev" + (seq++) : seq++, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), status: "confirmed", ...payload }; tables[t].push(r); return [r]; }
+      if (op === "insert") { const list = Array.isArray(payload) ? payload : [payload]; return list.map((pl: any) => { const r = { id: t === "calendar_events" ? "ev" + (seq++) : seq++, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), status: "confirmed", ...pl }; tables[t].push(r); return r; }); }
       if (op === "upsert") { const dup = tables[t].find((r) => (conflict || ["club_name","person_key","role","managed_club"]).every((k) => r[k] === payload[k])); if (!dup) tables[t].push({ id: seq++, granted_at: "x", ...payload }); return []; }
       if (op === "update") { const rs = tables[t].filter(m); rs.forEach((r) => Object.assign(r, payload)); return rs; }
       if (op === "delete") { const keep = tables[t].filter((r) => !m(r)); tables[t].length = 0; tables[t].push(...keep); return []; }
@@ -229,3 +229,32 @@ ok("手機版：社內管理者新增的例會可開放參加", phoneMeet.rsvpEn
 const phonePriv = (await handleMember("cal_save", { event: ev({ layer: "private", title: "私人想開放", rsvpEnabled: true }) }, db, A)).event;
 ok("私人行程不能開放參加", phonePriv.rsvpEnabled === false);
 ok("手機版編輯時不帶 rsvpEnabled 不會把開放關掉", (await handleMember("cal_save", { event: { ...ev({ title: "改標題" }), id: phoneMeet.id } }, db, A)).event.rsvpEnabled === true);
+
+// ---------- 社內例會：實際出席與統計 ----------
+const MEMBERS: Record<string, any[]> = {
+  "甲社": [{ id: 1, name: "王", nickname: "", role: "社長" }, { id: 2, name: "王子", nickname: "", role: "寶(尊)眷", spouseOfId: 1 }, { id: 3, name: "趙", nickname: "Z", role: "社友" }],
+  "乙社": [{ id: 9, name: "李", nickname: "", role: "社友" }],
+};
+const deskM = (action: string, extra: any) => handleDesk(action, extra, { admin: db, password: "pw", members: async (c: string) => MEMBERS[c] || [],
+  checkClub: async (c: string, p: string) => { if (!(c === "甲社" && p === "a123") && !(c === "乙社" && p === "b123")) { const e: any = new Error("x"); e.code = "CLUB_AUTH_FAILED"; throw e; } } });
+const A1 = { club: "甲社", clubPassword: "a123" };
+const mt1 = (await deskM("cal_desk_save", { ...A1, event: dev({ layer: "club", club: "甲社", title: "例會一", start: "2026-12-02T19:00:00+08:00", end: "2026-12-02T21:00:00+08:00", rsvpEnabled: true }) })).event;
+const mt2 = (await deskM("cal_desk_save", { ...A1, event: dev({ layer: "club", club: "甲社", title: "例會二", start: "2026-12-09T19:00:00+08:00", end: "2026-12-09T21:00:00+08:00", rsvpEnabled: true }) })).event;
+await handleMember("cal_rsvp_set", { id: mt1.id, join: true, guestKeys: ["王子|"] }, db, mkU("王|", "王"), { roster: jreg.roster, family: async () => [{ key: "王子|", name: "王子", nickname: "", role: "寶(尊)眷" }] });
+let ag = await deskM("cal_desk_attend_get", { ...A1, id: mt1.id });
+ok("讀出席：尚未記錄、帶出表示參加名單（含寶尊眷）", ag.recorded === false && ag.rsvp.map((x: any) => x.name).sort().join() === "王,王子" && ag.rsvp.find((x: any) => x.name === "王子").guest === true);
+ag = await deskM("cal_desk_attend_save", { ...A1, id: mt1.id, keys: ["王|", "趙|Z", "鬼|", "王|"] });
+ok("儲存實際出席：只收社友庫裡的人、不重複（鬼被忽略）", ag.recorded && ag.attended.sort().join() === "王|,趙|Z");
+ag = await deskM("cal_desk_attend_save", { ...A1, id: mt1.id, keys: ["王|", "王子|"] });
+ok("再儲存＝整批取代（趙移除、王子加入），寶尊眷標記 is_guest", ag.attended.sort().join() === "王|,王子|" && T.calendar_attendance.find((x: any) => x.person_key === "王子|").is_guest === true);
+ok("乙社不能記錄甲社例會出席", await code(deskM("cal_desk_attend_save", { club: "乙社", clubPassword: "b123", id: mt1.id, keys: ["李|"] })) === "CAL_FORBIDDEN");
+ok("地區行程不走這裡（用報到系統）", await code(deskM("cal_desk_attend_get", { adminPassword: "pw", id: jEv.id })) === "CAL_NOT_FOUND");
+await deskM("cal_desk_attend_save", { ...A1, id: mt2.id, keys: ["王|", "趙|Z"] });
+const st1 = await deskM("cal_desk_stats", { ...A1, from: "2026-12-01T00:00:00+08:00", to: "2026-12-31T23:59:59+08:00" });
+const e1 = st1.events.find((e: any) => e.id === mt1.id), e2 = st1.events.find((e: any) => e.id === mt2.id);
+ok("統計：列出期間內的例會、每場的表示參加與實際出席", !!e1 && !!e2 && e1.rsvp.length === 2 && e1.attended.length === 2 && e2.attended.length === 2 && e2.recorded);
+ok("統計：人名資料齊全（含寶尊眷標記）", st1.people["王子|"].guest === true && st1.people["趙|Z"].nickname === "Z");
+ok("統計：乙社看不到甲社（用自己社的密碼只能看自己社）", (await deskM("cal_desk_stats", { club: "乙社", clubPassword: "b123", targetClub: "甲社", from: "2026-12-01T00:00:00+08:00", to: "2026-12-31T23:59:59+08:00" })).club === "乙社");
+await deskM("cal_desk_cancel", { ...A1, id: mt2.id });
+ok("統計：已取消的例會不算", !(await deskM("cal_desk_stats", { ...A1, from: "2026-12-01T00:00:00+08:00", to: "2026-12-31T23:59:59+08:00" })).events.some((e: any) => e.id === mt2.id));
+ok("統計：期間太長被擋", await code(deskM("cal_desk_stats", { ...A1, from: "2025-01-01T00:00:00+08:00", to: "2026-12-31T00:00:00+08:00" })) === "CAL_BAD_TIME");
