@@ -44,7 +44,7 @@
             <h2 class="font-black text-lg">② 目前的管理者</h2>
             <div id="roleList" class="mt-3"></div>
             <h3 class="font-bold text-sm mt-5 text-rose-700">還沒有社內管理者的社（<span id="noEditorCount">0</span>）</h3>
-            <div id="noEditor" class="mt-2 flex flex-wrap gap-1.5 text-sm"></div>
+            <div id="noEditor" class="mt-2 space-y-3"></div>
         </section>
 
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
@@ -82,6 +82,11 @@
             return j && typeof j.ok === 'boolean' ? j : { ok: false, code: 'SERVER_ERROR' };
         } catch (e) { return { ok: false, code: 'NETWORK' }; }
     }
+    // 社名顯示成「第一分區 01-1 臺北市南區扶輪社」，方便對照
+    function clubLabel(name) {
+        const c = (state && state.clubInfos || []).find(x => x.name === name);
+        return c ? `${c.division} ${c.code} ${c.name}` : name;
+    }
     const errText = c => ERR[c] || '系統忙碌中，請稍後再試。';
 
     async function login() {
@@ -94,9 +99,17 @@
     }
     async function refresh() { const r = await api('cal_admin_state'); if (r.ok) { state = r; render(); } else alert(errText(r.code)); }
     function render() {
-        $('roleList').innerHTML = state.roles.length ? `<table class="w-full text-sm"><thead><tr class="text-left text-slate-500 border-b"><th class="py-2">姓名</th><th>所屬社</th><th>角色</th><th>管理範圍</th><th></th></tr></thead><tbody>${state.roles.map(r => `<tr class="border-b border-slate-100"><td class="py-2 font-bold">${E(r.name)}${r.nickname ? `<span class="ml-1 font-normal text-slate-500">${E(r.nickname)}</span>` : ''}</td><td>${E(r.club)}</td><td>${E(ROLE_NAME[r.role] || r.role)}</td><td>${E(r.role === 'club_editor' ? r.managedClub : r.role === 'district_editor' ? '全地區' : '')}</td><td class="text-right"><button type="button" onclick="revoke(${Number(r.id)})" class="text-rose-700 font-bold">移除</button></td></tr>`).join('')}</tbody></table>` : '<div class="text-slate-500 text-sm">還沒有指定任何管理者。</div>';
+        $('roleList').innerHTML = state.roles.length ? `<table class="w-full text-sm"><thead><tr class="text-left text-slate-500 border-b"><th class="py-2">姓名</th><th>所屬社</th><th>角色</th><th>管理範圍</th><th></th></tr></thead><tbody>${state.roles.map(r => `<tr class="border-b border-slate-100"><td class="py-2 font-bold">${E(r.name)}${r.nickname ? `<span class="ml-1 font-normal text-slate-500">${E(r.nickname)}</span>` : ''}</td><td>${E(clubLabel(r.club))}</td><td>${E(ROLE_NAME[r.role] || r.role)}</td><td>${E(r.role === 'club_editor' ? clubLabel(r.managedClub) : r.role === 'district_editor' ? '全地區' : '')}</td><td class="text-right"><button type="button" onclick="revoke(${Number(r.id)})" class="text-rose-700 font-bold">移除</button></td></tr>`).join('')}</tbody></table>` : '<div class="text-slate-500 text-sm">還沒有指定任何管理者。</div>';
         $('noEditorCount').textContent = state.clubsWithoutEditor.length;
-        $('noEditor').innerHTML = state.clubsWithoutEditor.map(c => `<span class="text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-0.5">${E(c)}</span>`).join('') || '<span class="text-emerald-700 font-bold">每一社都有管理者 ✅</span>';
+        // 依分區分組，社名前面加社代號，方便對照找人
+        const missing = new Set(state.clubsWithoutEditor), groups = [];
+        (state.clubInfos || []).forEach(c => {
+            if (!missing.has(c.name)) return;
+            let g = groups.find(x => x.division === c.division);
+            if (!g) { g = { division: c.division, clubs: [] }; groups.push(g); }
+            g.clubs.push(c);
+        });
+        $('noEditor').innerHTML = groups.map(g => `<div><div class="text-sm font-black text-slate-700">${E(g.division)}　<span class="font-normal text-slate-500">（${g.clubs.length} 社）</span></div><div class="mt-1 flex flex-wrap gap-1.5 text-sm">${g.clubs.map(c => `<span class="text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-0.5"><span class="font-mono text-xs text-rose-400">${E(c.code)}</span> ${E(c.name)}</span>`).join('')}</div></div>`).join('') || '<span class="text-emerald-700 font-bold">每一社都有管理者 ✅</span>';
         $('typeList').innerHTML = state.types.map(t => `<div class="flex gap-2"><input type="text" id="type_${t.id}" value="${E(t.name)}" maxlength="30" class="flex-1 border border-slate-300 rounded-lg px-3 py-2"><button type="button" onclick="renameType(${t.id})" class="border border-slate-300 rounded-lg px-4 font-bold">改名</button><button type="button" onclick="delType(${t.id})" class="border border-rose-300 text-rose-700 rounded-lg px-4 font-bold">刪除</button></div>`).join('');
         renderResults();
     }
@@ -108,7 +121,7 @@
         if (!found.length) $('results').innerHTML = '<div class="text-slate-500 text-sm">找不到符合的社友。</div>';
     }
     function renderResults() {
-        $('results').innerHTML = found.map((m, i) => `<div class="border border-slate-200 rounded-lg p-3 flex flex-wrap items-center gap-2"><div class="min-w-0 flex-1"><span class="font-black">${E(m.name)}</span>${m.nickname ? `<span class="ml-1 text-slate-500">${E(m.nickname)}</span>` : ''}<div class="text-sm text-slate-500">${E(m.club)}${m.role ? '・' + E(m.role) : ''}</div></div>
+        $('results').innerHTML = found.map((m, i) => `<div class="border border-slate-200 rounded-lg p-3 flex flex-wrap items-center gap-2"><div class="min-w-0 flex-1"><span class="font-black">${E(m.name)}</span>${m.nickname ? `<span class="ml-1 text-slate-500">${E(m.nickname)}</span>` : ''}<div class="text-sm text-slate-500">${E(clubLabel(m.club))}${m.role ? '・' + E(m.role) : ''}</div></div>
             <button type="button" onclick="grant(${i},'club_editor')" class="bg-amber-400 font-bold rounded-lg px-3 py-2 text-sm">設為本社管理者</button>
             <button type="button" onclick="grant(${i},'district_editor')" class="bg-blue-700 text-white font-bold rounded-lg px-3 py-2 text-sm">設為地區管理者</button>
             <button type="button" onclick="grant(${i},'governor')" class="border border-slate-300 font-bold rounded-lg px-3 py-2 text-sm">設為總監</button></div>`).join('');

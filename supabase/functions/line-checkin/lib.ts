@@ -289,7 +289,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
       return await calAdmin(action, body, {
         admin: deps.admin, password: deps.calendarAdminPassword || "",
         members: async () => (await loadState(deps, true)).members,
-        clubNames: async () => ((await loadState(deps, false)).divisionsData || []).flatMap((d: Any) => (d.clubs || []).map((c: Any) => c.name)),
+        clubInfos: async () => ((await loadState(deps, false)).divisionsData || []).flatMap((d: Any) => (d.clubs || []).map((c: Any) => ({ name: c.name, division: d.name || `第 ${d.id} 分區`, code: c.code || "" }))),
       });
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
   }

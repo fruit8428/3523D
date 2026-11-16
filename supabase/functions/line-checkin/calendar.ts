@@ -272,7 +272,7 @@ export async function icsFeed(admin: Any, token: string): Promise<string | null>
 }
 
 // ---------- 後台動作（電腦版 admin-calendar.html，用後台密碼把關） ----------
-export interface AdminCtx { admin: Any; password: string; members: () => Promise<Record<string, Any[]>>; clubNames: () => Promise<string[]> }
+export interface AdminCtx { admin: Any; password: string; members: () => Promise<Record<string, Any[]>>; clubInfos: () => Promise<{ name: string; division: string; code: string }[]> }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const personKey = (p: Any) => `${(p && p.name) || ""}|${(p && p.nickname) || ""}`;
 
@@ -284,10 +284,11 @@ export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Pro
   if (action === "cal_admin_state") {
     const { data, error } = await admin.from("calendar_roles").select("*").order("granted_at", { ascending: false });
     if (error) dbFail(error);
-    const clubs = await ctx.clubNames();
+    const clubInfos = await ctx.clubInfos();      // 依分區排序的社清單（含分區名稱與社代號）
+    const clubs = clubInfos.map((c) => c.name);
     const covered = new Set((data || []).filter((r: Any) => r.role === "club_editor").map((r: Any) => r.managed_club));
     return {
-      ok: true, types: await loadTypes(admin), clubs,
+      ok: true, types: await loadTypes(admin), clubs, clubInfos,
       roles: (data || []).map((r: Any) => ({ id: r.id, club: r.club_name, name: r.full_name, nickname: r.nickname, role: r.role, managedClub: r.managed_club })),
       clubsWithoutEditor: clubs.filter((c) => !covered.has(c)),
     };
@@ -315,7 +316,7 @@ export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Pro
     const m = (Array.isArray(list) ? list : []).find((x: Any) => x && x.name && personKey(x) === key);
     if (!m) fail("MEMBER_NOT_FOUND");
     const managedClub = role === "club_editor" ? String(body.managedClub || club) : "";
-    if (role === "club_editor" && !(await ctx.clubNames()).includes(managedClub)) fail("BAD_REQUEST");
+    if (role === "club_editor" && !(await ctx.clubInfos()).some((c) => c.name === managedClub)) fail("BAD_REQUEST");
     const { error } = await admin.from("calendar_roles").upsert(
       { club_name: club, person_key: key, full_name: m.name, nickname: m.nickname || "", role, managed_club: managedClub },
       { onConflict: "club_name,person_key,role,managed_club", ignoreDuplicates: true });

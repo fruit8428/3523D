@@ -35,8 +35,8 @@ await handleMember("cal_save", { event: ev({ layer: "private", title: "B私人" 
 ok("沒填標題被擋", await code(handleMember("cal_save", { event: ev({ layer: "private", title: " " }) }, db, A)) === "CAL_NEED_TITLE");
 ok("結束早於開始被擋", await code(handleMember("cal_save", { event: ev({ layer: "private", end: "2026-12-05T10:00:00+08:00" }) }, db, A)) === "CAL_END_BEFORE_START");
 // 指派管理者
-const adm = (action: string, extra: any) => handleAdmin(action, { adminPassword: "pw", ...extra }, { admin: db, password: "pw", members: async () => ({ 甲社: [{ name: "王", nickname: "" }], 乙社: [{ name: "李", nickname: "" }] }), clubNames: async () => ["甲社", "乙社"] });
-ok("後台密碼錯誤被擋", await code(handleAdmin("cal_admin_state", { adminPassword: "x" }, { admin: db, password: "pw", members: async () => ({}), clubNames: async () => [] })) === "CAL_ADMIN_AUTH_FAILED");
+const adm = (action: string, extra: any) => handleAdmin(action, { adminPassword: "pw", ...extra }, { admin: db, password: "pw", members: async () => ({ 甲社: [{ name: "王", nickname: "" }], 乙社: [{ name: "李", nickname: "" }] }), clubInfos: async () => [{ name: "甲社", division: "第一分區", code: "01-1" }, { name: "乙社", division: "第一分區", code: "01-2" }] });
+ok("後台密碼錯誤被擋", await code(handleAdmin("cal_admin_state", { adminPassword: "x" }, { admin: db, password: "pw", members: async () => ({}), clubInfos: async () => [] })) === "CAL_ADMIN_AUTH_FAILED");
 await adm("cal_admin_grant", { club: "甲社", personKey: "王|", role: "club_editor" });
 await adm("cal_admin_grant", { club: "乙社", personKey: "李|", role: "district_editor" });
 ok("找不到社友不能指派", await code(adm("cal_admin_grant", { club: "甲社", personKey: "鬼|", role: "club_editor" })) === "MEMBER_NOT_FOUND");
