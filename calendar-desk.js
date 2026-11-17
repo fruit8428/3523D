@@ -399,7 +399,7 @@ async function cdeskShowRsvp(i) {
     const r = await cdApi('cal_desk_event_rsvp', cdeskTab, { id: e.id });
     if (!r.ok) { cdToast(cdErr(r.code), '⚠️'); return cdeskReload(); }
     const people = r.people || [];
-    const line = p => `${p.name}${p.nickname ? ' ' + p.nickname : ''}${p.guest ? `（${/眷/.test(p.role) ? '寶尊眷' : '眷屬'}）` : ''}${p.proxy ? '（執秘代登記）' : ''}`;
+    const line = p => `${p.name}${p.nickname ? ' ' + p.nickname : ''}${p.guest ? `（${/眷/.test(p.role) ? '寶尊眷' : (p.role || '眷屬')}）` : ''}${p.proxy ? '（執秘代登記）' : ''}`;
     const byClub = {}; people.forEach(p => { (byClub[p.club] = byClub[p.club] || []).push(p); });
     const text = `${r.title} 參加名單（${people.length} 人）\n` + Object.keys(byClub).map(c => (cdeskTab === 'district' ? `【${c}】\n` : '') + byClub[c].map((p, n) => `${n + 1}. ${line(p)}`).join('\n')).join('\n');
     window.__cdeskRsvpText = text;
@@ -438,41 +438,172 @@ function cdOrderedMembers(club) {
 // ---------- 執秘代為登記參加（不會用 LINE 的長輩等） ----------
 // 勾選＝代為登記。社友自己在 LINE 登記的人（含他帶的寶尊眷）鎖住不能改，要取消請本人在 LINE 按「取消參加」。
 // 儲存後這些人會出現在 LINE 的參加名單（標「執秘代登記」），也算進表示參加人數、出席勾選預設與例會統計。
+// 同行的非社友（子女、外勞、朋友，或社友庫沒有資料的寶尊眷）：存在 cdPx.guests＝[{host, type, name}]，host＝帶他來的社友 key。
+// 「貼上 LINE 接龍」：用 index.html 的 parseLineRelay 找出社友，再依「+1／+2／夫婦／3位」判斷帶幾位：
+//   第 1 位＝該社友的寶尊眷（社友庫有就直接勾，沒有就留一個寶尊眷欄位讓執秘填名字）；第 2 位起＝下拉選單選 子女／外勞／朋友／其他。
+const CD_GUEST_TYPES = ['寶(尊)眷', '子女', '外勞', '朋友', '其他'];
+let cdPx = null;      // { id, club, members, self:Set, guests:[], relay:null }
+const cdIsExtKey = k => String(k || '').startsWith('guest:');
 async function cdeskProxy(id) {
     const box = document.getElementById('cdeskBody');
     box.innerHTML = '<div class="text-sm text-slate-500 py-6 text-center">讀取中…</div>';
     const r = await cdApi('cal_desk_proxy_get', 'club', { id: id });
     if (!r.ok) { cdToast(r.code === 'CAL_REG_UNAVAILABLE' ? '這個行程沒有開放參加，請先在「編輯」勾選「開放社友按我要參加」。' : cdErr(r.code), '⚠️'); return cdeskReload(); }
     const members = cdOrderedMembers(r.club);
-    const by = new Map((r.people || []).map(p => [p.key, p]));
+    const people = r.people || [];
+    const by = new Map(people.filter(p => !p.ext).map(p => [p.key, p]));
     const t = cdParts(Date.parse(r.start));
     const known = new Set(members.map(cdPk));
-    const outside = (r.people || []).filter(p => !known.has(p.key));     // 已不在社友庫，但名單上還有
+    const outside = people.filter(p => !p.ext && !known.has(p.key));     // 已不在社友庫，但名單上還有
+    cdPx = { id: id, club: r.club, members: members, self: new Set(people.filter(p => !p.proxy).map(p => p.key)),
+        guests: people.filter(p => p.ext && p.proxy).map(p => ({ host: p.guestOf, type: CD_GUEST_TYPES.includes(p.role) ? p.role : '其他', name: p.name })),
+        selfGuests: people.filter(p => p.ext && !p.proxy).length + outside.filter(p => !p.proxy).length, relay: null };
     box.innerHTML = `<button type="button" onclick="cdeskReload()" class="text-sm font-bold text-blue-700">‹ 返回（不儲存）</button>
-        <div class="mt-2"><h4 class="font-black text-lg text-slate-900">🙋 代為登記參加：${cdE(r.title)}</h4>
-        <div class="text-xs text-slate-500 mt-0.5">${t.y}/${cdP2(t.m)}/${cdP2(t.d)}（${CDESK_WD[t.wd]}）・${cdE(r.club)}</div>
-        <p class="text-xs text-slate-600 mt-1 leading-relaxed">幫沒有用 LINE 的社友（例如長輩）登記參加。勾選後按「儲存」，社友在 LINE 看到的參加名單就會有他們（標「執秘代登記」）。<br>灰色鎖住的是社友<b>自己在 LINE 登記</b>的，要取消請本人在 LINE 按「取消參加」。</p></div>
+        <div class="mt-2 flex flex-wrap items-start justify-between gap-2"><div><h4 class="font-black text-lg text-slate-900">🙋 代為登記參加：${cdE(r.title)}</h4>
+        <div class="text-xs text-slate-500 mt-0.5">${t.y}/${cdP2(t.m)}/${cdP2(t.d)}（${CDESK_WD[t.wd]}）・${cdE(r.club)}</div></div>
+        <button type="button" onclick="cdPxRelayToggle()" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow-sm">💬 貼上 LINE 接龍</button></div>
+        <p class="text-xs text-slate-600 mt-1 leading-relaxed">幫沒有用 LINE 的社友（例如長輩）登記參加。勾選後按「儲存」，社友在 LINE 看到的參加名單就會有他們（標「執秘代登記」）。<br>灰色鎖住的是社友<b>自己在 LINE 登記</b>的，要取消請本人在 LINE 按「取消參加」。</p>
+        <div id="cdPxRelay" class="hidden mt-3 border border-emerald-300 bg-emerald-50/50 rounded-xl p-3">
+            <div class="text-sm font-black text-slate-900">💬 貼上 LINE 群組的接龍</div>
+            <p class="text-[11px] text-slate-600 mt-0.5 leading-relaxed">在 LINE 接龍訊息上長按 →「複製」，貼到下面再按「分析」。寫「+1」＝帶寶尊眷（社友庫沒有寶尊眷資料時，會留欄位給您填名字）；「+2」以上，第 2 位起請在下拉選單選子女／外勞／朋友。寫「取消」「請假」的會略過。</p>
+            <textarea id="cdPxRelayText" rows="6" class="mt-2 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white" placeholder="例：&#10;1. P Robert&#10;2. PP Fruit +1&#10;3. 崔敬福 +2"></textarea>
+            <div class="mt-2 flex gap-2"><button type="button" onclick="cdPxRelayAnalyze()" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-sm font-bold">分析</button><button type="button" onclick="cdPxRelayToggle(false)" class="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold">收起</button></div>
+            <div id="cdPxRelayResult" class="mt-2"></div>
+        </div>
         <div class="mt-3 text-xs text-slate-600">目前參加 <b id="cdProxyTotal">0</b> 人（其中執秘代登記 <b id="cdProxyN">0</b> 人）</div>
         ${members.length ? `<div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">${members.map(m => {
             const k = cdPk(m), g = cdIsGuestMember(m), p = by.get(k), self = p && !p.proxy;
-            return `<label class="flex items-center gap-2 border ${g ? 'border-pink-200 bg-pink-50/50 ml-4' : 'border-slate-200 bg-white'} rounded-lg px-2.5 py-1.5 text-sm ${self ? 'opacity-60' : 'cursor-pointer'}"><input type="checkbox" class="w-4 h-4 ${self ? 'cd-pxself' : 'cd-px'}" data-key="${cdE(k)}" ${p ? 'checked' : ''} ${self ? 'disabled' : ''} onchange="cdProxyCount()"><span class="font-bold">${cdE(m.name)}</span>${m.nickname ? `<span class="text-slate-500">${cdE(m.nickname)}</span>` : ''}${g ? '<span class="text-[11px] text-pink-700">寶尊眷</span>' : (m.role ? `<span class="text-[11px] text-slate-400">${cdE(m.role)}</span>` : '')}${self ? '<span class="ml-auto text-[11px] text-emerald-700 font-bold">📱 本人已在 LINE 登記</span>' : p ? '<span class="ml-auto text-[11px] text-violet-700 font-bold">執秘代登記</span>' : ''}</label>`;
+            return `<label class="flex items-center gap-2 border ${g ? 'border-pink-200 bg-pink-50/50 ml-4' : 'border-slate-200 bg-white'} rounded-lg px-2.5 py-1.5 text-sm ${self ? 'opacity-60' : 'cursor-pointer'}"><input type="checkbox" class="w-4 h-4 ${self ? 'cd-pxself' : 'cd-px'}" data-key="${cdE(k)}" ${p ? 'checked' : ''} ${self ? 'disabled' : ''} onchange="cdPxGuestsRender()"><span class="font-bold">${cdE(m.name)}</span>${m.nickname ? `<span class="text-slate-500">${cdE(m.nickname)}</span>` : ''}${g ? '<span class="text-[11px] text-pink-700">寶尊眷</span>' : (m.role ? `<span class="text-[11px] text-slate-400">${cdE(m.role)}</span>` : '')}${self ? '<span class="ml-auto text-[11px] text-emerald-700 font-bold">📱 本人已在 LINE 登記</span>' : p ? '<span class="ml-auto text-[11px] text-violet-700 font-bold">執秘代登記</span>' : ''}</label>`;
         }).join('')}</div>` : '<div class="mt-3 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-3">這個社的社友庫是空的，請先在報名系統建立社友名單。</div>'}
         ${outside.length ? `<div class="mt-2 text-xs text-slate-500">另有已不在社友庫的登記：${outside.map(p => cdE(p.name + (p.nickname ? ' ' + p.nickname : ''))).join('、')}${outside.some(p => p.proxy) ? '（執秘代登記的這幾位，儲存後會一併移除）' : ''}</div>` : ''}
+        <div class="mt-4 border border-pink-200 bg-pink-50/40 rounded-xl p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2"><div class="font-black text-sm text-slate-900">👨‍👩‍👧 同行的非社友（子女、外勞、朋友，或社友庫沒有資料的寶尊眷）</div>
+            <div class="flex items-center gap-1.5 text-xs"><select id="cdPxAddHost" class="border border-slate-300 rounded px-1.5 py-1 bg-white max-w-[12rem]"><option value="">選擇帶他來的社友</option>${members.filter(m => !cdIsGuestMember(m)).map(m => `<option value="${cdE(cdPk(m))}">${cdE(m.nickname || m.name)}（${cdE(m.name)}）</option>`).join('')}</select><button type="button" onclick="cdPxGuestAdd()" class="px-2.5 py-1 bg-white border border-pink-300 text-pink-800 rounded-md font-bold">＋ 新增同行者</button></div></div>
+            <div id="cdPxGuests" class="mt-2"></div>
+        </div>
+        <div id="cdPxError" class="hidden mt-3 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2"></div>
         <button type="button" id="cdProxySave" onclick="cdeskProxySave('${cdE(id)}')" class="mt-4 px-8 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg text-sm shadow-sm">儲存</button>`;
-    window.__cdProxyOutsideSelf = outside.filter(p => !p.proxy).length;
+    cdPxGuestsRender();
+}
+function cdPxHostLabel(key) { const m = (cdPx && cdPx.members || []).find(x => cdPk(x) === key); return m ? `${m.nickname || m.name}（${m.name}）` : key.split('|')[0]; }
+function cdPxIsAttending(key) {
+    if (cdPx && cdPx.self.has(key)) return true;
+    const c = document.querySelector(`.cd-px[data-key="${CSS.escape(key)}"]`);
+    return !!(c && c.checked);
+}
+function cdPxGuestsRender() {
+    const box = document.getElementById('cdPxGuests'); if (!box || !cdPx) return;
+    if (!cdPx.guests.length) { box.innerHTML = '<div class="text-xs text-slate-500">目前沒有。社友帶了社友庫以外的人（例如子女、外勞、朋友）時，在上面選社友後按「＋ 新增同行者」，或用「💬 貼上 LINE 接龍」自動帶入。</div>'; cdProxyCount(); return; }
+    box.innerHTML = cdPx.guests.map((g, i) => `<div class="flex flex-wrap items-center gap-1.5 py-1 border-b border-pink-100 text-sm">
+            <span class="text-xs text-slate-600 min-w-[9rem]">${cdE(cdPxHostLabel(g.host))} 帶的</span>
+            <select class="cd-pxg-type border ${g.type ? 'border-slate-300' : 'border-rose-400 bg-rose-50'} rounded px-1.5 py-1 text-sm bg-white" onchange="cdPxGuestSet(${i},'type',this.value)"><option value="" ${g.type ? '' : 'selected'}>請選擇身分</option>${CD_GUEST_TYPES.map(t => `<option value="${cdE(t)}" ${g.type === t ? 'selected' : ''}>${t === '寶(尊)眷' ? '寶尊眷' : t}</option>`).join('')}</select>
+            <input type="text" maxlength="30" value="${cdE(g.name)}" oninput="cdPxGuestSet(${i},'name',this.value)" class="border border-slate-300 rounded px-2 py-1 text-sm w-40" placeholder="${g.type === '寶(尊)眷' ? '寶尊眷姓名' : '姓名（可不填）'}">
+            ${cdPxIsAttending(g.host) ? '' : '<span class="text-[11px] text-rose-700 font-bold">⚠️ 帶他的社友還沒勾選</span>'}
+            <button type="button" onclick="cdPxGuestDel(${i})" class="ml-auto text-slate-400 hover:text-rose-600 font-bold px-1" title="移除">✕</button>
+        </div>`).join('');
     cdProxyCount();
 }
+function cdPxGuestSet(i, field, v) {
+    if (!cdPx || !cdPx.guests[i]) return;
+    cdPx.guests[i][field] = v;
+    if (field === 'type') cdPxGuestsRender();     // 換身分時更新提示（姓名欄打字時不重畫，避免游標跳走）
+}
+function cdPxGuestDel(i) { if (cdPx) { cdPx.guests.splice(i, 1); cdPxGuestsRender(); } }
+function cdPxCheck(key) { const c = document.querySelector(`.cd-px[data-key="${CSS.escape(key)}"]`); if (c) c.checked = true; }
+function cdPxGuestAdd() {
+    const sel = document.getElementById('cdPxAddHost'); const host = sel && sel.value;
+    if (!host) return cdToast('請先選擇帶他來的社友', '⚠️');
+    cdPxCheck(host);                                                       // 帶人的社友本人一定也參加
+    cdPx.guests.push({ host: host, type: '', name: '' });
+    cdPxGuestsRender();
+}
 function cdProxyCount() {
-    const n = Array.from(document.querySelectorAll('.cd-px')).filter(c => c.checked).length;
-    const self = document.querySelectorAll('.cd-pxself').length + (window.__cdProxyOutsideSelf || 0);
+    const n = Array.from(document.querySelectorAll('.cd-px')).filter(c => c.checked).length + (cdPx ? cdPx.guests.length : 0);
+    const self = document.querySelectorAll('.cd-pxself').length + (cdPx ? cdPx.selfGuests : 0);
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     set('cdProxyTotal', n + self); set('cdProxyN', n);
+}
+
+// ---------- 貼上 LINE 接龍 ----------
+function cdPxRelayToggle(show) {
+    const el = document.getElementById('cdPxRelay'); if (!el) return;
+    const on = show === undefined ? el.classList.contains('hidden') : show;
+    el.classList.toggle('hidden', !on);
+    if (on) { const t = document.getElementById('cdPxRelayText'); if (t) t.focus(); }
+}
+// 這一行除了本人還帶了幾位：「+2」＝2；「3位／三人」＝本人以外 2；「夫婦、伉儷、攜眷、+夫人」＝1
+function cdRelayExtraCount(line) {
+    const half = v => String(v).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+    const body = half(String(line || '')).replace(/^\s*(\d{1,3}\s*[.、．)）:：]|[①-⑳]|(\d️?⃣)+|[-•●▪◆✅☑✔])\s*/, '');
+    let m = body.match(/[+＋]\s*(\d{1,2})(?!\d)/);
+    if (m) return Math.min(10, parseInt(m[1], 10));
+    m = body.match(/([1-9]|[一二兩三四五六七八九])\s*(位|人|大人)/);
+    if (m) { const n = /\d/.test(m[1]) ? parseInt(m[1], 10) : '一二三四五六七八九'.indexOf(m[1].replace('兩', '二')) + 1; return Math.max(0, Math.min(10, n - 1)); }
+    if (/[+＋&＆]\s*(夫人|寶眷|尊眷|眷屬|眷|太太|先生|另一半|老婆|老公)|夫婦|伉儷|攜眷|偕眷/.test(body)) return 1;
+    return 0;
+}
+// 分析接龍：回傳 { checks:[社友 key], guests:[{host,type,name}], rows:[顯示用], unmatched, ambiguous, skipped }
+function cdPxRelayPlan(text, list) {
+    const r = parseLineRelay(text, list);
+    const checks = [], guests = [], rows = [];
+    const addCheck = k => { if (!checks.includes(k)) checks.push(k); };
+    const lines = [];
+    r.matched.forEach(x => { if (!lines.includes(x.line)) lines.push(x.line); });
+    lines.forEach(line => {
+        const hits = r.matched.filter(x => x.line === line);
+        hits.forEach(x => addCheck(cdPk(x.member)));
+        const host = (hits.find(x => !x.viaSpouse) || {}).member;
+        if (!host) return;
+        const extra = cdRelayExtraCount(line), hk = cdPk(host), notes = [];
+        if (extra >= 1) {
+            const sp = cdIsGuestMember(host) ? null : list.find(m => m.spouseOfId === host.id);
+            if (sp) { addCheck(cdPk(sp)); notes.push(`寶尊眷 ${sp.name}`); }
+            else { guests.push({ host: hk, type: '寶(尊)眷', name: '' }); notes.push('寶尊眷（社友庫沒有資料，請填名字）'); }
+            for (let n = 2; n <= extra; n++) { guests.push({ host: hk, type: '', name: '' }); notes.push(`第 ${n} 位（請選身分）`); }
+        }
+        rows.push({ line: line, names: hits.filter(x => !x.viaSpouse).map(x => x.member), extra: extra, notes: notes });
+    });
+    return { checks, guests, rows, unmatched: r.unmatched, ambiguous: r.ambiguous, skipped: r.skipped };
+}
+function cdPxRelayAnalyze() {
+    const text = (document.getElementById('cdPxRelayText') || {}).value || '';
+    const box = document.getElementById('cdPxRelayResult');
+    if (!text.trim()) { box.innerHTML = '<div class="text-xs font-bold text-rose-700">請先貼上 LINE 接龍的文字。</div>'; return; }
+    if (typeof parseLineRelay !== 'function') { box.innerHTML = '<div class="text-xs font-bold text-rose-700">接龍分析元件尚未載入，請重新整理後再試。</div>'; return; }
+    const list = ((typeof clubMemberDatabase !== 'undefined' && clubMemberDatabase[cdPx.club]) || []).filter(m => m && m.name);
+    const plan = cdPx.relay = cdPxRelayPlan(text, list);
+    const L = (title, cls, items) => items.length ? `<div class="mt-2"><div class="text-xs font-bold ${cls}">${title}</div><ul class="mt-0.5 space-y-0.5 text-xs text-slate-700">${items.join('')}</ul></div>` : '';
+    box.innerHTML = `${L(`✅ 找到 ${plan.rows.length} 行`, 'text-emerald-800', plan.rows.map(x => `<li class="border-b border-emerald-100 py-0.5"><b>${x.names.map(m => cdE(m.nickname || m.name)).join('、')}</b>${x.extra ? ` <span class="text-pink-700 font-bold">＋${x.extra}：${x.notes.map(cdE).join('、')}</span>` : ''}<span class="text-slate-400">　← ${cdE(x.line)}</span></li>`))}
+        ${L('⚠️ 找不到對應社友的行（請手動勾選）', 'text-rose-700', plan.unmatched.map(l => `<li>${cdE(l)}</li>`))}
+        ${L('⚠️ 同名無法判斷是哪一位（請手動勾選）', 'text-rose-700', plan.ambiguous.map(a => `<li>${cdE(a.line)} → 可能是：${a.names.map(cdE).join('、')}</li>`))}
+        ${L('略過（取消／請假）', 'text-slate-500', plan.skipped.map(l => `<li class="text-slate-500">${cdE(l)}</li>`))}
+        ${plan.rows.length ? `<button type="button" onclick="cdPxRelayApply()" class="mt-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold">✅ 套用到下方名單</button><span class="ml-2 text-[11px] text-slate-500">套用後請檢查，再按「儲存」。</span>` : '<div class="mt-2 text-xs text-slate-500">沒有找到社友庫裡的人。</div>'}`;
+}
+function cdPxRelayApply() {
+    const plan = cdPx && cdPx.relay; if (!plan) return;
+    plan.checks.forEach(cdPxCheck);
+    // 同一位社友已經有幾個同行者就不重複加（重貼同一份接龍不會變兩倍）
+    const hosts = [...new Set(plan.guests.map(g => g.host))];
+    let added = 0;
+    hosts.forEach(h => {
+        const want = plan.guests.filter(g => g.host === h), have = cdPx.guests.filter(g => g.host === h).length;
+        want.slice(have).forEach(g => { cdPx.guests.push(Object.assign({}, g)); added++; });
+    });
+    cdPxGuestsRender();
+    cdPxRelayToggle(false);
+    const need = cdPx.guests.filter(g => !g.type || (g.type === '寶(尊)眷' && !g.name)).length;
+    cdToast(`已依接龍勾選 ${plan.checks.length} 位社友${added ? `、新增 ${added} 位同行者` : ''}${need ? `；有 ${need} 位同行者要補身分或名字` : ''}，確認後請按「儲存」`, '💬');
 }
 async function cdeskProxySave(id) {
     if (cdeskBusy) return;
     const keys = Array.from(document.querySelectorAll('.cd-px')).filter(c => c.checked).map(c => c.dataset.key);
+    const err = m => { const b = document.getElementById('cdPxError'); if (b) { b.textContent = m; b.classList.remove('hidden'); b.scrollIntoView({ block: 'center' }); } };
+    const guests = (cdPx ? cdPx.guests : []).map(g => ({ host: g.host, type: g.type, name: String(g.name || '').trim() }));
+    if (guests.some(g => !g.type)) return err('有同行者還沒選身分（子女／外勞／朋友…），請在紅框的下拉選單選擇。');
+    const orphan = guests.find(g => !cdPxIsAttending(g.host));
+    if (orphan) return err(`${cdPxHostLabel(orphan.host)} 帶了同行者，但他本人沒有勾選參加。請勾選他，或把同行者移除。`);
     const btn = document.getElementById('cdProxySave'); cdeskBusy = true; btn.disabled = true; btn.textContent = '儲存中…';
-    const r = await cdApi('cal_desk_proxy_save', 'club', { id: id, keys: keys });
+    const r = await cdApi('cal_desk_proxy_save', 'club', { id: id, keys: keys, guests: guests });
     cdeskBusy = false;
     if (!r.ok) { btn.disabled = false; btn.textContent = '儲存'; return cdToast(r.code === 'CAL_EVENT_CANCELLED' ? '這個行程已取消，無法再登記。' : cdErr(r.code), '⚠️'); }
     cdToast(`已儲存，目前參加 ${(r.people || []).length} 人（社友在 LINE 立刻看得到）`, '✅');
@@ -493,8 +624,17 @@ async function cdeskAttend(id, back) {
     // 分兩組：上面＝有報名（社友自己在 LINE 登記＋執秘代登記），以及之前已記錄為出席的人；下面＝其他社友（臨時出席時勾選）
     const top = new Set([...rsvpBy.keys(), ...(r.attended || [])]);
     const g1 = members.filter(m => top.has(cdPk(m))), g2 = members.filter(m => !top.has(cdPk(m)));
+    // 執秘代登記的同行者（不在社友庫）：放在上面一組、帶他來的社友下方
+    (r.rsvp || []).filter(x => x.ext).forEach(x => {
+        const pm = { name: x.name, nickname: '', role: x.role === '寶(尊)眷' ? '寶(尊)眷' : (x.role || '同行'), spouseOfId: 'ext', __key: x.key, __ext: true };
+        let at = g1.findIndex(m => cdPk(m) === x.guestOf);
+        if (at < 0) { g1.push(pm); return; }
+        // 跳過已經排在這位社友下方的寶尊眷與同行者，插在他們後面
+        while (at + 1 < g1.length && cdIsGuestMember(g1[at + 1])) at++;
+        g1.splice(at + 1, 0, pm);
+    });
     const t = cdParts(Date.parse(r.start));
-    const row = m => { const k = cdPk(m), g = cdIsGuestMember(m), x = rsvpBy.get(k); return `<label class="flex items-center gap-2 border ${g ? 'border-pink-200 bg-pink-50/50 ml-4' : 'border-slate-200 bg-white'} rounded-lg px-2.5 py-1.5 text-sm cursor-pointer"><input type="checkbox" class="w-4 h-4 cd-att" data-key="${cdE(k)}" data-guest="${g ? 1 : 0}" ${pre.has(k) ? 'checked' : ''} onchange="cdAttendCount()"><span class="font-bold">${cdE(m.name)}</span>${m.nickname ? `<span class="text-slate-500">${cdE(m.nickname)}</span>` : ''}${g ? '<span class="text-[11px] text-pink-700">寶尊眷</span>' : (m.role ? `<span class="text-[11px] text-slate-400">${cdE(m.role)}</span>` : '')}${x ? `<span class="ml-auto text-[11px] font-bold ${x.proxy ? 'text-violet-700' : 'text-emerald-700'}">${x.proxy ? '🙋 執秘代登記' : '🙋 LINE 報名'}</span>` : ''}</label>`; };
+    const row = m => { const k = m.__key || cdPk(m), g = cdIsGuestMember(m), x = rsvpBy.get(k); return `<label class="flex items-center gap-2 border ${g ? 'border-pink-200 bg-pink-50/50 ml-4' : 'border-slate-200 bg-white'} rounded-lg px-2.5 py-1.5 text-sm cursor-pointer"><input type="checkbox" class="w-4 h-4 cd-att" data-key="${cdE(k)}" data-guest="${g ? 1 : 0}" ${pre.has(k) ? 'checked' : ''} onchange="cdAttendCount()"><span class="font-bold">${cdE(m.name)}</span>${m.nickname ? `<span class="text-slate-500">${cdE(m.nickname)}</span>` : ''}${m.__ext ? `<span class="text-[11px] text-pink-700">${cdE(m.role === '寶(尊)眷' ? '寶尊眷' : m.role)}（非社友）</span>` : g ? '<span class="text-[11px] text-pink-700">寶尊眷</span>' : (m.role ? `<span class="text-[11px] text-slate-400">${cdE(m.role)}</span>` : '')}${x ? `<span class="ml-auto text-[11px] font-bold ${x.proxy ? 'text-violet-700' : 'text-emerald-700'}">${x.proxy ? '🙋 執秘代登記' : '🙋 LINE 報名'}</span>` : ''}</label>`; };
     const grp = (id, title, hint, list, cls, empty) => `<div class="mt-4 border ${cls} rounded-xl p-3">
             <div class="flex flex-wrap items-center justify-between gap-2"><div class="font-black text-sm text-slate-900">${title}（${list.length} 人・已勾 <span id="${id}N">0</span>）</div>
             ${list.length ? `<div class="flex gap-1.5 text-xs"><button type="button" onclick="cdAttendGroup('${id}',true)" class="px-2.5 py-1 bg-white border border-slate-300 rounded-md font-bold">本組全選</button><button type="button" onclick="cdAttendGroup('${id}',false)" class="px-2.5 py-1 bg-white border border-slate-300 rounded-md font-bold">本組清除</button></div>` : ''}</div>
@@ -581,22 +721,23 @@ function cdStatsCompute(r) {
         rows.push({ key, name: info.name, nickname: info.nickname || '', role: info.role || '', guest: !!info.guest, rsvp, attended: att, rate: recordedEvents.length ? att / recordedEvents.length : null, left: !!info.left });
     };
     members.forEach(m => add(cdPk(m), { name: m.name, nickname: m.nickname, role: m.role, guest: cdIsGuestMember(m) }));
-    Object.keys(r.people || {}).forEach(k => add(k, Object.assign({ left: true }, r.people[k])));
+    Object.keys(r.people || {}).filter(k => !cdIsExtKey(k)).forEach(k => add(k, Object.assign({ left: true }, r.people[k])));   // 同行的非社友只計入人數，不列個人
     return { club: r.club, events: r.events, recordedCount: recordedEvents.length, rows, types: r.types || [] };
 }
 function cdStatsRender() {
     const s = cdStats, body = document.getElementById('cdStatsBody'); if (!s || !body) return;
-    const cnt = (keys) => { const g = keys.filter(k => (s.rows.find(x => x.key === k) || {}).guest).length; return `${keys.length - g}${g ? ` <span class="text-pink-700">+${g}</span>` : ''}`; };
+    const isG = k => cdIsExtKey(k) || !!(s.rows.find(x => x.key === k) || {}).guest;     // 寶尊眷或同行的非社友
+    const cnt = (keys) => { const g = keys.filter(isG).length; return `${keys.length - g}${g ? ` <span class="text-pink-700">+${g}</span>` : ''}`; };
     const pct = v => v === null ? '－' : `${Math.round(v * 100)}%`;
     const evRows = s.events.map(e => { const t = cdParts(Date.parse(e.start)); return `<tr class="border-b border-slate-100"><td class="py-1.5 pr-2 whitespace-nowrap">${t.m}/${t.d}（${CDESK_WD[t.wd]}）</td><td class="pr-2">${cdE(e.title)}</td><td class="text-center">${cnt(e.rsvp)}</td><td class="text-center">${e.recorded ? cnt(e.attended) : '<span class="text-amber-700">尚未記錄</span>'}</td><td class="text-right"><button type="button" onclick="cdeskAttend('${cdE(e.id)}','stats')" class="px-2 py-0.5 bg-sky-50 border border-sky-300 text-sky-800 rounded font-bold">${e.recorded ? '修改出席' : '記錄出席'}</button></td></tr>`; }).join('');
     const memRows = s.rows.map(x => `<tr class="border-b border-slate-100 ${x.guest ? 'bg-pink-50/40' : ''}"><td class="py-1.5 pr-2 font-bold ${x.guest ? 'pl-4' : ''}">${cdE(x.name)}${x.left ? ' <span class="text-[10px] text-slate-400">（已不在社友庫）</span>' : ''}</td><td class="pr-2 text-slate-500">${cdE(x.nickname)}</td><td class="pr-2 text-slate-500">${x.guest ? '<span class="text-pink-700">寶尊眷</span>' : cdE(x.role)}</td><td class="text-center">${x.rsvp}</td><td class="text-center font-bold">${x.attended}</td><td class="text-center">${pct(x.rate)}</td></tr>`).join('');
     body.innerHTML = `<div class="grid grid-cols-3 gap-2 text-center">
             <div class="border border-slate-200 rounded-lg py-2"><div class="text-xs text-slate-500">例會場數</div><div class="text-xl font-black">${s.events.length}</div></div>
             <div class="border border-slate-200 rounded-lg py-2"><div class="text-xs text-slate-500">已記錄出席</div><div class="text-xl font-black">${s.recordedCount}</div></div>
-            <div class="border border-slate-200 rounded-lg py-2"><div class="text-xs text-slate-500">平均出席（社友）</div><div class="text-xl font-black">${s.recordedCount ? Math.round(s.events.filter(e => e.recorded).reduce((a, e) => a + e.attended.filter(k => !(s.rows.find(x => x.key === k) || {}).guest).length, 0) / s.recordedCount * 10) / 10 : '－'}</div></div>
+            <div class="border border-slate-200 rounded-lg py-2"><div class="text-xs text-slate-500">平均出席（社友）</div><div class="text-xl font-black">${s.recordedCount ? Math.round(s.events.filter(e => e.recorded).reduce((a, e) => a + e.attended.filter(k => !isG(k)).length, 0) / s.recordedCount * 10) / 10 : '－'}</div></div>
         </div>
         <h5 class="mt-4 font-black text-sm text-slate-800">各次例會</h5>
-        ${s.events.length ? `<div class="overflow-x-auto"><table class="w-full text-xs mt-1"><thead><tr class="text-left text-slate-500 border-b"><th class="py-1">日期</th><th>名稱</th><th class="text-center">表示參加</th><th class="text-center">實際出席</th><th></th></tr></thead><tbody>${evRows}</tbody></table></div><p class="text-[11px] text-slate-500 mt-1">人數為「社友」，<span class="text-pink-700">+N</span> 為寶尊眷。</p>` : '<div class="text-sm text-slate-500 border border-dashed border-slate-300 rounded-lg px-3 py-6 text-center mt-1">這段期間沒有例會。新增社內行程時記得勾選「開放社友按我要參加」。</div>'}
+        ${s.events.length ? `<div class="overflow-x-auto"><table class="w-full text-xs mt-1"><thead><tr class="text-left text-slate-500 border-b"><th class="py-1">日期</th><th>名稱</th><th class="text-center">表示參加</th><th class="text-center">實際出席</th><th></th></tr></thead><tbody>${evRows}</tbody></table></div><p class="text-[11px] text-slate-500 mt-1">人數為「社友」，<span class="text-pink-700">+N</span> 為寶尊眷與同行者。</p>` : '<div class="text-sm text-slate-500 border border-dashed border-slate-300 rounded-lg px-3 py-6 text-center mt-1">這段期間沒有例會。新增社內行程時記得勾選「開放社友按我要參加」。</div>'}
         <h5 class="mt-4 font-black text-sm text-slate-800">每位社友的參加次數</h5>
         <div class="overflow-x-auto"><table class="w-full text-xs mt-1"><thead><tr class="text-left text-slate-500 border-b"><th class="py-1">姓名</th><th>Nick Name</th><th>職務</th><th class="text-center">表示參加</th><th class="text-center">實際出席</th><th class="text-center">出席率</th></tr></thead><tbody>${memRows}</tbody></table></div>
         <p class="text-[11px] text-slate-500 mt-1">出席率＝實際出席次數 ÷ 已記錄出席的例會場數（${s.recordedCount} 場）。尚未記錄出席的場次不列入計算。</p>`;
@@ -607,9 +748,9 @@ function cdStatsExport() {
     if (typeof XLSX === 'undefined') return cdToast('Excel 元件尚未載入，請重新整理後再試', '⚠️');
     const day = e => { const t = cdParts(Date.parse(e.start)); return `${t.y}/${cdP2(t.m)}/${cdP2(t.d)}`; };
     const pct = v => v === null ? '' : Math.round(v * 100) + '%';
-    const guestOf = k => (s.rows.find(x => x.key === k) || {}).guest;
+    const guestOf = k => cdIsExtKey(k) || !!(s.rows.find(x => x.key === k) || {}).guest;
     const sheet1 = s.rows.map(x => ({ '姓名': x.name, 'Nick Name': x.nickname, '身分': x.guest ? '寶尊眷' : (x.role || '社友'), '表示參加次數': x.rsvp, '實際出席次數': x.attended, '出席率': pct(x.rate), '備註': x.left ? '已不在社友庫' : '' }));
-    const sheet2 = s.events.map(e => ({ '日期': day(e), '名稱': e.title, '表示參加（社友）': e.rsvp.filter(k => !guestOf(k)).length, '表示參加（寶尊眷）': e.rsvp.filter(guestOf).length, '實際出席（社友）': e.recorded ? e.attended.filter(k => !guestOf(k)).length : '', '實際出席（寶尊眷）': e.recorded ? e.attended.filter(guestOf).length : '', '出席紀錄': e.recorded ? '已記錄' : '尚未記錄' }));
+    const sheet2 = s.events.map(e => ({ '日期': day(e), '名稱': e.title, '表示參加（社友）': e.rsvp.filter(k => !guestOf(k)).length, '表示參加（寶尊眷／同行者）': e.rsvp.filter(guestOf).length, '實際出席（社友）': e.recorded ? e.attended.filter(k => !guestOf(k)).length : '', '實際出席（寶尊眷／同行者）': e.recorded ? e.attended.filter(guestOf).length : '', '出席紀錄': e.recorded ? '已記錄' : '尚未記錄' }));
     // 出席明細：每位社友一列、每場例會一欄（同一天同名的場次自動加編號，避免欄位互相覆蓋）
     const used = new Set(), heads = s.events.map(e => { let h = `${day(e).slice(5)} ${e.title}`.slice(0, 60), n = 2; while (used.has(h)) h = `${h.replace(/（\d+）$/, '')}（${n++}）`; used.add(h); return h; });
     const sheet3 = s.rows.map(x => { const o = { '姓名': x.name, 'Nick Name': x.nickname, '身分': x.guest ? '寶尊眷' : (x.role || '社友') }; s.events.forEach((e, n) => { o[heads[n]] = e.attended.includes(x.key) ? '出席' : (e.rsvp.includes(x.key) ? '表示參加' : ''); }); return o; });

@@ -313,7 +313,7 @@ function calRegRender(id, r) {
     const ce = calEvents.find(x => x.id === id); if (ce) ce.joined = r.mine || null;   // 返回列表／「私人」頁時，立刻反映我是否參加
     const reg = (r.people || []).filter(p => p.status === 'registered'), want = (r.people || []).filter(p => p.status === 'interested');
     const withReg = !!(calCurrent.registrationKey);      // 有對應報名活動才有「已報名」，例會等只有「表示參加」
-    const chip = (p, cls) => `<span class="inline-block rounded-full px-3 py-1 text-base font-bold ${cls} ${p.key === binding.key ? 'ring-2 ring-offset-1 ring-blue-600' : ''}">${E(p.name)}${p.nickname ? `<span class="ml-1 text-sm font-normal opacity-80">${E(p.nickname)}</span>` : ''}${p.key === binding.key ? ' （我）' : ''}${p.guestOf ? `<span class="ml-1 text-xs font-bold opacity-80">（${E(p.role && /眷/.test(p.role) ? '寶尊眷' : '眷屬')}）</span>` : ''}${p.proxy ? '<span class="ml-1 text-xs font-normal opacity-80">（執秘代登記）</span>' : ''}</span>`;
+    const chip = (p, cls) => `<span class="inline-block rounded-full px-3 py-1 text-base font-bold ${cls} ${p.key === binding.key ? 'ring-2 ring-offset-1 ring-blue-600' : ''}">${E(p.name)}${p.nickname ? `<span class="ml-1 text-sm font-normal opacity-80">${E(p.nickname)}</span>` : ''}${p.key === binding.key ? ' （我）' : ''}${p.guestOf ? `<span class="ml-1 text-xs font-bold opacity-80">（${E(p.role && /眷/.test(p.role) ? '寶尊眷' : (p.role || '眷屬'))}）</span>` : ''}${p.proxy ? '<span class="ml-1 text-xs font-normal opacity-80">（執秘代登記）</span>' : ''}</span>`;
     // 寶尊眷：社友庫裡我的家人；已由執秘正式報名的不能再勾
     const selected = calGuestSel || new Set(r.myGuests || []);
     const canEditGuests = r.open && calFamily.length > 0;

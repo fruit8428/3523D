@@ -280,3 +280,24 @@ ok("代登記：沒開放參加的行程不行", await code(deskM("cal_desk_prox
 ok("代登記：地區行程不走這裡", await code(deskM("cal_desk_proxy_get", { adminPassword: "pw", id: jEv.id })) === "CAL_NOT_FOUND");
 await deskM("cal_desk_cancel", { ...A1, id: mt3.id });
 ok("代登記：已取消的行程不能再登記", await code(deskM("cal_desk_proxy_save", { ...A1, id: mt3.id, keys: ["趙|Z"] })) === "CAL_EVENT_CANCELLED");
+
+// ---------- 代登記：同行的非社友（子女、外勞、朋友、沒有資料的寶尊眷） ----------
+const mt5 = (await deskM("cal_desk_save", { ...A1, event: dev({ layer: "club", club: "甲社", title: "例會五", start: "2026-12-23T19:00:00+08:00", end: "2026-12-23T21:00:00+08:00", rsvpEnabled: true }) })).event;
+await handleMember("cal_rsvp_set", { id: mt5.id, join: true, guestKeys: ["王子|"] }, db, mkU("王|", "王"), { roster: jreg.roster, family: async () => [{ key: "王子|", name: "王子", nickname: "", role: "寶(尊)眷" }] });
+let g5 = await deskM("cal_desk_proxy_save", { ...A1, id: mt5.id, keys: ["趙|Z"], guests: [
+  { host: "趙|Z", type: "寶(尊)眷", name: "趙太太" }, { host: "趙|Z", type: "外勞", name: "" }, { host: "王|", type: "子女", name: "王小妹" },
+  { host: "鬼|", type: "朋友", name: "x" }, { host: "趙|Z", type: "亂寫", name: "y" }, { host: "李|", type: "朋友", name: "z" } ] });
+const ext = g5.people.filter((p: any) => p.ext);
+ok("同行者：趙帶寶尊眷＋外勞、王（本人在 LINE 登記）帶子女；不在社友庫的帶人者、亂寫的類別、沒參加的人帶的都忽略", ext.length === 3 && ext.map((p: any) => p.name).sort().join() === ["王小妹", "Z的外勞", "趙太太"].sort().join());
+if (ext.length !== 3) console.log("  實際：", ext.map((p: any) => p.name));
+ok("同行者：標示帶他的人、類別、執秘代登記、算寶尊眷", ext.find((p: any) => p.name === "Z的外勞").guestOf === "趙|Z" && ext.find((p: any) => p.name === "Z的外勞").role === "外勞" && ext.every((p: any) => p.proxy && p.guest));
+const st5 = await handleMember("cal_rsvp_status", { id: mt5.id }, db, mkU("王|", "王"), { roster: jreg.roster, family: async () => [{ key: "王子|", name: "王子", nickname: "", role: "寶(尊)眷" }] });
+ok("LINE：王看得到同行者，但「我帶的寶尊眷」只有王子（執秘代登記的子女不算，改寶尊眷時不會被刪）", st5.people.some((p: any) => p.name === "王小妹" && p.role === "子女") && st5.myGuests.join() === "王子|");
+await handleMember("cal_rsvp_set", { id: mt5.id, join: true, guestKeys: [] }, db, mkU("王|", "王"), { roster: jreg.roster, family: async () => [{ key: "王子|", name: "王子", nickname: "", role: "寶(尊)眷" }] });
+ok("LINE：王取消帶王子，執秘代登記的王小妹仍在", (await deskM("cal_desk_proxy_get", { ...A1, id: mt5.id })).people.map((p: any) => p.name).includes("王小妹") && !(await deskM("cal_desk_proxy_get", { ...A1, id: mt5.id })).people.some((p: any) => p.name === "王子"));
+g5 = await deskM("cal_desk_proxy_save", { ...A1, id: mt5.id, keys: ["趙|Z"] });
+ok("舊版畫面沒送 guests：同行者不動", g5.people.filter((p: any) => p.ext).length === 3);
+const ag5 = await deskM("cal_desk_attend_save", { ...A1, id: mt5.id, keys: ["趙|Z", ext.find((p: any) => p.name === "趙太太").key, "guest:假的|:1"] });
+ok("記錄出席：同行者可以記錄（算寶尊眷），不存在的同行者被忽略", ag5.attended.length === 2 && T.calendar_attendance.find((x: any) => x.event_id === mt5.id && x.full_name === "趙太太").is_guest === true && T.calendar_attendance.find((x: any) => x.event_id === mt5.id && x.full_name === "趙太太").role === "寶(尊)眷");
+g5 = await deskM("cal_desk_proxy_save", { ...A1, id: mt5.id, keys: [], guests: [{ host: "趙|Z", type: "朋友", name: "老朋友" }, { host: "王|", type: "子女", name: "王小妹" }] });
+ok("取消勾選趙：趙帶的人一起移除（朋友也不收），王帶的子女保留", g5.people.filter((p: any) => p.ext).map((p: any) => p.name).join() === "王小妹" && !g5.people.some((p: any) => p.key === "趙|Z"));
