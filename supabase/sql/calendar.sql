@@ -95,6 +95,8 @@ create table if not exists public.calendar_rsvp (
 alter table public.calendar_events add column if not exists rsvp_enabled boolean not null default false;
 alter table public.calendar_rsvp   add column if not exists guest_of   text not null default '';
 alter table public.calendar_rsvp   add column if not exists guest_role text not null default '';
+--   calendar_rsvp.proxy_by：執秘在報名系統「代為登記參加」時填「報名系統（社名）」；社友自己在 LINE 按的為空字串
+alter table public.calendar_rsvp   add column if not exists proxy_by   text not null default '';
 
 -- 社內例會的「實際出席」紀錄：由執秘在報名系統的「行事曆管理」勾選後儲存（不是社友自己按的「表示參加」）。
 -- 一個行程、一個社、一個人一筆；重新儲存時整批取代。行程刪除時一併刪除。anon 讀不到。

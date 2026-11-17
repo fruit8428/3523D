@@ -258,3 +258,24 @@ ok("統計：乙社看不到甲社（用自己社的密碼只能看自己社）"
 await deskM("cal_desk_cancel", { ...A1, id: mt2.id });
 ok("統計：已取消的例會不算", !(await deskM("cal_desk_stats", { ...A1, from: "2026-12-01T00:00:00+08:00", to: "2026-12-31T23:59:59+08:00" })).events.some((e: any) => e.id === mt2.id));
 ok("統計：期間太長被擋", await code(deskM("cal_desk_stats", { ...A1, from: "2025-01-01T00:00:00+08:00", to: "2026-12-31T00:00:00+08:00" })) === "CAL_BAD_TIME");
+
+// ---------- 執秘代為登記參加 ----------
+const mt3 = (await deskM("cal_desk_save", { ...A1, event: dev({ layer: "club", club: "甲社", title: "例會三", start: "2026-12-16T19:00:00+08:00", end: "2026-12-16T21:00:00+08:00", rsvpEnabled: true }) })).event;
+const mt4 = (await deskM("cal_desk_save", { ...A1, event: dev({ layer: "club", club: "甲社", title: "理事會", start: "2026-12-17T19:00:00+08:00", end: "2026-12-17T21:00:00+08:00", rsvpEnabled: false }) })).event;
+await handleMember("cal_rsvp_set", { id: mt3.id, join: true, guestKeys: [] }, db, mkU("王|", "王"), { roster: jreg.roster, family: async () => [{ key: "王子|", name: "王子", nickname: "", role: "寶(尊)眷" }] });
+let px = await deskM("cal_desk_proxy_get", { ...A1, id: mt3.id });
+ok("代登記：讀到目前名單（王是本人登記）", px.people.length === 1 && px.people[0].key === "王|" && px.people[0].proxy === false);
+px = await deskM("cal_desk_proxy_save", { ...A1, id: mt3.id, keys: ["趙|Z", "王子|", "鬼|", "趙|Z"] });
+ok("代登記：加入趙與寶尊眷王子，不在社友庫的鬼被忽略、不重複", px.people.map((p: any) => p.key).sort().join() === "王|,王子|,趙|Z" && px.people.find((p: any) => p.key === "趙|Z").proxy === true && px.people.find((p: any) => p.key === "王子|").guest === true && px.people.find((p: any) => p.key === "趙|Z").guest === false);
+ok("代登記：記錄是誰代登記的", T.calendar_rsvp.find((r: any) => r.event_id === mt3.id && r.person_key === "趙|Z").proxy_by === "報名系統（甲社）");
+px = await deskM("cal_desk_proxy_save", { ...A1, id: mt3.id, keys: ["王子|"] });
+ok("代登記：取消趙；社友本人登記的王不會被執秘的儲存刪掉", px.people.map((p: any) => p.key).sort().join() === "王|,王子|");
+const zs = await handleMember("cal_rsvp_status", { id: mt3.id }, db, mkU("王|", "王"), { roster: jreg.roster, family: async () => [{ key: "王子|", name: "王子", nickname: "", role: "寶(尊)眷" }] });
+ok("LINE 名單標示執秘代登記；王的家人選項顯示王子已登記", zs.people.find((p: any) => p.key === "王子|").proxy === true && zs.family[0].listed === true);
+ok("代登記的人計入表示參加人數（列表）", (await deskM("cal_desk_list", { ...A1, layer: "club", targetClub: "甲社", from: "2026-12-16T00:00:00+08:00", to: "2026-12-16T23:59:59+08:00" })).events.find((e: any) => e.id === mt3.id).rsvpCount === 2);
+ok("代登記的人帶入出席勾選預設", (await deskM("cal_desk_attend_get", { ...A1, id: mt3.id })).rsvp.map((x: any) => x.key).sort().join() === "王|,王子|");
+ok("代登記：乙社不能幫甲社登記", await code(deskM("cal_desk_proxy_save", { club: "乙社", clubPassword: "b123", id: mt3.id, keys: ["李|"] })) === "CAL_FORBIDDEN");
+ok("代登記：沒開放參加的行程不行", await code(deskM("cal_desk_proxy_get", { ...A1, id: mt4.id })) === "CAL_REG_UNAVAILABLE");
+ok("代登記：地區行程不走這裡", await code(deskM("cal_desk_proxy_get", { adminPassword: "pw", id: jEv.id })) === "CAL_NOT_FOUND");
+await deskM("cal_desk_cancel", { ...A1, id: mt3.id });
+ok("代登記：已取消的行程不能再登記", await code(deskM("cal_desk_proxy_save", { ...A1, id: mt3.id, keys: ["趙|Z"] })) === "CAL_EVENT_CANCELLED");

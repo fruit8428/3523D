@@ -121,12 +121,12 @@ async function rsvpStatus(admin: Any, ev: Any, me: CalMe, reg: RegDeps | undefin
   // 可以按「我要參加」的條件：有對應到報名系統的活動，或行程本身開放參加（社內例會等不需要報名的活動）
   if (!roster.ok && !ev.rsvp_enabled) return { linked: false };
   const formal = roster.ok ? roster.persons.filter((p: Any) => p.club === me.club) : [];
-  const { data, error } = await admin.from("calendar_rsvp").select("person_key,full_name,nickname,guest_of,guest_role,created_at").eq("event_id", ev.id).eq("club_name", me.club).order("created_at");
+  const { data, error } = await admin.from("calendar_rsvp").select("person_key,full_name,nickname,guest_of,guest_role,proxy_by,created_at").eq("event_id", ev.id).eq("club_name", me.club).order("created_at");
   if (error) dbFail(error);
   const formalKeys = new Set(formal.map((p: Any) => p.key));
   const people = [
     ...formal.map((p: Any) => ({ key: p.key, name: p.name || p.nickname, nickname: p.name ? p.nickname : "", status: "registered", guestOf: "", role: p.role || "" })),
-    ...(data || []).filter((r: Any) => !formalKeys.has(r.person_key)).map((r: Any) => ({ key: r.person_key, name: r.full_name, nickname: r.nickname || "", status: "interested", guestOf: r.guest_of || "", role: r.guest_role || "" })),
+    ...(data || []).filter((r: Any) => !formalKeys.has(r.person_key)).map((r: Any) => ({ key: r.person_key, name: r.full_name, nickname: r.nickname || "", status: "interested", guestOf: r.guest_of || "", role: r.guest_role || "", proxy: !!r.proxy_by })),
   ];
   const mine = people.find((p) => p.key === me.key) || people.find((p) => p.name === me.name && formal.some((f: Any) => f.name === me.name));
   const out: Any = {
@@ -134,7 +134,9 @@ async function rsvpStatus(admin: Any, ev: Any, me: CalMe, reg: RegDeps | undefin
     registeredCount: formal.length, interestedCount: people.length - formal.length,
     myGuests: (data || []).filter((r: Any) => r.guest_of === me.key).map((r: Any) => r.person_key),    // 我已經幫哪些寶尊眷登記
   };
-  if (withFamily && reg && reg.family) out.family = (await reg.family(me.club, me.key, me.name)).map((f) => ({ ...f, registered: formalKeys.has(f.key) }));
+  // listed＝已經在名單上、但不是我帶的（例如執秘代為登記）：前端顯示「已登記」，不能再勾
+  const listedKeys = new Set<string>((data || []).filter((r: Any) => r.guest_of !== me.key).map((r: Any) => r.person_key));
+  if (withFamily && reg && reg.family) out.family = (await reg.family(me.club, me.key, me.name)).map((f) => ({ ...f, registered: formalKeys.has(f.key), listed: !formalKeys.has(f.key) && listedKeys.has(f.key) }));
   return out;
 }
 
@@ -451,11 +453,50 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
     }
     const [a, r] = await Promise.all([
       admin.from("calendar_attendance").select("person_key").eq("event_id", ev.id).eq("club_name", ev.club_name),
-      admin.from("calendar_rsvp").select("person_key,full_name,nickname,guest_of").eq("event_id", ev.id).eq("club_name", ev.club_name),
+      admin.from("calendar_rsvp").select("person_key,full_name,nickname,guest_of,guest_role").eq("event_id", ev.id).eq("club_name", ev.club_name),
     ]);
     if (a.error) dbFail(a.error);
     if (r.error) dbFail(r.error);
-    return { ok: true, title: ev.title, start: ev.start_at, club: ev.club_name, attended: (a.data || []).map((x: Any) => x.person_key), recorded: (a.data || []).length > 0, rsvp: (r.data || []).map((x: Any) => ({ key: x.person_key, name: x.full_name, nickname: x.nickname || "", guest: !!x.guest_of })) };
+    return { ok: true, title: ev.title, start: ev.start_at, club: ev.club_name, attended: (a.data || []).map((x: Any) => x.person_key), recorded: (a.data || []).length > 0, rsvp: (r.data || []).map((x: Any) => ({ key: x.person_key, name: x.full_name, nickname: x.nickname || "", guest: rsvpIsGuest(x) })) };
+  }
+
+  // ---------- 執秘代為登記參加（不會用 LINE 的長輩等） ----------
+  // 只限社內行程，且行程要「開放參加」或有對應報名活動。讀取：目前名單（誰是社友自己登記、誰是執秘代登記）；
+  // 儲存：body.keys＝「執秘代登記」的人（社友庫裡的人），只增刪執秘代登記的那些列；社友自己在 LINE 登記的不動。
+  if (action === "cal_desk_proxy_get" || action === "cal_desk_proxy_save") {
+    const { data: ev, error } = await admin.from("calendar_events").select("*").eq("id", String(body.id || "")).maybeSingle();
+    if (error) dbFail(error);
+    if (!ev || ev.layer !== "club") fail("CAL_NOT_FOUND");
+    if (!can("club", ev.club_name)) fail("CAL_FORBIDDEN");
+    if (!ev.rsvp_enabled && !ev.registration_key) fail("CAL_REG_UNAVAILABLE");
+    const rsvpTable = () => admin.from("calendar_rsvp");
+    if (action === "cal_desk_proxy_save") {
+      if (ev.status === "cancelled") fail("CAL_EVENT_CANCELLED");
+      const list: Any[] = ctx.members ? await ctx.members(ev.club_name) : [];
+      const byKey = new Map<string, Any>(list.filter((m: Any) => m && m.name).map((m: Any) => [personKey(m), m]));
+      const wanted = [...new Set<string>((Array.isArray(body.keys) ? body.keys : []).map(String))].filter((k) => byKey.has(k));   // 只接受社友庫裡的人
+      const { data: cur, error: e0 } = await rsvpTable().select("person_key,proxy_by").eq("event_id", ev.id).eq("club_name", ev.club_name);
+      if (e0) dbFail(e0);
+      const proxied = (cur || []).filter((r: Any) => r.proxy_by).map((r: Any) => r.person_key);
+      const present = new Set<string>((cur || []).map((r: Any) => r.person_key));
+      const drop = proxied.filter((k: string) => !wanted.includes(k));
+      if (drop.length) {
+        const { error: e1 } = await rsvpTable().delete().eq("event_id", ev.id).eq("club_name", ev.club_name).in("person_key", drop);
+        if (e1) dbFail(e1);
+      }
+      const add = wanted.filter((k) => !present.has(k)).map((k) => {
+        const m = byKey.get(k), guest = !!m.spouseOfId || /眷/.test(String(m.role || ""));
+        return { event_id: ev.id, club_name: ev.club_name, person_key: k, full_name: m.name, nickname: m.nickname || "", guest_of: "", guest_role: guest ? (m.role || "寶(尊)眷") : "", proxy_by: by };
+      });
+      for (const row of add) {
+        const { error: e2 } = await rsvpTable().upsert(row, { onConflict: "event_id,club_name,person_key", ignoreDuplicates: true });
+        if (e2) dbFail(e2);
+      }
+    }
+    const { data, error: e3 } = await rsvpTable().select("person_key,full_name,nickname,guest_of,guest_role,proxy_by").eq("event_id", ev.id).eq("club_name", ev.club_name).order("created_at");
+    if (e3) dbFail(e3);
+    return { ok: true, title: ev.title, start: ev.start_at, club: ev.club_name, cancelled: ev.status === "cancelled",
+      people: (data || []).map((r: Any) => ({ key: r.person_key, name: r.full_name, nickname: r.nickname || "", guest: rsvpIsGuest(r), proxy: !!r.proxy_by })) };
   }
 
   // ---------- 社內例會統計（某段期間） ----------
@@ -482,7 +523,7 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
       rs = r1.data || []; at = r2.data || [];
     }
     const people: Record<string, Any> = {};
-    for (const x of rs) people[x.person_key] = people[x.person_key] || { name: x.full_name, nickname: x.nickname || "", role: x.guest_role || "", guest: !!x.guest_of };
+    for (const x of rs) people[x.person_key] = people[x.person_key] || { name: x.full_name, nickname: x.nickname || "", role: x.guest_role || "", guest: rsvpIsGuest(x) };
     for (const x of at) people[x.person_key] = { name: x.full_name, nickname: x.nickname || "", role: x.role || "", guest: !!x.is_guest };
     const events = live.map((e: Any) => {
       const rsvp = rs.filter((x) => x.event_id === e.id).map((x) => x.person_key);
@@ -498,9 +539,9 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
     if (error) dbFail(error);
     if (!ev || ev.layer === "private") fail("CAL_NOT_FOUND");
     if (!can(ev.layer, ev.club_name)) fail("CAL_FORBIDDEN");
-    const { data, error: e2 } = await admin.from("calendar_rsvp").select("club_name,person_key,full_name,nickname,guest_of,guest_role,created_at").eq("event_id", ev.id).order("created_at");
+    const { data, error: e2 } = await admin.from("calendar_rsvp").select("club_name,person_key,full_name,nickname,guest_of,guest_role,proxy_by,created_at").eq("event_id", ev.id).order("created_at");
     if (e2) dbFail(e2);
-    return { ok: true, title: ev.title, people: (data || []).map((r: Any) => ({ club: r.club_name, name: r.full_name, nickname: r.nickname || "", guest: !!r.guest_of, role: r.guest_role || "", at: r.created_at })) };
+    return { ok: true, title: ev.title, people: (data || []).map((r: Any) => ({ club: r.club_name, name: r.full_name, nickname: r.nickname || "", guest: rsvpIsGuest(r), role: r.guest_role || "", proxy: !!r.proxy_by, at: r.created_at })) };
   }
 
   // 執秘：這個報名活動（大類id::子活動名稱）裡，本社社友在 LINE 按了「我要參加」的名單
@@ -599,6 +640,8 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
 
 // ---------- 後台動作（電腦版 admin-calendar.html，用後台密碼把關） ----------
 export interface AdminCtx { admin: Any; password: string; members: () => Promise<Record<string, Any[]>>; clubInfos: () => Promise<{ name: string; division: string; code: string }[]> }
+// 這一筆「表示參加」是不是寶尊眷：社友帶來的（guest_of），或執秘代登記時社友庫標為寶尊眷的（guest_role）
+const rsvpIsGuest = (r: Any) => !!(r && (r.guest_of || r.guest_role));
 const personKey = (p: Any) => `${(p && p.name) || ""}|${(p && p.nickname) || ""}`;
 
 export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Promise<Any> {
