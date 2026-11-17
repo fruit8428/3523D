@@ -99,11 +99,12 @@ function openCalendarDesk() {
 function closeCalendarDesk() { const el = document.getElementById('calDeskModal'); if (el) el.classList.add('hidden'); }
 function cdeskSwitch(tab) {
     cdeskTab = tab;
-    const T = [['club', '🏠 本社行程'], ['stats', '📊 例會統計'], ['district', '🌐 地區行程']];
+    const T = [['club', '🏠 本社行程'], ['stats', '📊 例會統計'], ['report', '📈 出席率'], ['district', '🌐 地區行程']];
     if (cdIsSuper()) T.push(['admin', '🔑 管理者與活動類型']);
     document.getElementById('cdeskTabs').innerHTML = T.map(t => `<button type="button" onclick="cdeskSwitch('${t[0]}')" class="px-3.5 py-2 rounded-lg text-sm font-bold border ${cdeskTab === t[0] ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}">${t[1]}</button>`).join('');
     if (tab === 'admin') return cdeskRenderAdmin();
     if (tab === 'stats') return cdeskRenderStats();
+    if (tab === 'report') return cdeskRenderReport();
     if (tab === 'district' && !cdeskAdminPw) return cdeskRenderPwForm();
     cdeskReload();
 }
@@ -760,4 +761,86 @@ function cdStatsExport() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet3.length ? sheet3 : [{ '姓名': '（沒有資料）' }]), '出席明細');
     XLSX.writeFile(wb, `${s.club}_例會統計_${s.label.replace(/[\/:*?"<>| ]/g, '')}.xlsx`);
     cdToast('已下載 Excel');
+}
+
+
+// =====================================================================
+// 📈 出席率（例會＋地區活動補出席）：全社每位社友的上半年／全年出席率與明細，可搜尋、匯出 Excel。
+// 計算在雲端（cal_desk_attend_report，與社友在 LINE 看到的同一套）：
+//   出席率＝min(已記錄例會場數, 例會出席＋地區活動補出席) ÷ 已記錄例會場數；另附純例會出席率。
+// =====================================================================
+let cdAr = null, cdArYear = 0, cdArQuery = '', cdArOpen = '', cdArGuests = false, cdArSeq = 0;
+// 扶輪年度（7/1～隔年 6/30）：offset 0＝本年度、-1＝上年度。回傳上半年與全年兩段。
+function cdRotaryPeriods(offset) {
+    const now = cdParts(Date.now()), ry = (now.m >= 7 ? now.y : now.y - 1) + (offset || 0);
+    const iso = (y, m, d, end) => `${y}-${cdP2(m)}-${cdP2(d)}T${end ? '23:59:59' : '00:00:00'}+08:00`;
+    return { label: `${ry}-${String(ry + 1).slice(2)} 扶輪年度`, periods: [{ id: 'h1', from: iso(ry, 7, 1), to: iso(ry, 12, 31, true) }, { id: 'year', from: iso(ry, 7, 1), to: iso(ry + 1, 6, 30, true) }] };
+}
+const cdPct = v => v === null || v === undefined ? '－' : `${Math.round(v * 100)}%`;
+async function cdeskRenderReport() {
+    const box = document.getElementById('cdeskBody'), club = cdMyClub(), rp = cdRotaryPeriods(cdArYear), seq = ++cdArSeq;
+    const picker = cdIsSuper() ? `<select onchange="cdeskClub=this.value; cdeskRenderReport()" class="border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm bg-white max-w-full">${cdAllClubs().map(c => `<option value="${cdE(c.name)}" ${c.name === club ? 'selected' : ''}>${cdE(c.division)} ${cdE(c.code)} ${cdE(c.name)}</option>`).join('')}</select>` : `<b>${cdE(club)}</b>`;
+    box.innerHTML = `<div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="font-black text-slate-900">📈 出席率　${picker}</div>
+            <button type="button" onclick="cdArExport()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-sm shadow-sm">⬇️ 匯出 Excel</button>
+        </div>
+        <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">${[[0, '本扶輪年度'], [-1, '上個扶輪年度']].map(x => `<button type="button" onclick="cdArYear=${x[0]}; cdArOpen=''; cdeskRenderReport()" class="px-2.5 py-1 rounded-md border font-bold ${cdArYear === x[0] ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-slate-700 border-slate-300'}">${x[1]}</button>`).join('')}
+            <span class="text-slate-500 ml-1">${cdE(rp.label)}　上半年＝7/1～12/31</span></div>
+        <div class="mt-2 flex flex-wrap items-center gap-2"><input id="cdArSearch" type="search" value="${cdE(cdArQuery)}" oninput="cdArQuery=this.value; cdArRenderTable()" class="flex-1 min-w-[12rem] border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="🔍 搜尋姓名、Nick Name、職務">
+            <label class="text-xs text-slate-600 flex items-center gap-1"><input type="checkbox" ${cdArGuests ? 'checked' : ''} onchange="cdArGuests=this.checked; cdArRenderTable()" class="w-4 h-4"> 含寶尊眷</label></div>
+        <div id="cdArBody" class="mt-3"><div class="text-sm text-slate-500 py-6 text-center">讀取中…</div></div>
+        <p class="text-[11px] text-slate-500 mt-3 leading-relaxed">出席率＝(例會出席＋地區活動補出席) ÷ 已記錄出席的例會場數，最高 100%；「純例會」不含補出席。例會要在「本社行程」按「✅ 記錄實際出席」儲存後才列入；地區活動以報到系統（LINE 掃碼或櫃台點名）的紀錄為準，只報名沒報到不算。</p>`;
+    const r = await cdApi('cal_desk_attend_report', 'club', { periods: rp.periods, targetClub: club });
+    if (seq !== cdArSeq) return;
+    const body = document.getElementById('cdArBody'); if (!body) return;
+    if (!r.ok) { body.innerHTML = `<div class="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-3">${cdE(cdErr(r.code))}</div>`; cdAr = null; return; }
+    cdAr = Object.assign(r, { label: rp.label });
+    cdArRenderTable();
+}
+function cdArVisible() {
+    if (!cdAr) return [];
+    const q = cdArQuery.trim().toLowerCase();
+    return cdAr.people.filter(p => (cdArGuests || !p.guest) && (!q || [p.name, p.nickname, p.role].some(v => String(v || '').toLowerCase().includes(q))));
+}
+function cdArCell(x) {
+    if (!x || !x.held) return '<td class="text-center text-slate-400" colspan="3">尚無已記錄的例會</td>';
+    return `<td class="text-center">${x.attended}/${x.held}</td><td class="text-center">${x.makeup || ''}</td><td class="text-center"><b class="${x.rate >= 0.6 ? 'text-emerald-700' : 'text-rose-700'}">${cdPct(x.rate)}</b>${x.makeup ? `<div class="text-[10px] text-slate-400">純例會 ${cdPct(x.meetRate)}</div>` : ''}</td>`;
+}
+function cdArRenderTable() {
+    const body = document.getElementById('cdArBody'); if (!body || !cdAr) return;
+    const list = cdArVisible(), P = id => cdAr.periods.find(p => p.id === id) || { held: 0 };
+    const rows = list.map(p => `<tr class="border-b border-slate-100 cursor-pointer hover:bg-blue-50/40 ${p.guest ? 'bg-pink-50/30' : ''}" onclick="cdArToggle(this.dataset.key)" data-key="${cdE(p.key)}">
+            <td class="py-1.5 pr-2"><b>${cdE(p.name)}</b>${p.left ? ' <span class="text-[10px] text-slate-400">（已不在社友庫）</span>' : ''}<div class="text-[11px] text-slate-500">${cdE(p.nickname)}${p.guest ? ' <span class="text-pink-700">寶尊眷</span>' : ''}</div></td>
+            ${cdArCell(p.sum.h1)}${cdArCell(p.sum.year)}</tr>${cdArOpen === p.key ? `<tr><td colspan="7" class="bg-slate-50 px-3 py-2">${cdArDetail(p)}</td></tr>` : ''}`).join('');
+    body.innerHTML = `<div class="text-xs text-slate-600">已記錄出席的例會：上半年 <b>${P('h1').held}</b> 場、全年 <b>${P('year').held}</b> 場；地區活動 <b>${cdAr.district.length}</b> 場有本社社友報到。顯示 ${list.length} 人，點一下姓名看明細。</div>
+        ${list.length ? `<div class="overflow-x-auto mt-2"><table class="w-full text-xs"><thead><tr class="text-slate-500 border-b"><th rowspan="2" class="text-left py-1">姓名</th><th colspan="3" class="text-center border-l border-slate-200">上半年</th><th colspan="3" class="text-center border-l border-slate-200">全年</th></tr>
+            <tr class="text-slate-500 border-b"><th class="border-l border-slate-200">例會</th><th>補出席</th><th>出席率</th><th class="border-l border-slate-200">例會</th><th>補出席</th><th>出席率</th></tr></thead><tbody>${rows}</tbody></table></div>`
+            : '<div class="mt-2 text-sm text-slate-500 border border-dashed border-slate-300 rounded-lg px-3 py-6 text-center">沒有符合的社友。</div>'}`;
+}
+function cdArToggle(key) { cdArOpen = cdArOpen === key ? '' : key; cdArRenderTable(); }
+function cdArDetail(p) {
+    const day = iso => { const t = cdParts(Date.parse(iso)); return `${t.y}/${cdP2(t.m)}/${cdP2(t.d)}（${CDESK_WD[t.wd]}）`; };
+    const ms = cdAr.meetings.map(m => `<li class="flex gap-2 py-0.5"><span class="w-28 shrink-0 text-slate-500">${day(m.start)}</span><span class="flex-1">${cdE(m.title)}</span><span class="font-bold ${!m.recorded ? 'text-slate-400' : p.att.includes(m.id) ? 'text-emerald-700' : 'text-rose-600'}">${!m.recorded ? '尚未記錄' : p.att.includes(m.id) ? '✅ 出席' : '✕ 缺席'}</span></li>`).join('');
+    const ds = cdAr.district.filter(d => p.dist.includes(d.key)).map(d => `<li class="flex gap-2 py-0.5"><span class="w-28 shrink-0 text-slate-500">${day(d.date)}</span><span class="flex-1">${cdE(d.title)}</span><span class="font-bold text-blue-700">🎫 已報到</span></li>`).join('');
+    return `<div class="grid sm:grid-cols-2 gap-3 text-xs"><div><div class="font-black text-slate-700">例會（${cdAr.meetings.length} 場）</div><ul class="mt-1">${ms || '<li class="text-slate-400">這段期間沒有例會</li>'}</ul></div>
+        <div><div class="font-black text-slate-700">地區活動補出席（${p.dist.length} 場）</div><ul class="mt-1">${ds || '<li class="text-slate-400">沒有地區活動報到紀錄</li>'}</ul></div></div>`;
+}
+function cdArExport() {
+    if (!cdAr) return cdToast('請先等資料讀取完成', '⚠️');
+    if (typeof XLSX === 'undefined') return cdToast('Excel 元件尚未載入，請重新整理後再試', '⚠️');
+    const list = cdArVisible(), day = iso => { const t = cdParts(Date.parse(iso)); return `${t.y}/${cdP2(t.m)}/${cdP2(t.d)}`; };
+    const pct = v => v === null || v === undefined ? '' : Math.round(v * 100) + '%';
+    const seg = (x, n) => ({ [`${n}例會場數`]: x.held, [`${n}例會出席`]: x.attended, [`${n}補出席`]: x.makeup, [`${n}出席率`]: pct(x.rate), [`${n}純例會出席率`]: pct(x.meetRate) });
+    const s1 = list.map(p => Object.assign({ '姓名': p.name, 'Nick Name': p.nickname, '職務': p.guest ? '寶尊眷' : p.role }, seg(p.sum.h1, '上半年'), seg(p.sum.year, '全年'), { '備註': p.left ? '已不在社友庫' : '' }));
+    const uniq = (arr) => { const used = new Set(); return arr.map(h => { let x = h.slice(0, 60), n = 2; while (used.has(x)) x = `${h.slice(0, 55)}（${n++}）`; used.add(x); return x; }); };
+    const mh = uniq(cdAr.meetings.map(m => `${day(m.start).slice(5)} ${m.title}`));
+    const s2 = list.map(p => { const o = { '姓名': p.name, 'Nick Name': p.nickname }; cdAr.meetings.forEach((m, i) => { o[mh[i]] = !m.recorded ? '未記錄' : p.att.includes(m.id) ? '出席' : '缺席'; }); return o; });
+    const dh = uniq(cdAr.district.map(d => `${day(d.date).slice(5)} ${d.title}`));
+    const s3 = list.map(p => { const o = { '姓名': p.name, 'Nick Name': p.nickname }; cdAr.district.forEach((d, i) => { o[dh[i]] = p.dist.includes(d.key) ? '已報到' : ''; }); return o; });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s1.length ? s1 : [{ '姓名': '（沒有資料）' }]), '出席率總表');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s2.length ? s2 : [{ '姓名': '（沒有資料）' }]), '例會出席明細');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s3.length ? s3 : [{ '姓名': '（沒有資料）' }]), '地區活動補出席');
+    XLSX.writeFile(wb, `${cdAr.club}_出席率_${cdAr.label}.xlsx`);
+    cdToast('已匯出 Excel', '⬇️');
 }

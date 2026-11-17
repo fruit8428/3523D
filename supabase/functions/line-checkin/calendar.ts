@@ -111,6 +111,94 @@ export interface RegDeps {
   roster: (eventKey: string) => Promise<{ ok: boolean; title: string; persons: Any[] }>;
   // 這位社友的「家人」（社友庫裡互為寶尊眷的人）。每個社的社友庫都在同一包資料裡，比較大，所以只有需要時才讀（自動更新時不讀）
   family?: (club: string, personKey: string, name: string) => Promise<{ key: string; name: string; nickname: string; role: string }[]>;
+  members?: (club: string) => Promise<Any[]>;          // 該社的社友庫（出席率報表用）
+}
+
+// =====================================================================
+// 出席率報表（社友本人、社長／秘書在 LINE；執秘在報名系統）——三邊同一套算法，都在雲端算好再回傳。
+//   例會：本社的社內行程（開放參加、或已有出席紀錄；已取消的不算）。只有「已記錄出席」的場次列入分母。
+//   補出席：地區活動的報到紀錄（event_checkins，status＝in，本社、本人）。
+//   出席率＝min(例會場數, 例會出席＋補出席) ÷ 已記錄的例會場數；另附純例會出席率。
+//   periods：[{id, from, to}]（最多 3 段，例如上半年、全年），每段各算一次。
+// =====================================================================
+const coreOf = () => (globalThis as Any).CheckinCore || null;
+export function memberRank(m: Any): number {
+  const C = coreOf();
+  if (C && C.memberRoleRank) return C.memberRoleRank(m);
+  const r = String((m && m.role) || "").trim().toUpperCase();
+  return r === "P" || r === "社長" ? 0 : r === "S" || r === "秘書" ? 1 : 2;
+}
+export async function attendanceReport(admin: Any, club: string, periodsIn: Any, members: Any[], onlyKey?: string): Promise<Any> {
+  const periods = (Array.isArray(periodsIn) ? periodsIn : []).slice(0, 3).map((p: Any) => ({ id: String(p && p.id || "").slice(0, 20), from: Date.parse(String(p && p.from || "")), to: Date.parse(String(p && p.to || "")) }));
+  if (!periods.length || periods.some((p) => !p.id || !Number.isFinite(p.from) || !Number.isFinite(p.to) || p.to < p.from || p.to - p.from > MAX_RANGE_MS)) fail("CAL_BAD_TIME");
+  const from = Math.min(...periods.map((p) => p.from)), to = Math.max(...periods.map((p) => p.to));
+  if (to - from > MAX_RANGE_MS) fail("CAL_BAD_TIME");
+  const fromIso = new Date(from).toISOString(), toIso = new Date(to).toISOString();
+  const { data: evs, error } = await admin.from("calendar_events").select("id,title,start_at,end_at,all_day,status,rsvp_enabled,event_type_id")
+    .eq("layer", "club").eq("club_name", club).gte("start_at", fromIso).lte("start_at", toIso).order("start_at").limit(1000);
+  if (error) dbFail(error);
+  const live = (evs || []).filter((e: Any) => e.status !== "cancelled");
+  const ids = live.map((e: Any) => e.id);
+  let at: Any[] = [], rs: Any[] = [];
+  if (ids.length) {
+    const [a, r] = await Promise.all([
+      admin.from("calendar_attendance").select("event_id,person_key,full_name,nickname,role,is_guest").in("event_id", ids).eq("club_name", club),
+      admin.from("calendar_rsvp").select("event_id,person_key,full_name,nickname,guest_of,guest_role").in("event_id", ids).eq("club_name", club),
+    ]);
+    if (a.error) dbFail(a.error);
+    if (r.error) dbFail(r.error);
+    at = a.data || []; rs = r.data || [];
+  }
+  // 地區活動報到（補出席）：分頁讀取，一次最多 1000 筆
+  let ck: Any[] = [];
+  for (let off = 0; off < 10000; off += 1000) {
+    let q = admin.from("event_checkins").select("event_key,person_key,full_name,nickname,checked_in_at").eq("club_name", club).eq("status", "in")
+      .gte("checked_in_at", fromIso).lte("checked_in_at", toIso).order("checked_in_at");
+    if (onlyKey) q = q.eq("person_key", onlyKey);
+    const { data, error: e3 } = await (q.range ? q.range(off, off + 999) : q);
+    if (e3) dbFail(e3);
+    ck = ck.concat(data || []);
+    if (!q.range || (data || []).length < 1000) break;
+  }
+  const recorded = new Set<string>(at.map((x) => x.event_id));
+  const meetings = live.filter((e: Any) => e.rsvp_enabled || recorded.has(e.id) || rs.some((x) => x.event_id === e.id))
+    .map((e: Any) => ({ id: e.id, title: e.title, start: e.start_at, allDay: !!e.all_day, typeId: e.event_type_id, recorded: recorded.has(e.id) }));
+  const meetIds = new Set<string>(meetings.map((m: Any) => m.id));
+  const dist = new Map<string, { key: string; title: string; date: string }>();
+  for (const c of ck) {
+    const d = dist.get(c.event_key);
+    if (!d) dist.set(c.event_key, { key: c.event_key, title: String(c.event_key).split("::").slice(1).join("::") || c.event_key, date: c.checked_in_at });
+    else if (c.checked_in_at < d.date) d.date = c.checked_in_at;
+  }
+  const isExt = (k: string) => k.startsWith("guest:");
+  const people = new Map<string, Any>();
+  const C = coreOf();
+  const list = (C && C.sortMembers ? C.sortMembers(members || []) : (members || [])).filter((m: Any) => m && m.name);
+  for (const m of list) people.set(personKey(m), { key: personKey(m), name: m.name, nickname: m.nickname || "", role: m.role || "", guest: !!m.spouseOfId || /眷/.test(String(m.role || "")), rank: memberRank(m), left: false });
+  const touch = (k: string, info: Any) => { if (!isExt(k) && !people.has(k)) people.set(k, { key: k, name: info.name, nickname: info.nickname || "", role: info.role || "", guest: !!info.guest, rank: 2, left: true }); };
+  for (const x of at) if (meetIds.has(x.event_id)) touch(x.person_key, { name: x.full_name, nickname: x.nickname, role: x.role, guest: x.is_guest });
+  for (const x of rs) if (meetIds.has(x.event_id)) touch(x.person_key, { name: x.full_name, nickname: x.nickname, role: x.guest_role, guest: !!(x.guest_of || x.guest_role) });
+  for (const x of ck) touch(x.person_key, { name: x.full_name, nickname: x.nickname });
+  const inP = (iso: string, p: Any) => { const t = Date.parse(iso); return t >= p.from && t <= p.to; };
+  const meetById = new Map<string, Any>(meetings.map((m: Any) => [m.id, m]));
+  const out: Any[] = [];
+  for (const p of people.values()) {
+    if (onlyKey && p.key !== onlyKey) continue;
+    const att = at.filter((x) => x.person_key === p.key && meetIds.has(x.event_id)).map((x) => x.event_id);
+    const rsv = rs.filter((x) => x.person_key === p.key && meetIds.has(x.event_id)).map((x) => x.event_id);
+    const dk = [...new Set<string>(ck.filter((x) => x.person_key === p.key).map((x) => x.event_key))];
+    const sum: Record<string, Any> = {};
+    for (const per of periods) {
+      const held = meetings.filter((m: Any) => m.recorded && inP(m.start, per)).length;
+      const attended = att.filter((id) => inP(meetById.get(id).start, per)).length;
+      const makeup = dk.filter((k) => inP(dist.get(k)!.date, per)).length;
+      const effective = Math.min(held, attended + makeup);
+      sum[per.id] = { held, attended, makeup, effective, rate: held ? effective / held : null, meetRate: held ? attended / held : null, rsvp: rsv.filter((id) => inP(meetById.get(id).start, per)).length };
+    }
+    out.push({ ...p, att, rsvp: rsv, dist: dk, sum });
+  }
+  const distList = [...dist.values()].filter((d) => !onlyKey || out.some((p) => p.dist.includes(d.key))).sort((a, b) => a.date.localeCompare(b.date));
+  return { ok: true, club, periods: periods.map((p) => ({ id: p.id, from: new Date(p.from).toISOString(), to: new Date(p.to).toISOString(), held: meetings.filter((m: Any) => m.recorded && inP(m.start, p)).length })), meetings, district: distList, people: out };
 }
 
 // 目前這個行程裡「我們社」有哪些人報名／表示參加
@@ -259,6 +347,17 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
       if (e5) dbFail(e5);
     }
     return { ok: true, ...(await rsvpStatus(admin, ev, me, reg, true)) };
+  }
+
+  // ---------- 出席率：本人；社長（P）、秘書（S）可看全社 ----------
+  if (action === "cal_attend_report") {
+    const list: Any[] = reg && reg.members ? await reg.members(me.club) : [];
+    const mine = list.find((m: Any) => m && m.name && personKey(m) === me.key);
+    const canClub = !!mine && memberRank(mine) <= 1;
+    const scope = body.scope === "club" ? "club" : "me";
+    if (scope === "club" && !canClub) fail("CAL_FORBIDDEN");
+    const r = await attendanceReport(admin, me.club, body.periods, list, scope === "club" ? undefined : me.key);
+    return { ...r, scope, canClub, me: me.key };
   }
 
   // ---------- 訂閱到手機行事曆（.ics）的開關 ----------
@@ -517,6 +616,14 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
     if (e3) dbFail(e3);
     return { ok: true, title: ev.title, start: ev.start_at, club: ev.club_name, cancelled: ev.status === "cancelled",
       people: (data || []).map((r: Any) => ({ key: r.person_key, name: r.full_name, nickname: r.nickname || "", guest: rsvpIsGuest(r), proxy: !!r.proxy_by, ext: isExtGuestKey(r.person_key), guestOf: r.guest_of || "", role: r.guest_role || "" })) };
+  }
+
+  // ---------- 出席率報表（全社，執秘／後台） ----------
+  if (action === "cal_desk_attend_report") {
+    const target = isAdmin ? String(body.targetClub || "") : club;
+    if (!target) fail("BAD_REQUEST");
+    const list: Any[] = ctx.members ? await ctx.members(target) : [];
+    return await attendanceReport(admin, target, body.periods, list);
   }
 
   // ---------- 社內例會統計（某段期間） ----------

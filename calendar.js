@@ -128,7 +128,7 @@ function calShell() {
         <div id="calMain">
             <div class="flex items-center justify-between gap-2 mb-2">
                 <div class="min-w-0 text-sm text-slate-600 truncate">${E(binding.name)}　${E(binding.club)}</div>
-                <div class="shrink-0 flex gap-2"><button type="button" onclick="calGoToday()" class="text-sm font-bold text-blue-700 border border-blue-200 bg-white rounded-lg px-3 py-1.5">回到今天</button><button type="button" onclick="calOpenSettings()" class="text-lg border border-slate-300 bg-white rounded-lg px-2.5 py-1" aria-label="設定">⚙️</button></div>
+                <div class="shrink-0 flex gap-2"><button type="button" onclick="calGoToday()" class="text-sm font-bold text-blue-700 border border-blue-200 bg-white rounded-lg px-3 py-1.5">回到今天</button><button type="button" onclick="calOpenAttend('me')" class="text-sm font-bold text-emerald-800 border border-emerald-300 bg-emerald-50 rounded-lg px-3 py-1.5">📊 出席</button><button type="button" onclick="calOpenSettings()" class="text-lg border border-slate-300 bg-white rounded-lg px-2.5 py-1" aria-label="設定">⚙️</button></div>
             </div>
             <div id="calLayerTabs" class="grid grid-cols-4 gap-1.5"></div>
             <div id="calRangeTabs" class="grid grid-cols-5 gap-1.5 mt-2"></div>
@@ -515,4 +515,87 @@ async function calIcsCopy() {
     try { await navigator.clipboard.writeText(el.value); return toast('已複製網址'); } catch (e) { /* LINE 內建瀏覽器可能不允許，改用下面的做法 */ }
     try { el.focus(); el.select(); el.setSelectionRange(0, el.value.length); if (document.execCommand('copy')) return toast('已複製網址'); } catch (e) { /* 忽略 */ }
     toast('無法自動複製，請長按網址欄位選取後複製');
+}
+
+
+// =====================================================================
+// 📊 出席率：社友看自己的上半年／全年出席率與明細；社長（P）、秘書（S）可以看全社。
+// 計算在雲端（cal_attend_report，與執秘在報名系統看到的同一套）：
+//   出席率＝min(已記錄例會場數, 例會出席＋地區活動補出席) ÷ 已記錄例會場數；另附純例會出席率。
+// =====================================================================
+let calAr = null, calArYear = 0, calArScope = 'me', calArQuery = '', calArView = '', calArSeq = 0;
+function calRotaryPeriods(offset) {
+    const t = tpParts(Date.now()), ry = (t.m >= 7 ? t.y : t.y - 1) + (offset || 0);
+    const iso = (y, m, d, end) => `${y}-${p2(m)}-${p2(d)}T${end ? '23:59:59' : '00:00:00'}+08:00`;
+    return { label: `${ry}-${String(ry + 1).slice(2)} 扶輪年度`, periods: [{ id: 'h1', from: iso(ry, 7, 1), to: iso(ry, 12, 31, true) }, { id: 'year', from: iso(ry, 7, 1), to: iso(ry + 1, 6, 30, true) }] };
+}
+const calPct = v => v === null || v === undefined ? '－' : `${Math.round(v * 100)}%`;
+async function calOpenAttend(scope) {
+    calArScope = scope || 'me'; calArView = '';
+    const rp = calRotaryPeriods(calArYear), seq = ++calArSeq;
+    calSubShow(`<button type="button" onclick="calBack()" class="text-base font-bold text-blue-700 py-2">‹ 返回行事曆</button><div class="text-center text-slate-500 py-10 font-bold">讀取中…</div>`);
+    const r = await api('cal_attend_report', { scope: calArScope, periods: rp.periods });
+    if (seq !== calArSeq) return;
+    if (!r.ok) { calBack(); return toast(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : calErrText(r.code)); }
+    calAr = Object.assign(r, { label: rp.label });
+    calArRender();
+}
+function calArSetYear(v) { calArYear = v; calOpenAttend(calArScope); }
+function calArSumCard(title, x) {
+    if (!x || !x.held) return `<div class="bg-white rounded-2xl border border-slate-200 p-3 text-center"><div class="text-sm font-bold text-slate-500">${title}</div><div class="text-2xl font-black text-slate-400 mt-1">－</div><div class="text-xs text-slate-500 mt-1">還沒有已記錄的例會</div></div>`;
+    return `<div class="bg-white rounded-2xl border ${x.rate >= 0.6 ? 'border-emerald-300' : 'border-rose-300'} p-3 text-center"><div class="text-sm font-bold text-slate-500">${title}</div>
+        <div class="text-3xl font-black mt-1 ${x.rate >= 0.6 ? 'text-emerald-700' : 'text-rose-700'}">${calPct(x.rate)}</div>
+        <div class="text-xs text-slate-600 mt-1">例會 ${x.attended}/${x.held}${x.makeup ? `・補出席 ${x.makeup}` : ''}</div>${x.makeup ? `<div class="text-[11px] text-slate-400">純例會 ${calPct(x.meetRate)}</div>` : ''}</div>`;
+}
+function calArDetailHtml(p) {
+    const day = iso => { const t = tpParts(Date.parse(iso)); return `${t.m}/${t.d}（${CAL_WD[t.wd]}）`; };
+    const ms = calAr.meetings.map(m => `<li class="flex items-center gap-2 py-2 border-b border-slate-100"><span class="w-20 shrink-0 text-sm text-slate-500">${day(m.start)}</span><span class="flex-1 text-base">${E(m.title)}</span><span class="text-sm font-black ${!m.recorded ? 'text-slate-400' : p.att.includes(m.id) ? 'text-emerald-700' : 'text-rose-600'}">${!m.recorded ? '尚未記錄' : p.att.includes(m.id) ? '✅ 出席' : '✕ 缺席'}</span></li>`).join('');
+    const ds = calAr.district.filter(d => p.dist.includes(d.key)).map(d => `<li class="flex items-center gap-2 py-2 border-b border-slate-100"><span class="w-20 shrink-0 text-sm text-slate-500">${day(d.date)}</span><span class="flex-1 text-base">${E(d.title)}</span><span class="text-sm font-black text-blue-700">🎫 已報到</span></li>`).join('');
+    return `<div class="grid grid-cols-2 gap-2 mt-3">${calArSumCard('上半年', p.sum.h1)}${calArSumCard('全年', p.sum.year)}</div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 mt-3"><div class="font-black text-lg">例會（${calAr.meetings.length} 場）</div><ul class="mt-1">${ms || '<li class="text-slate-500 py-2">這個年度還沒有例會</li>'}</ul></div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 mt-3"><div class="font-black text-lg">地區活動補出席（${p.dist.length} 場）</div><ul class="mt-1">${ds || '<li class="text-slate-500 py-2">沒有地區活動報到紀錄</li>'}</ul></div>
+        <p class="text-xs text-slate-500 mt-3 leading-relaxed">出席率＝(例會出席＋地區活動補出席) ÷ 已記錄出席的例會場數，最高 100%。例會由執秘記錄出席後才列入；地區活動以現場報到（LINE 掃碼或櫃台點名）為準。</p>`;
+}
+function calArRender() {
+    if (!calAr) return;
+    const yearBtns = `<div class="grid grid-cols-2 gap-1.5 mt-2">${[[0, '本扶輪年度'], [-1, '上個扶輪年度']].map(x => `<button type="button" onclick="calArSetYear(${x[0]})" class="rounded-xl py-2.5 text-base font-black border ${calArYear === x[0] ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-slate-700 border-slate-300'}">${x[1]}</button>`).join('')}</div>`;
+    const head = (back, backLabel, title) => `<button type="button" onclick="${back}" class="text-base font-bold text-blue-700 py-2">‹ ${backLabel}</button><h2 class="font-black text-xl mt-1">${title}</h2><div class="text-sm text-slate-500">${E(calAr.club)}・${E(calAr.label)}（上半年＝7/1～12/31）</div>`;
+    if (calArScope === 'me') {
+        const p = calAr.people[0];
+        calSubShow(`${head('calBack()', '返回行事曆', '📊 我的出席')}${yearBtns}
+            ${calAr.canClub ? `<button type="button" onclick="calOpenAttend('club')" class="mt-3 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black rounded-xl py-3">👥 看全社出席率</button>` : ''}
+            ${p ? calArDetailHtml(p) : '<div class="bg-white rounded-2xl border border-slate-200 p-5 mt-3 text-center text-slate-500">這個年度還沒有您的出席資料。</div>'}`);
+        return;
+    }
+    if (calArView) {
+        const p = calAr.people.find(x => x.key === calArView);
+        if (p) { calSubShow(`${head('calArView=\'\'; calArRender()', '返回全社名單', E(p.name) + (p.nickname ? `<span class="ml-2 text-base font-bold text-slate-500">${E(p.nickname)}</span>` : ''))}${calArDetailHtml(p)}`); return; }
+        calArView = '';
+    }
+    const H = id => (calAr.periods.find(x => x.id === id) || { held: 0 }).held;
+    calSubShow(`${head('calOpenAttend(\'me\')', '返回我的出席', '👥 全社出席率')}${yearBtns}
+        <div class="text-sm text-slate-600 mt-2">已記錄的例會：上半年 ${H('h1')} 場、全年 ${H('year')} 場</div>
+        <input id="calArSearch" type="search" value="${E(calArQuery)}" oninput="calArQuery=this.value; calArList()" class="mt-2 w-full border border-slate-300 rounded-xl px-4 py-3 text-base" placeholder="🔍 搜尋姓名或 Nick Name">
+        <div id="calArList" class="mt-2"></div>
+        <button type="button" onclick="calArCopy()" class="mt-3 w-full bg-white border border-slate-300 font-bold rounded-xl py-3">📋 複製全社出席率（貼到 LINE）</button>`);
+    calArList();
+}
+function calArList() {
+    const box = $('calArList'); if (!box || !calAr) return;
+    const q = calArQuery.trim().toLowerCase();
+    const list = calAr.people.filter(p => !p.guest && (!q || [p.name, p.nickname, p.role].some(v => String(v || '').toLowerCase().includes(q))));
+    const c = x => x && x.held ? `<b class="${x.rate >= 0.6 ? 'text-emerald-700' : 'text-rose-700'}">${calPct(x.rate)}</b>` : '<span class="text-slate-400">－</span>';
+    box.innerHTML = list.length ? list.map(p => `<button type="button" data-key="${E(p.key)}" onclick="calArView=this.dataset.key; calArRender()" class="w-full flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-3 mb-1.5 text-left">
+            <div class="flex-1 min-w-0"><div class="font-black text-base truncate">${E(p.name)}${p.left ? ' <span class="text-xs text-slate-400">（已不在社友庫）</span>' : ''}</div><div class="text-sm text-slate-500 truncate">${E(p.nickname)}</div></div>
+            <div class="text-center w-16"><div class="text-[11px] text-slate-500">上半年</div><div class="text-base">${c(p.sum.h1)}</div></div>
+            <div class="text-center w-16"><div class="text-[11px] text-slate-500">全年</div><div class="text-base">${c(p.sum.year)}</div></div></button>`).join('')
+        : '<div class="text-center text-slate-500 py-6">沒有符合的社友。</div>';
+}
+async function calArCopy() {
+    if (!calAr) return;
+    const line = (p, id) => { const x = p.sum[id]; return x && x.held ? `${calPct(x.rate)}（例會 ${x.attended}/${x.held}${x.makeup ? `＋補 ${x.makeup}` : ''}）` : '－'; };
+    const text = `${calAr.club} ${calAr.label} 出席率\n` + calAr.people.filter(p => !p.guest).map((p, i) => `${i + 1}. ${p.nickname || p.name}　上半年 ${line(p, 'h1')}　全年 ${line(p, 'year')}`).join('\n');
+    try { await navigator.clipboard.writeText(text); return toast('已複製，可以貼到 LINE'); } catch (e) { /* LINE 內建瀏覽器可能不允許 */ }
+    try { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); if (ok) return toast('已複製，可以貼到 LINE'); } catch (e) { /* 忽略 */ }
+    toast('無法自動複製，請改用電腦版匯出 Excel');
 }

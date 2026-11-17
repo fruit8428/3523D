@@ -335,6 +335,10 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
           const keys = familyKeys(list, key, name);
           return list.filter((m) => m && m.name && keys.includes(personKey(m))).map((m) => ({ key: personKey(m), name: m.name, nickname: m.nickname || "", role: m.role || "" }));
         },
+        members: async (club: string) => {
+          if (!cachedFull) cachedFull = await loadState(deps, true);
+          return Array.isArray(cachedFull.members[club]) ? cachedFull.members[club] : [];
+        },
       };
       return await calMember(action, body, deps.admin, b ? { club: b.club, key: b.key, name: b.name, nickname: b.nickname } : null, reg);
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }

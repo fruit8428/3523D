@@ -301,3 +301,34 @@ const ag5 = await deskM("cal_desk_attend_save", { ...A1, id: mt5.id, keys: ["趙
 ok("記錄出席：同行者可以記錄（算寶尊眷），不存在的同行者被忽略", ag5.attended.length === 2 && T.calendar_attendance.find((x: any) => x.event_id === mt5.id && x.full_name === "趙太太").is_guest === true && T.calendar_attendance.find((x: any) => x.event_id === mt5.id && x.full_name === "趙太太").role === "寶(尊)眷");
 g5 = await deskM("cal_desk_proxy_save", { ...A1, id: mt5.id, keys: [], guests: [{ host: "趙|Z", type: "朋友", name: "老朋友" }, { host: "王|", type: "子女", name: "王小妹" }] });
 ok("取消勾選趙：趙帶的人一起移除（朋友也不收），王帶的子女保留", g5.people.filter((p: any) => p.ext).map((p: any) => p.name).join() === "王小妹" && !g5.people.some((p: any) => p.key === "趙|Z"));
+
+// ---------- 出席率報表（例會＋地區活動補出席） ----------
+const rk = (m: string, d: string) => ({ layer: "club", club: "甲社", title: m, start: `2027-${d}T19:00:00+08:00`, end: `2027-${d}T21:00:00+08:00`, rsvpEnabled: true });
+const ma = (await deskM("cal_desk_save", { ...A1, event: dev(rk("一月例會", "01-06")) })).event;
+const mb = (await deskM("cal_desk_save", { ...A1, event: dev(rk("二月例會", "02-03")) })).event;
+const mc = (await deskM("cal_desk_save", { ...A1, event: dev(rk("三月例會", "03-03")) })).event;
+await deskM("cal_desk_attend_save", { ...A1, id: ma.id, keys: ["王|", "王子|"] });
+await deskM("cal_desk_attend_save", { ...A1, id: mb.id, keys: ["趙|Z"] });
+T.event_checkins = [
+  { event_key: "sports::地區高球", club_name: "甲社", person_key: "王|", full_name: "王", nickname: "", status: "in", checked_in_at: "2027-02-10T01:00:00.000Z" },
+  { event_key: "seminar::地區研習", club_name: "甲社", person_key: "王|", full_name: "王", nickname: "", status: "in", checked_in_at: "2027-04-01T01:00:00.000Z" },
+  { event_key: "sports::地區高球", club_name: "甲社", person_key: "趙|Z", full_name: "趙", nickname: "Z", status: "cancelled", checked_in_at: "2027-02-10T01:00:00.000Z" },
+  { event_key: "sports::地區高球", club_name: "乙社", person_key: "李|", full_name: "李", nickname: "", status: "in", checked_in_at: "2027-02-10T01:00:00.000Z" },
+];
+const PER = [{ id: "h1", from: "2027-01-01T00:00:00+08:00", to: "2027-03-31T23:59:59+08:00" }, { id: "year", from: "2027-01-01T00:00:00+08:00", to: "2027-06-30T23:59:59+08:00" }];
+const regM = { roster: jreg.roster, members: async (c: string) => MEMBERS[c] || [] };
+const zr = await handleMember("cal_attend_report", { scope: "me", periods: PER }, db, { club: "甲社", key: "趙|Z", name: "趙", nickname: "Z" }, regM);
+ok("出席率（社友本人）：只回傳自己，沒有全社權限", zr.people.length === 1 && zr.people[0].key === "趙|Z" && zr.canClub === false && zr.district.length === 0);
+ok("出席率：趙 例會 1/2、取消的報到不算補出席 → 50%", zr.people[0].sum.h1.held === 2 && zr.people[0].sum.h1.attended === 1 && zr.people[0].sum.h1.makeup === 0 && zr.people[0].sum.h1.rate === 0.5);
+ok("出席率：一般社友不能看全社", await code(handleMember("cal_attend_report", { scope: "club", periods: PER }, db, { club: "甲社", key: "趙|Z", name: "趙", nickname: "Z" }, regM)) === "CAL_FORBIDDEN");
+const wr = await handleMember("cal_attend_report", { scope: "club", periods: PER }, db, mkU("王|", "王"), regM);
+const w = wr.people.find((p: any) => p.key === "王|");
+ok("出席率（社長）：看得到全社（王、王子、趙），社長排第一", wr.canClub === true && wr.people[0].key === "王|" && ["王子|", "趙|Z"].every((k) => wr.people.some((p: any) => p.key === k)));
+ok("出席率：王 上半年 例會 1/2＋補出席 1 → 100%，純例會 50%", w.sum.h1.held === 2 && w.sum.h1.attended === 1 && w.sum.h1.makeup === 1 && w.sum.h1.rate === 1 && w.sum.h1.meetRate === 0.5);
+ok("出席率：全年補出席 2 次，但最多補到 100%（不超過例會場數）", w.sum.year.makeup === 2 && w.sum.year.effective === 2 && w.sum.year.rate === 1);
+ok("出席率：還沒記錄出席的三月例會不列入分母，但列在明細（尚未記錄）", wr.meetings.some((m: any) => m.id === mc.id && m.recorded === false) && wr.periods.find((p: any) => p.id === "h1").held === 2);
+ok("出席率：地區活動只算本社、已報到的，並附活動名稱與日期", wr.district.map((d: any) => d.title).sort().join() === "地區研習,地區高球" && w.dist.length === 2);
+const dr2 = await deskM("cal_desk_attend_report", { ...A1, periods: PER });
+ok("執秘（報名系統）：看得到全社出席率", dr2.club === "甲社" && dr2.people.find((p: any) => p.key === "趙|Z").sum.year.rate === 0.5);
+ok("執秘：乙社的密碼只能看乙社", (await deskM("cal_desk_attend_report", { club: "乙社", clubPassword: "b123", targetClub: "甲社", periods: PER })).club === "乙社");
+ok("出席率：期間格式錯誤或超過一年被擋", await code(deskM("cal_desk_attend_report", { ...A1, periods: [{ id: "x", from: "2025-01-01", to: "2027-01-01" }] })) === "CAL_BAD_TIME" && await code(deskM("cal_desk_attend_report", { ...A1, periods: [] })) === "CAL_BAD_TIME");
