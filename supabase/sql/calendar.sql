@@ -30,7 +30,7 @@ create table if not exists public.calendar_roles (
     person_key   text not null,                 -- 姓名|Nick Name
     full_name    text not null,
     nickname     text not null default '',
-    role         text not null check (role in ('district_editor', 'club_editor', 'governor')),
+    role         text not null check (role in ('district_editor', 'club_editor', 'governor', 'governor_cc')),
     managed_club text not null default '',      -- club_editor 時＝可管理的社；其他角色為空字串
     granted_at   timestamptz not null default now(),
     unique (club_name, person_key, role, managed_club)
@@ -141,11 +141,36 @@ create table if not exists public.calendar_report_viewers (
 );
 alter table public.calendar_report_viewers enable row level security;
 
+-- 總監每日推播（2026-11-17）
+-- 角色多一種 governor_cc＝總監秘書（收總監每日推播的副本）。舊資料庫的檢查條件要換掉。
+alter table public.calendar_roles drop constraint if exists calendar_roles_role_check;
+alter table public.calendar_roles add constraint calendar_roles_role_check
+    check (role in ('district_editor', 'club_editor', 'governor', 'governor_cc'));
+-- 系統設定：cron_secret＝排程呼叫雲端小程式時要帶的密碼（第一次執行時自動產生亂數，之後不會變）。anon 讀不到。
+create table if not exists public.calendar_settings (
+    key   text primary key,
+    value text not null
+);
+alter table public.calendar_settings enable row level security;
+insert into public.calendar_settings (key, value)
+    values ('cron_secret', md5(random()::text || clock_timestamp()::text) || md5(random()::text))
+    on conflict (key) do nothing;
+-- 發送紀錄：同一天、同一位總監、同一位收件人只推一次（排程重複觸發也不會重發）
+create table if not exists public.calendar_digest_log (
+    day      date not null,                -- 推播的是哪一天的行程（台灣日期）
+    gov_key  text not null,                -- 社名|姓名|Nick Name（總監）
+    to_key   text not null,                -- 社名|姓名|Nick Name（收件人）
+    events   int  not null default 0,
+    sent_at  timestamptz not null default now(),
+    primary key (day, gov_key, to_key)
+);
+alter table public.calendar_digest_log enable row level security;
+
 alter table public.calendar_rsvp        enable row level security;
 alter table public.calendar_ics         enable row level security;
 alter table public.calendar_event_types enable row level security;
 alter table public.calendar_roles       enable row level security;
 alter table public.calendar_events      enable row level security;
-revoke all on public.calendar_event_types, public.calendar_roles, public.calendar_events, public.calendar_ics, public.calendar_rsvp, public.calendar_attendance, public.calendar_makeups, public.calendar_report_viewers from anon, authenticated;
+revoke all on public.calendar_event_types, public.calendar_roles, public.calendar_events, public.calendar_ics, public.calendar_rsvp, public.calendar_attendance, public.calendar_makeups, public.calendar_report_viewers, public.calendar_settings, public.calendar_digest_log from anon, authenticated;
 revoke all on sequence public.calendar_event_types_id_seq, public.calendar_roles_id_seq, public.calendar_makeups_id_seq from anon, authenticated;
 notify pgrst, 'reload schema';

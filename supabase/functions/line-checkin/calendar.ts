@@ -872,8 +872,136 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
   return fail("BAD_REQUEST");
 }
 
+// =====================================================================
+// 總監每日推播（規格 6.8）：每天晚上 8 點（pg_cron）把總監「明天」的行程用 LINE 卡片推給總監，並給總監秘書一份副本。
+//   收件人：calendar_roles 的 governor（總監本人）＋ governor_cc（總監秘書，收副本）；都要綁定過 LINE（line_bindings）。
+//   內容：總監的「所有行程」＝地區＋總監所屬社的社內＋總監本人的私人行程（已取消的不列）。明天沒有行程就不推。
+//   同一天、同一位總監、同一位收件人只推一次（calendar_digest_log），排程重複觸發也不會重發；後台「測試發送」不受此限也不記錄。
+// =====================================================================
+export interface DigestOpts {
+  day?: string;                 // YYYY-MM-DD（台灣日期）；沒給＝明天
+  liffId: string;               // 「查看詳情」按鈕要開的 LIFF
+  send?: (to: string, messages: Any[]) => Promise<void>;   // 沒給＝只預覽（不發送）
+  test?: boolean;               // 後台測試發送：標「測試」、不檢查也不寫發送紀錄
+  now?: number;
+}
+const DIGEST_WD = ["日", "一", "二", "三", "四", "五", "六"];
+const tpYmd = (ms: number) => new Date(ms + 8 * 3600_000).toISOString().slice(0, 10);
+const tpHm = (ms: number) => new Date(ms + 8 * 3600_000).toISOString().slice(11, 16);
+const LAYER_COLOR: Record<string, string> = { district: "#1D4ED8", club: "#B45309", private: "#2E7D32" };
+const LAYER_NAME: Record<string, string> = { district: "地區", club: "社內", private: "私人" };
+export function digestTimeText(e: Any, day: string): string {
+  const s = Date.parse(e.start_at), en = Date.parse(e.end_at);
+  const sd = tpYmd(s), ed = tpYmd(en);
+  if (e.all_day) return sd < day || ed > day ? "全天（多天活動）" : "全天";
+  const a = sd < day ? "（前一天開始）" : tpHm(s);
+  const b = ed > day ? "（隔天結束）" : tpHm(en);
+  if (sd === day && ed === day) return s === en ? a : `${a}–${b}`;
+  return `${a} ～ ${b}`;
+}
+// 一位總監明天的卡片（Flex Message）。events 已依開始時間排序
+export function buildDigestMessage(gov: { name: string; nickname?: string }, day: string, events: Any[], liffId: string, test = false, tomorrow = true): Any {
+  const [y, m, d] = day.split("-").map(Number);
+  const wd = DIGEST_WD[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  const dayText = `${m}/${d}（${wd}）`;
+  const base = `https://liff.line.me/${liffId}?p=calendar`;
+  const MAX = 10, shown = events.slice(0, MAX);
+  const items: Any[] = [];
+  shown.forEach((e, i) => {
+    if (i) items.push({ type: "separator", margin: "lg" });
+    const lines: Any[] = [
+      { type: "text", text: `【${LAYER_NAME[e.layer] || ""}】${digestTimeText(e, day)}`, size: "sm", weight: "bold", color: LAYER_COLOR[e.layer] || "#334155", wrap: true },
+      { type: "text", text: String(e.title || "（未命名）"), weight: "bold", size: "md", wrap: true, color: "#0F172A", margin: "xs" },
+    ];
+    if (e.layer === "club" && e.club_name) lines.push({ type: "text", text: e.club_name, size: "xs", color: "#94A3B8", wrap: true });
+    if (e.location || e.address) lines.push({ type: "text", text: `📍 ${e.location || e.address}`, size: "sm", color: "#475569", wrap: true, margin: "xs" });
+    if (e.dress_code) lines.push({ type: "text", text: `👔 ${e.dress_code}`, size: "sm", color: "#475569", wrap: true });
+    lines.push({ type: "text", text: "查看詳情 ›", size: "xs", color: "#2563EB", margin: "sm", action: { type: "uri", label: "查看詳情", uri: `${base}&ev=${encodeURIComponent(String(e.id))}&d=${day}` } });
+    items.push({ type: "box", layout: "vertical", margin: i ? "lg" : "none", contents: lines, action: { type: "uri", label: "查看詳情", uri: `${base}&ev=${encodeURIComponent(String(e.id))}&d=${day}` } });
+  });
+  if (events.length > MAX) items.push({ type: "text", text: `還有 ${events.length - MAX} 個行程，請開啟行事曆查看。`, size: "sm", color: "#64748B", margin: "lg", wrap: true });
+  const who = gov.nickname ? `${gov.name} ${gov.nickname}` : gov.name;
+  const first = events[0];
+  const when = tomorrow ? "明天 " : "";
+  const alt = `${test ? "【測試】" : ""}📅 ${when}${dayText}有 ${events.length} 個行程：${digestTimeText(first, day)} ${first.title}${events.length > 1 ? " 等" : ""}`.slice(0, 390);
+  return {
+    type: "flex", altText: alt,
+    contents: {
+      type: "bubble", size: "mega",
+      header: { type: "box", layout: "vertical", backgroundColor: "#1E3A8A", paddingAll: "16px", contents: [
+        { type: "text", text: `${test ? "【測試】" : ""}📅 ${tomorrow ? "明天的行程" : "行程"}（${events.length}）`, color: "#FFFFFF", weight: "bold", size: "lg", wrap: true },
+        { type: "text", text: `${dayText}・總監 ${who}`, color: "#BFDBFE", size: "sm", margin: "sm", wrap: true },
+      ] },
+      body: { type: "box", layout: "vertical", paddingAll: "16px", contents: items },
+      footer: { type: "box", layout: "vertical", contents: [
+        { type: "button", style: "primary", color: "#1E3A8A", height: "sm", action: { type: "uri", label: "開啟行事曆", uri: base } },
+      ] },
+    },
+  };
+}
+export async function governorDigest(admin: Any, o: DigestOpts): Promise<Any> {
+  const now = o.now || Date.now();
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(o.day || "")) ? String(o.day) : tpYmd(now + 86400_000);
+  const from = Date.parse(`${day}T00:00:00+08:00`), to = Date.parse(`${day}T23:59:59+08:00`);
+  if (!Number.isFinite(from)) fail("CAL_BAD_TIME");
+  const { data: roles, error } = await admin.from("calendar_roles").select("club_name,person_key,full_name,nickname,role").in("role", ["governor", "governor_cc"]);
+  if (error) dbFail(error);
+  const govs = (roles || []).filter((r: Any) => r.role === "governor");
+  const ccs = (roles || []).filter((r: Any) => r.role === "governor_cc");
+  const out: Any = { ok: true, day, test: !!o.test, sent: 0, governors: [] as Any[] };
+  if (!govs.length) { out.note = "NO_GOVERNOR"; return out; }
+  const bindingOf = async (club: string, key: string) => {
+    const { data, error: e } = await admin.from("line_bindings").select("line_user_id").eq("club_name", club).eq("person_key", key).maybeSingle();
+    if (e) dbFail(e);
+    return data ? String(data.line_user_id) : "";
+  };
+  for (const g of govs) {
+    const base = () => admin.from("calendar_events").select("*").gte("end_at", new Date(from).toISOString()).lte("start_at", new Date(to).toISOString()).neq("status", "cancelled").order("start_at").limit(200);
+    const [d, c, p] = await Promise.all([
+      base().eq("layer", "district"),
+      base().eq("layer", "club").eq("club_name", g.club_name),
+      base().eq("layer", "private").eq("club_name", g.club_name).eq("owner_key", g.person_key),
+    ]);
+    for (const r of [d, c, p]) if (r.error) dbFail(r.error);
+    const events = [...(d.data || []), ...(c.data || []), ...(p.data || [])].filter((e: Any) => e.status !== "cancelled")
+      .sort((a: Any, b: Any) => Number(!!b.all_day) - Number(!!a.all_day) || Date.parse(a.start_at) - Date.parse(b.start_at));
+    const govKey = `${g.club_name}|${g.person_key}`;
+    const item: Any = { name: g.full_name, nickname: g.nickname || "", club: g.club_name, events: events.map((e: Any) => ({ id: e.id, layer: e.layer, title: e.title, time: digestTimeText(e, day), location: e.location || e.address || "", dressCode: e.dress_code || "" })), recipients: [] as Any[] };
+    out.governors.push(item);
+    const to2 = [{ ...g, as: "總監" }, ...ccs.filter((x: Any) => !(x.club_name === g.club_name && x.person_key === g.person_key)).map((x: Any) => ({ ...x, as: "總監秘書（副本）" }))];
+    const seen = new Set<string>();
+    const msg = events.length ? buildDigestMessage({ name: g.full_name, nickname: g.nickname }, day, events, o.liffId, !!o.test, day === tpYmd(now + 86400_000)) : null;
+    if (msg) item.altText = msg.altText;
+    for (const r of to2) {
+      const rk = `${r.club_name}|${r.person_key}`;
+      if (seen.has(rk)) continue;
+      seen.add(rk);
+      const rec: Any = { name: r.full_name, nickname: r.nickname || "", club: r.club_name, as: r.as, status: "" };
+      item.recipients.push(rec);
+      const uid = await bindingOf(r.club_name, r.person_key);
+      if (!uid) { rec.status = "NOT_BOUND"; continue; }
+      if (!msg) { rec.status = "NO_EVENTS"; continue; }
+      if (!o.send) { rec.status = "PREVIEW"; continue; }
+      if (!o.test) {
+        const { data: done, error: e1 } = await admin.from("calendar_digest_log").select("day").eq("day", day).eq("gov_key", govKey).eq("to_key", rk).maybeSingle();
+        if (e1) dbFail(e1);
+        if (done) { rec.status = "ALREADY"; continue; }
+      }
+      try {
+        await o.send(uid, [msg]);
+        rec.status = "SENT"; out.sent++;
+        if (!o.test) {
+          const { error: e2 } = await admin.from("calendar_digest_log").insert({ day, gov_key: govKey, to_key: rk, events: events.length });
+          if (e2) console.error("總監推播紀錄寫入失敗", e2.message || e2);
+        }
+      } catch (e: Any) { rec.status = "FAILED"; console.error("總監推播失敗", (e && e.message) || e); }
+    }
+  }
+  return out;
+}
+
 // ---------- 後台動作（電腦版 admin-calendar.html，用後台密碼把關） ----------
-export interface AdminCtx { admin: Any; password: string; members: () => Promise<Record<string, Any[]>>; clubInfos: () => Promise<{ name: string; division: string; code: string }[]> }
+export interface AdminCtx { admin: Any; password: string; members: () => Promise<Record<string, Any[]>>; clubInfos: () => Promise<{ name: string; division: string; code: string }[]>; sendLine?: (to: string, messages: Any[]) => Promise<void> }
 // 執秘代登記的「同行者」（不在社友庫：子女、外勞、朋友，或社友庫沒有資料的寶尊眷）：person_key＝guest:<帶他來的社友 key>:<序號>
 const EXT_GUEST_PREFIX = "guest:";
 export const EXT_GUEST_TYPES = ["寶(尊)眷", "子女", "外勞", "朋友", "其他"];
@@ -949,6 +1077,14 @@ export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Pro
     return await reportViewersAction(admin, club, Array.isArray(raw) ? raw : [], body, action === "cal_admin_viewers_save", "行事曆後台");
   }
 
+  // ---------- 總監每日推播：預覽（不發送）、測試發送（立刻發、標「測試」、不記錄） ----------
+  if (action === "cal_admin_digest_preview" || action === "cal_admin_digest_test") {
+    const liffId = String(body.liffId || "");
+    if (!/^[\w-]{5,80}$/.test(liffId)) fail("BAD_REQUEST");
+    if (action === "cal_admin_digest_test" && !ctx.sendLine) fail("PUSH_DISABLED");
+    return await governorDigest(admin, { day: body.day, liffId, test: action === "cal_admin_digest_test", send: action === "cal_admin_digest_test" ? ctx.sendLine : undefined });
+  }
+
   if (action === "cal_admin_members") {
     const q = String(body.q || "").trim().toLowerCase();
     if (q.length < 1) return { ok: true, members: [] };
@@ -966,7 +1102,7 @@ export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Pro
 
   if (action === "cal_admin_grant") {
     const club = String(body.club || ""), key = String(body.personKey || ""), role = String(body.role || "");
-    if (!["district_editor", "club_editor", "governor"].includes(role)) fail("BAD_REQUEST");
+    if (!["district_editor", "club_editor", "governor", "governor_cc"].includes(role)) fail("BAD_REQUEST");
     const list = (await ctx.members())[club];
     const m = (Array.isArray(list) ? list : []).find((x: Any) => x && x.name && personKey(x) === key);
     if (!m) fail("MEMBER_NOT_FOUND");

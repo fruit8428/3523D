@@ -32,7 +32,7 @@
     <div id="app" class="hidden space-y-6">
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
             <h2 class="font-black text-lg">① 指定行事曆管理者</h2>
-            <p class="text-sm text-slate-600 mt-1 leading-relaxed">管理者不是依職稱自動給予，由這裡指定。<b>社內管理者</b>可新增／修改本社行程（通常是社長、執秘）；<b>地區管理者</b>可管理地區行程（地區辦公室、總監秘書）；<b>總監</b>供之後的每日推播使用。被指定的人必須在報名系統的社友庫裡，而且要在 LINE 綁定過身分。</p>
+            <p class="text-sm text-slate-600 mt-1 leading-relaxed">管理者不是依職稱自動給予，由這裡指定。<b>社內管理者</b>可新增／修改本社行程（通常是社長、執秘）；<b>地區管理者</b>可管理地區行程（地區辦公室、總監秘書）；<b>總監</b>每天晚上 8 點會在 LINE 收到「明天的行程」；<b>總監秘書</b>收到同一份副本（含總監的私人行程）。被指定的人必須在報名系統的社友庫裡，而且要在 LINE 綁定過身分。</p>
             <div class="mt-4 flex gap-2">
                 <input id="q" type="text" class="flex-1 border border-slate-300 rounded-lg px-3 py-2.5 text-base" placeholder="輸入姓名、Nick Name 或社名搜尋" onkeydown="if(event.key==='Enter')search()">
                 <button type="button" onclick="search()" class="bg-slate-800 text-white font-bold rounded-lg px-5">搜尋</button>
@@ -58,7 +58,20 @@
         </section>
 
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-            <h2 class="font-black text-lg">④ 活動類型</h2>
+            <h2 class="font-black text-lg">④ 總監每日推播</h2>
+            <p class="text-sm text-slate-600 mt-1 leading-relaxed">每天<b>晚上 8:00</b> 自動把總監<b>明天</b>的行程（地區＋總監所屬社＋總監的私人行程）用 LINE 卡片推給<b>總監</b>，並給<b>總監秘書</b>一份副本；明天沒有行程就不推。收件人在上面 ① 指定，而且要在 LINE 綁定過身分。每天最多約 2 則（總監＋秘書），使用官方帳號的推播額度。</p>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+                <label class="text-sm font-bold text-slate-700">哪一天的行程</label>
+                <input id="dgDay" type="date" class="border border-slate-300 rounded-lg px-3 py-2 text-base">
+                <button type="button" onclick="digest(false)" class="bg-slate-800 text-white font-bold rounded-lg px-4 py-2">預覽</button>
+                <button type="button" onclick="digest(true)" class="border border-blue-700 text-blue-800 font-bold rounded-lg px-4 py-2">📤 現在測試發送</button>
+            </div>
+            <div class="text-xs text-slate-500 mt-1">預覽不會發送。測試發送會立刻推給總監與總監秘書，卡片標「【測試】」，不影響晚上 8 點的正式推播。</div>
+            <div id="dgBox" class="mt-3"></div>
+        </section>
+
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h2 class="font-black text-lg">⑤ 活動類型</h2>
             <p class="text-sm text-slate-600 mt-1">刪除某個類型後，使用它的行程會變成「未分類」。</p>
             <div id="typeList" class="mt-3 space-y-2"></div>
             <div class="mt-3 flex gap-2">
@@ -73,7 +86,7 @@
     const FN_URL = (D.supabaseUrl || '') + '/functions/v1/line-checkin';
     const $ = id => document.getElementById(id);
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const ROLE_NAME = { club_editor: '社內管理者', district_editor: '地區管理者', governor: '總監' };
+    const ROLE_NAME = { club_editor: '社內管理者', district_editor: '地區管理者', governor: '總監', governor_cc: '總監秘書（收推播副本）' };
     const ERR = {
         CAL_ADMIN_DISABLED: '行事曆後台尚未啟用（雲端小程式沒有設定 CALENDAR_ADMIN_PASSWORD）。',
         CAL_ADMIN_AUTH_FAILED: '密碼不正確。',
@@ -184,6 +197,25 @@
         const m = $('vwMsg'); m.className = 'self-center text-sm font-bold text-emerald-700'; m.textContent = '✅ 已恢復預設';
     }
     async function refreshViewerSummary() { const r = await api('cal_admin_state'); if (r.ok) { state = r; renderViewerClubs(); } }
+    // ---------- ④ 總監每日推播 ----------
+    const DG_STATUS = { SENT: ['✅ 已發送', 'text-emerald-700'], PREVIEW: ['會收到', 'text-emerald-700'], NOT_BOUND: ['⚠️ 還沒綁定 LINE，收不到', 'text-rose-700'], NO_EVENTS: ['這天沒有行程，不推播', 'text-slate-500'], ALREADY: ['今天已推過', 'text-slate-500'], FAILED: ['❌ 發送失敗', 'text-rose-700'] };
+    function dgTomorrow() { const d = new Date(Date.now() + 8 * 3600e3 + 86400e3); return d.toISOString().slice(0, 10); }
+    async function digest(send) {
+        const day = $('dgDay').value || dgTomorrow();
+        if (send && !confirm(`要現在把 ${day} 的行程測試發送給總監與總監秘書嗎？（卡片會標【測試】）`)) return;
+        $('dgBox').innerHTML = '<div class="text-sm text-slate-500">處理中…</div>';
+        const r = await api(send ? 'cal_admin_digest_test' : 'cal_admin_digest_preview', { day: day, liffId: D.lineLiffId || '' });
+        if (!r.ok) { $('dgBox').innerHTML = `<div class="text-sm font-bold text-rose-700">${E(r.code === 'PUSH_DISABLED' ? '這個地區還沒開放 LINE 推播（雲端沒有設定官方帳號的 token）。' : r.code === 'BAD_REQUEST' && !D.lineLiffId ? '地區設定檔沒有 LINE LIFF ID，無法產生「查看詳情」連結。' : errText(r.code))}</div>`; return; }
+        if (!r.governors.length) { $('dgBox').innerHTML = '<div class="text-sm font-bold text-rose-700">還沒有指定總監，請在上面 ① 搜尋總監後按「設為總監」。</div>'; return; }
+        $('dgBox').innerHTML = (send ? `<div class="text-sm font-bold text-emerald-700 mb-2">已發送 ${r.sent} 則。</div>` : '') + r.governors.map(g => `<div class="border border-slate-200 rounded-xl p-3 mb-2">
+            <div class="font-black">總監 ${E(g.name)}${g.nickname ? ' ' + E(g.nickname) : ''} <span class="font-normal text-sm text-slate-500">${E(clubLabel(g.club))}</span></div>
+            <div class="text-sm mt-1 text-slate-600">${E(r.day)} 共 <b>${g.events.length}</b> 個行程</div>
+            ${g.events.length ? `<ul class="mt-1 text-sm space-y-1">${g.events.map(e => `<li class="border-l-4 pl-2 ${e.layer === 'district' ? 'border-blue-600' : e.layer === 'club' ? 'border-amber-600' : 'border-green-700'}"><b>${E(e.time)}</b>　${E(e.title)}${e.location ? `<span class="text-slate-500">　📍 ${E(e.location)}</span>` : ''}${e.dressCode ? `<span class="text-slate-500">　👔 ${E(e.dressCode)}</span>` : ''}</li>`).join('')}</ul>` : ''}
+            <div class="mt-2 text-sm font-bold text-slate-700">收件人</div>
+            <ul class="text-sm">${g.recipients.map(x => `<li>${E(x.as)}：${E(x.name)}${x.nickname ? ' ' + E(x.nickname) : ''}　<span class="font-bold ${(DG_STATUS[x.status] || ['', ''])[1]}">${E((DG_STATUS[x.status] || [x.status])[0])}</span></li>`).join('')}</ul>
+            ${g.recipients.length < 2 ? '<div class="text-xs text-amber-700 mt-1">還沒有指定總監秘書（收副本），需要的話在上面 ① 搜尋後按「設為總監秘書」。</div>' : ''}
+        </div>`).join('');
+    }
     async function search() {
         const q = $('q').value.trim(); if (!q) return;
         const r = await api('cal_admin_members', { q: q });
@@ -195,7 +227,8 @@
         $('results').innerHTML = found.map((m, i) => `<div class="border border-slate-200 rounded-lg p-3 flex flex-wrap items-center gap-2"><div class="min-w-0 flex-1"><span class="font-black">${E(m.name)}</span>${m.nickname ? `<span class="ml-1 text-slate-500">${E(m.nickname)}</span>` : ''}<div class="text-sm text-slate-500">${E(clubLabel(m.club))}${m.role ? '・' + E(m.role) : ''}</div></div>
             <button type="button" onclick="grant(${i},'club_editor')" class="bg-amber-400 font-bold rounded-lg px-3 py-2 text-sm">設為本社管理者</button>
             <button type="button" onclick="grant(${i},'district_editor')" class="bg-blue-700 text-white font-bold rounded-lg px-3 py-2 text-sm">設為地區管理者</button>
-            <button type="button" onclick="grant(${i},'governor')" class="border border-slate-300 font-bold rounded-lg px-3 py-2 text-sm">設為總監</button></div>`).join('');
+            <button type="button" onclick="grant(${i},'governor')" class="border border-slate-300 font-bold rounded-lg px-3 py-2 text-sm">設為總監</button>
+            <button type="button" onclick="grant(${i},'governor_cc')" class="border border-slate-300 font-bold rounded-lg px-3 py-2 text-sm">設為總監秘書</button></div>`).join('');
     }
     async function grant(i, role) {
         const m = found[i]; if (!m) return;
@@ -214,6 +247,7 @@
     async function renameType(id) { const v = $('type_' + id).value.trim(); if (!v) return; const r = await api('cal_admin_type_save', { id: id, name: v }); if (!r.ok) return alert(r.code === 'SERVER_ERROR' ? '改名失敗，可能名稱重複。' : errText(r.code)); await refresh(); alert('已改名'); }
     async function delType(id) { if (!confirm('確定刪除這個活動類型？使用它的行程會變成「未分類」。')) return; const r = await api('cal_admin_type_delete', { id: id }); if (!r.ok) return alert(errText(r.code)); await refresh(); }
     $('hdDistrict').textContent = D.name || '';
+    $('dgDay').value = dgTomorrow();
     // 嵌在報名系統的「行事曆管理」裡時，若上面已經輸入過後台密碼就直接登入（同一個網站，只放記憶體）
     try { if (window.parent !== window && window.parent.cdeskAdminPw) { $('pw').value = window.parent.cdeskAdminPw; login(); } } catch (e) { /* 忽略 */ }
 </script>

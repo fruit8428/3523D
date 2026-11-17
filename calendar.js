@@ -120,6 +120,17 @@ async function calendarStart() {
     calShell();
     show('viewCalendar');
     await calReload();
+    // 從總監每日推播的「查看詳情」打開：網址帶 ev＝行程代碼、d＝那一天，直接打開那筆行程
+    const q = new URLSearchParams(location.search), evId = q.get('ev');
+    if (evId) await calOpenDeep(evId, q.get('d') || '');
+}
+async function calOpenDeep(id, day) {
+    if (!calEvents.some(x => x.id === id)) {
+        const base = /^\d{4}-\d{2}-\d{2}$/.test(day) ? dayStartMs(day) : todayStartMs();
+        const r = await api('cal_list', { from: new Date(base - 86400e3).toISOString(), to: new Date(base + 2 * 86400e3).toISOString() });
+        if (r.ok) (r.events || []).forEach(e => { if (!calEvents.some(x => x.id === e.id)) calEvents.push(e); });
+    }
+    if (calEvents.some(x => x.id === id)) calOpenDetail(id);
 }
 
 // ---------- 主畫面 ----------

@@ -8,6 +8,7 @@
 //   CALENDAR_ADMIN_PASSWORD （選填）行事曆後台（admin-calendar.html）的密碼；沒設定＝後台關閉
 //   LINE_MESSAGING_ACCESS_TOKEN、LINE_PUSH_PASSWORD   （選填）LINE 推播用：官方帳號 Messaging API 的 Channel access token
 //                           與推播密碼。兩個都有設定，這個地區才算「開放推播」；系統管理者要關閉時把它們刪掉即可。
+//                           總監每日推播（cal_cron_digest）只需要 token；它由資料庫排程呼叫，用 calendar_settings.cron_secret 把關。
 // =====================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { AppError, handle, type Deps } from "./lib.ts";
@@ -43,6 +44,10 @@ const deps: Deps = {
       const messages = [{ type: "text", text }];
       if (userIds.length === 1) await lineApi("/v2/bot/message/push", { method: "POST", body: JSON.stringify({ to: userIds[0], messages }) });
       else await lineApi("/v2/bot/message/multicast", { method: "POST", body: JSON.stringify({ to: userIds, messages }) });
+    },
+    // 傳送任意訊息（總監每日推播的 Flex 卡片）給一個人
+    async sendMessages(to: string, messages: unknown[]) {
+      await lineApi("/v2/bot/message/push", { method: "POST", body: JSON.stringify({ to, messages }) });
     },
     // 傳給官方帳號的所有好友（計費：有幾位好友收得到就算幾則）
     async broadcast(text: string) {

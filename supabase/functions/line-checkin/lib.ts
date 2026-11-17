@@ -9,7 +9,7 @@
 //    這個資料夾裡的 checkin-core.js 是專案根目錄那一份的複本，根目錄的改了要一起複製過來。
 // =====================================================================
 import "./checkin-core.js";
-import { CalError, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
+import { CalError, governorDigest, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
 // deno-lint-ignore no-explicit-any
 type Any = any;
 const Core = (globalThis as Any).CheckinCore;
@@ -34,6 +34,7 @@ export interface PushDeps {
   quota: () => Promise<{ limit: number | null; used: number } | null>;            // 本月額度與已用則數；查不到回 null
   broadcast: (text: string) => Promise<void>;                                     // 傳給官方帳號的「所有好友」；失敗丟出例外
   friends: () => Promise<number | null>;                                          // 官方帳號目前收得到訊息的好友人數；查不到回 null
+  sendMessages?: (to: string, messages: Any[]) => Promise<void>;                  // 傳送任意訊息（例如 Flex 卡片）給一個人；失敗丟出例外
 }
 export class AppError extends Error {
   code: string;
@@ -284,10 +285,28 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
 
   // ---------- 以下都要先向 LINE 驗證身分 ----------
   // 行事曆（階段 1）：後台動作用後台密碼；社友動作要先向 LINE 驗證並查出綁定的社友
+  // 總監每日推播：由資料庫排程（pg_cron）每天晚上 8 點呼叫。用存在資料庫裡的排程密碼（calendar_settings.cron_secret）把關。
+  // 推播只需要官方帳號的 token（不需要推播密碼，因為收件人只有後台指定的總監與總監秘書）。
+  if (action === "cal_cron_digest") {
+    try {
+      const { data, error } = await deps.admin.from("calendar_settings").select("value").eq("key", "cron_secret").maybeSingle();
+      if (error) fail("CAL_TABLE_MISSING");
+      const secret = data ? String(data.value || "") : "";
+      if (!secret || String(body.secret || "") !== secret) { await sleep(1000); fail("CAL_CRON_AUTH_FAILED"); }
+      const send = deps.push && deps.push.token && deps.push.sendMessages ? deps.push.sendMessages : null;
+      if (!send) fail("PUSH_DISABLED");
+      const liffId = String(body.liffId || "");
+      if (!/^[\w-]{5,80}$/.test(liffId)) fail("BAD_REQUEST");
+      const r = await governorDigest(deps.admin, { liffId, send: send! });
+      console.log("總監每日推播", JSON.stringify({ day: r.day, sent: r.sent, governors: (r.governors || []).map((g: Any) => ({ events: g.events.length, recipients: g.recipients.map((x: Any) => x.status) })) }));
+      return r;
+    } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
+  }
   if (action.startsWith("cal_admin_")) {
     try {
       return await calAdmin(action, body, {
         admin: deps.admin, password: deps.calendarAdminPassword || "",
+        sendLine: deps.push && deps.push.token && deps.push.sendMessages ? deps.push.sendMessages : undefined,
         members: async () => (await loadState(deps, true)).members,
         clubInfos: async () => ((await loadState(deps, false)).divisionsData || []).flatMap((d: Any) => (d.clubs || []).map((c: Any) => ({ name: c.name, division: d.name || `第 ${d.id} 分區`, code: c.code || "" }))),
       });

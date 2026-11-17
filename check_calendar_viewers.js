@@ -20,6 +20,7 @@ const puppeteer = require('puppeteer');
     let r = { ok: false, code: 'BAD_REQUEST' };
     if (b.action === 'cal_admin_state') r = { ok: true, types: [], roles: [], clubs: ['甲社', '乙社'], clubsWithoutEditor: [], clubInfos: [{ name: '甲社', division: '第一分區', code: '01-1' }, { name: '乙社', division: '第二分區', code: '02-1' }], reportCustomClubs: Object.keys(saved).map(c => ({ club: c, count: saved[c].length })) };
     if (b.action === 'cal_admin_viewers_get') r = view(b.club);
+    if (b.action === 'cal_admin_digest_preview' || b.action === 'cal_admin_digest_test') r = { ok: true, day: b.day, sent: b.action === 'cal_admin_digest_test' ? 2 : 0, governors: [{ name: '王總監', nickname: 'Gov', club: '甲社', events: [{ id: 'd1', layer: 'district', title: '授證典禮', time: '18:00–21:00', location: '君悅', dressCode: '正式' }], recipients: [{ as: '總監', name: '王總監', status: b.action === 'cal_admin_digest_test' ? 'SENT' : 'PREVIEW' }, { as: '總監秘書（副本）', name: '林秘書', status: 'NOT_BOUND' }] }] };
     if (b.action === 'cal_admin_viewers_save') { if (b.reset) delete saved[b.club]; else saved[b.club] = b.keys; r = view(b.club); }
     req.respond({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(r) });
   });
@@ -42,6 +43,17 @@ const puppeteer = require('puppeteer');
   await page.click('button[onclick="resetViewers()"]');
   await page.waitForFunction(() => document.getElementById('vwMsg') && document.getElementById('vwMsg').textContent.includes('恢復預設'));
   ok('恢復預設後回到社長、秘書', JSON.stringify(await page.$$eval('.vw-ck', a => a.map(x => x.checked))) === '[true,true,false]' && sent.some(b => b.reset === true));
+  // ④ 總監每日推播
+  ok('推播：日期預設明天', await page.$eval('#dgDay', e => e.value) === new Date(Date.now() + 8 * 3600e3 + 86400e3).toISOString().slice(0, 10));
+  ok('搜尋結果有「設為總監秘書」按鈕（程式）', (await page.content()).includes("grant(${i},'governor_cc')") || (await page.evaluate(() => typeof grant === 'function')));
+  await page.click('button[onclick="digest(false)"]');
+  await page.waitForFunction(() => document.getElementById('dgBox').innerText.includes('收件人'));
+  const dg = await page.$eval('#dgBox', e => e.innerText);
+  const pvCall = sent.filter(b => b.action === 'cal_admin_digest_preview').pop();
+  ok('推播預覽：列出行程、收件人、沒綁定的提醒，送出 LIFF ID 與日期', dg.includes('授證典禮') && dg.includes('會收到') && dg.includes('還沒綁定 LINE') && pvCall.day && typeof pvCall.liffId === 'string');
+  await page.click('button[onclick="digest(true)"]');
+  await page.waitForFunction(() => document.getElementById('dgBox').innerText.includes('已發送'));
+  ok('推播測試發送：顯示已發送 2 則', (await page.$eval('#dgBox', e => e.innerText)).includes('已發送 2 則'));
   await page.setViewport({ width: 390, height: 800 });
   ok('手機寬度沒有橫向捲動', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   ok('無 JS 錯誤', jsErr.length === 0);
