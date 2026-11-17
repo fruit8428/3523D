@@ -165,6 +165,10 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - **旅平險個資絕對不可進 `app_storage`**（anon 可讀＝公開）：身分證字號／民國生日／手機只在 `pelsPrivateDraft`（記憶體）暫存，送出時 `savePelsInsurance()` 呼叫 RPC `save_insured_persons` 寫入 `insured_persons` 表（RLS 開啟、無 policy、anon 無任何權限；SQL 在 `supabase/sql/insured_persons.sql`），訂單 item 只留 `insuranceFilled`／`insuranceFamilyFilled` 旗標。主委端 `renderPelsInsuranceSection()`（面板 `#pelsInsuranceSection`）以「個資檢視密碼」呼叫 `read_insured_persons`／`delete_insured_persons`；密碼只以 bcrypt 雜湊存在 `app_secrets`，由 `set_pii_view_password` 設定，**不可寫進前端程式**（最高管理員密碼就是寫在前端所以不能拿來保護個資）。寫入函式沒有驗證身分（與整個系統一樣），有心人可覆蓋或刪除資料但讀不到。
 - `cat.allowSponsors` 控制贊助社/協辦社區塊；`cat.allowAddSubEvents === false`（RYLA、End Polio）則隱藏子活動增刪按鈕。
 
+### 社友名單的顯示順序（2026-11-17）
+
+`sortMembersForDisplay(list)`（index.html，`renderMemberMasterTable` 之前）：職務 P（現任社長）→ S（現任秘書）→ 其餘依 Nick Name（沒有就用姓名；`Intl.Collator` 不分大小寫、數字自然排序），寶(尊)眷緊接在對應社友（`spouseOfId`）下方，找不到對應社友的放最後。`memberRoleRank()` 比對前全形轉半形、去空白、轉大寫，`社長`／`秘書` 也視為 P／S，但 `PP`、`PE`、`執秘` 不算。**只影響畫面、不改 `clubMemberDatabase` 的存檔順序**（表格操作都用 `m.id`，所以安全）。套用在社友庫表格（含搜尋結果）與 `calendar-desk.js` 的 `cdOrderedMembers()`（代為登記、記錄實際出席、例會統計與 Excel）。LINE 綁定時的選名字清單尚未套用。測試：`node check_member_sort.js`（需 8000 埠）。
+
 ### 刪除社友與已送出的報名表（2026-11-14）
 
 已送出的報名表（`registrationOrders[子活動].items`）是送出當下的快照，**不會**隨社友庫變動；報到名單讀的是它。`deleteMember()` 會用 `findSubmittedRegistrationsOf()` 找出該社友（姓名＋Nick Name）在本社哪些報名表裡，**再問一次**要不要一併移除——不自動連動，因為社友離社後過去的紀錄通常要保留，而且會動到應繳金額。一併移除時：只有該張報名表「真的收人頭費」（`participantFee > 0` 且等於各人 `fee` 加總）才從 `participantFee`、`grandTotal` 扣掉他的 `fee`；**不可以直接加總 item.fee 重算**（研討會的 item 也帶著 `fee` 但不收費，會把金額算錯）。PELS 不自動移除（牽涉出席方式與旅平險個資），只提示。

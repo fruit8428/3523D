@@ -425,9 +425,10 @@ let cdStatsCustom = { from: '', to: '' };
 const cdIsGuestMember = m => !!(m && (m.spouseOfId || /眷/.test(String(m.role || ''))));
 const cdPk = m => `${(m && m.name) || ''}|${(m && m.nickname) || ''}`;
 
-// 社友庫依「社友 → 該社友的寶尊眷」排序，方便勾選與閱讀
+// 社友庫依「P（社長）→ S（秘書）→ Nick Name」排序，寶尊眷緊接在社友下方，方便勾選與閱讀
 function cdOrderedMembers(club) {
     const list = ((typeof clubMemberDatabase !== 'undefined' && clubMemberDatabase[club]) || []).filter(m => m && m.name);
+    if (typeof sortMembersForDisplay === 'function') return sortMembersForDisplay(list);   // P → S → Nick Name，寶尊眷跟在社友下方（index.html）
     const heads = list.filter(m => !cdIsGuestMember(m)), out = [];
     heads.forEach(h => { out.push(h); list.filter(m => cdIsGuestMember(m) && m.spouseOfId === h.id).forEach(g => out.push(g)); });
     list.filter(m => cdIsGuestMember(m) && !out.includes(m)).forEach(g => out.push(g));   // 找不到對應社友的寶尊眷放最後
