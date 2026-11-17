@@ -9,9 +9,11 @@
 //   LINE_MESSAGING_ACCESS_TOKEN、LINE_PUSH_PASSWORD   （選填）LINE 推播用：官方帳號 Messaging API 的 Channel access token
 //                           與推播密碼。兩個都有設定，這個地區才算「開放推播」；系統管理者要關閉時把它們刪掉即可。
 //                           總監每日推播（cal_cron_digest）只需要 token；它由資料庫排程呼叫，用 calendar_settings.cron_secret 把關。
+//   LINE_MESSAGING_CHANNEL_SECRET、LINE_LIFF_ID   （選填）聊天室關鍵字回覆（Webhook）：官方帳號 Messaging API 的 Channel secret
+//                           （用來驗證訊息真的來自 LINE）與地區的 LIFF ID。Webhook URL＝這支小程式的網址。
 // =====================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { AppError, handle, type Deps } from "./lib.ts";
+import { AppError, handle, handleWebhook, verifyLineSignature, type Deps } from "./lib.ts";
 import { icsFeed } from "./calendar.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -33,8 +35,13 @@ const lineApi = async (path: string, init?: RequestInit) => {
   return text ? JSON.parse(text) : {};
 };
 
+const CHANNEL_SECRET = (Deno.env.get("LINE_MESSAGING_CHANNEL_SECRET") || "").trim();
 const deps: Deps = {
   admin,
+  liffId: (Deno.env.get("LINE_LIFF_ID") || "").trim(),
+  async reply(replyToken: string, messages: unknown[]) {
+    await lineApi("/v2/bot/message/reply", { method: "POST", body: JSON.stringify({ replyToken, messages }) });
+  },
   calendarAdminPassword: (Deno.env.get("CALENDAR_ADMIN_PASSWORD") || "").trim(),
   push: {
     token: PUSH_TOKEN,
@@ -108,6 +115,18 @@ Deno.serve(async (req) => {
       console.error("ics 發生錯誤", e);
       return new Response("系統忙碌中，請稍後再試", { status: 500, headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } });
     }
+  }
+  // LINE 官方帳號的 Webhook（有 x-line-signature 標頭）：先驗證簽章，再處理聊天室訊息
+  const sig = req.headers.get("x-line-signature");
+  if (sig !== null) {
+    const raw = await req.text();
+    if (!(await verifyLineSignature(CHANNEL_SECRET, raw, sig))) return new Response("bad signature", { status: 401, headers: CORS });
+    try {
+      const body = JSON.parse(raw || "{}");
+      const r = await handleWebhook(body.events || [], deps);
+      if (r.replied) console.log("聊天室回覆", JSON.stringify(r));
+    } catch (e) { console.error("Webhook 發生錯誤", e); }
+    return new Response("ok", { status: 200, headers: CORS });     // 一律回 200，LINE 才不會一直重送
   }
   try {
     const body = await req.json().catch(() => ({}));

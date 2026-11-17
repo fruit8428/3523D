@@ -899,6 +899,31 @@ export function digestTimeText(e: Any, day: string): string {
   if (sd === day && ed === day) return s === en ? a : `${a}–${b}`;
   return `${a} ～ ${b}`;
 }
+// 卡片裡的一筆行程（總監推播與聊天室回覆共用）：層級＋時間、標題、社名、地點、服裝、「查看詳情」
+function eventBox(e: Any, day: string, base: string, first: boolean): Any {
+  const uri = `${base}&ev=${encodeURIComponent(String(e.id))}&d=${day}`;
+  const lines: Any[] = [
+    { type: "text", text: `【${LAYER_NAME[e.layer] || ""}】${digestTimeText(e, day)}`, size: "sm", weight: "bold", color: LAYER_COLOR[e.layer] || "#334155", wrap: true },
+    { type: "text", text: String(e.title || "（未命名）"), weight: "bold", size: "md", wrap: true, color: "#0F172A", margin: "xs" },
+  ];
+  if (e.layer === "club" && e.club_name) lines.push({ type: "text", text: e.club_name, size: "xs", color: "#94A3B8", wrap: true });
+  if (e.location || e.address) lines.push({ type: "text", text: `📍 ${e.location || e.address}`, size: "sm", color: "#475569", wrap: true, margin: "xs" });
+  if (e.dress_code) lines.push({ type: "text", text: `👔 ${e.dress_code}`, size: "sm", color: "#475569", wrap: true });
+  lines.push({ type: "text", text: "查看詳情 ›", size: "xs", color: "#2563EB", margin: "sm", action: { type: "uri", label: "查看詳情", uri } });
+  return { type: "box", layout: "vertical", margin: first ? "none" : "lg", contents: lines, action: { type: "uri", label: "查看詳情", uri } };
+}
+// 某位社友的「所有行程」（地區＋所屬社＋本人私人；已取消不列），全天在前、其餘依開始時間
+export async function eventsOfPerson(admin: Any, club: string, key: string, from: number, to: number): Promise<Any[]> {
+  const base = () => admin.from("calendar_events").select("*").gte("end_at", new Date(from).toISOString()).lte("start_at", new Date(to).toISOString()).neq("status", "cancelled").order("start_at").limit(200);
+  const [d, c, p] = await Promise.all([
+    base().eq("layer", "district"),
+    base().eq("layer", "club").eq("club_name", club),
+    base().eq("layer", "private").eq("club_name", club).eq("owner_key", key),
+  ]);
+  for (const r of [d, c, p]) if (r.error) dbFail(r.error);
+  return [...(d.data || []), ...(c.data || []), ...(p.data || [])].filter((e: Any) => e.status !== "cancelled")
+    .sort((a: Any, b: Any) => Number(!!b.all_day) - Number(!!a.all_day) || Date.parse(a.start_at) - Date.parse(b.start_at));
+}
 // 一位總監明天的卡片（Flex Message）。events 已依開始時間排序
 export function buildDigestMessage(gov: { name: string; nickname?: string }, day: string, events: Any[], liffId: string, test = false, tomorrow = true): Any {
   const [y, m, d] = day.split("-").map(Number);
@@ -909,15 +934,7 @@ export function buildDigestMessage(gov: { name: string; nickname?: string }, day
   const items: Any[] = [];
   shown.forEach((e, i) => {
     if (i) items.push({ type: "separator", margin: "lg" });
-    const lines: Any[] = [
-      { type: "text", text: `【${LAYER_NAME[e.layer] || ""}】${digestTimeText(e, day)}`, size: "sm", weight: "bold", color: LAYER_COLOR[e.layer] || "#334155", wrap: true },
-      { type: "text", text: String(e.title || "（未命名）"), weight: "bold", size: "md", wrap: true, color: "#0F172A", margin: "xs" },
-    ];
-    if (e.layer === "club" && e.club_name) lines.push({ type: "text", text: e.club_name, size: "xs", color: "#94A3B8", wrap: true });
-    if (e.location || e.address) lines.push({ type: "text", text: `📍 ${e.location || e.address}`, size: "sm", color: "#475569", wrap: true, margin: "xs" });
-    if (e.dress_code) lines.push({ type: "text", text: `👔 ${e.dress_code}`, size: "sm", color: "#475569", wrap: true });
-    lines.push({ type: "text", text: "查看詳情 ›", size: "xs", color: "#2563EB", margin: "sm", action: { type: "uri", label: "查看詳情", uri: `${base}&ev=${encodeURIComponent(String(e.id))}&d=${day}` } });
-    items.push({ type: "box", layout: "vertical", margin: i ? "lg" : "none", contents: lines, action: { type: "uri", label: "查看詳情", uri: `${base}&ev=${encodeURIComponent(String(e.id))}&d=${day}` } });
+    items.push(eventBox(e, day, base, i === 0));
   });
   if (events.length > MAX) items.push({ type: "text", text: `還有 ${events.length - MAX} 個行程，請開啟行事曆查看。`, size: "sm", color: "#64748B", margin: "lg", wrap: true });
   const who = gov.nickname ? `${gov.name} ${gov.nickname}` : gov.name;
@@ -956,15 +973,7 @@ export async function governorDigest(admin: Any, o: DigestOpts): Promise<Any> {
     return data ? String(data.line_user_id) : "";
   };
   for (const g of govs) {
-    const base = () => admin.from("calendar_events").select("*").gte("end_at", new Date(from).toISOString()).lte("start_at", new Date(to).toISOString()).neq("status", "cancelled").order("start_at").limit(200);
-    const [d, c, p] = await Promise.all([
-      base().eq("layer", "district"),
-      base().eq("layer", "club").eq("club_name", g.club_name),
-      base().eq("layer", "private").eq("club_name", g.club_name).eq("owner_key", g.person_key),
-    ]);
-    for (const r of [d, c, p]) if (r.error) dbFail(r.error);
-    const events = [...(d.data || []), ...(c.data || []), ...(p.data || [])].filter((e: Any) => e.status !== "cancelled")
-      .sort((a: Any, b: Any) => Number(!!b.all_day) - Number(!!a.all_day) || Date.parse(a.start_at) - Date.parse(b.start_at));
+    const events = await eventsOfPerson(admin, g.club_name, g.person_key, from, to);
     const govKey = `${g.club_name}|${g.person_key}`;
     const item: Any = { name: g.full_name, nickname: g.nickname || "", club: g.club_name, events: events.map((e: Any) => ({ id: e.id, layer: e.layer, title: e.title, time: digestTimeText(e, day), location: e.location || e.address || "", dressCode: e.dress_code || "" })), recipients: [] as Any[] };
     out.governors.push(item);
@@ -998,6 +1007,87 @@ export async function governorDigest(admin: Any, o: DigestOpts): Promise<Any> {
     }
   }
   return out;
+}
+
+// =====================================================================
+// LINE 聊天室關鍵字回覆（Webhook）：社友在官方帳號聊天室傳「行事曆」「今天」「明天」「本週」，
+// 系統依綁定身分回覆他自己的行程卡片（地區＋所屬社＋本人私人）。回覆（reply）不算推播額度。
+// 只有「整句剛好是關鍵字」才回覆（例如「明天見」不會觸發），其他訊息不處理，交給官方帳號原本的自動回應。
+// =====================================================================
+export type AgendaRange = "two" | "today" | "tomorrow" | "week";
+const AGENDA_WORDS: Record<AgendaRange, string[]> = {
+  two: ["行事曆", "行程", "我的行程", "查行程", "查詢行程", "行程查詢", "最近行程", "calendar", "schedule"],
+  today: ["今天", "今日", "今天行程", "今天的行程", "今日行程", "today"],
+  tomorrow: ["明天", "明日", "明天行程", "明天的行程", "明日行程", "tomorrow"],
+  week: ["本週", "本周", "這週", "這周", "這禮拜", "這星期", "本週行程", "本周行程", "這週行程", "一週", "一週行程", "7天", "七天", "week"],
+};
+export function parseAgendaKeyword(text: string): AgendaRange | null {
+  const t = String(text || "").replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[\s　?？!！。．.、~～]/g, "").toLowerCase();
+  if (!t || t.length > 12) return null;
+  for (const k of Object.keys(AGENDA_WORDS) as AgendaRange[]) if (AGENDA_WORDS[k].includes(t)) return k;
+  return null;
+}
+const AGENDA_TITLE: Record<AgendaRange, string> = { two: "今天＋明天的行程", today: "今天的行程", tomorrow: "明天的行程", week: "最近 7 天的行程" };
+const AGENDA_DAYS: Record<AgendaRange, [number, number]> = { two: [0, 1], today: [0, 0], tomorrow: [1, 1], week: [0, 6] };
+const HINT = "也可以傳：今天、明天、本週";
+// me＝綁定的社友（沒綁定＝null）。回傳要回覆的訊息陣列
+export async function agendaReply(admin: Any, me: { club: string; key: string; name: string; nickname?: string } | null, range: AgendaRange, liffId: string, now = Date.now()): Promise<Any[]> {
+  const home = `https://liff.line.me/${liffId}`;
+  if (!me) {
+    return [{ type: "text", text: `您好！要查自己的行程，請先綁定扶輪身分（只要一次）：\n${home}\n\n綁定後在這裡傳「行事曆」，就會回覆您今天和明天的行程。` }];
+  }
+  const base = `${home}?p=calendar`;
+  const [a, b] = AGENDA_DAYS[range];
+  const days: string[] = [];
+  for (let i = a; i <= b; i++) days.push(tpYmd(now + i * 86400_000));
+  const from = Date.parse(`${days[0]}T00:00:00+08:00`), to = Date.parse(`${days[days.length - 1]}T23:59:59+08:00`);
+  const all = await eventsOfPerson(admin, me.club, me.key, from, to);
+  const today = tpYmd(now), tomorrow = tpYmd(now + 86400_000);
+  const label = (day: string) => {
+    const [y, m, d] = day.split("-").map(Number);
+    const wd = DIGEST_WD[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+    return `${m}/${d}（${wd}）${day === today ? " 今天" : day === tomorrow ? " 明天" : ""}`;
+  };
+  const MAX = 12;
+  let shown = 0, total = 0;
+  const items: Any[] = [];
+  for (const day of days) {
+    const ds = Date.parse(`${day}T00:00:00+08:00`), de = Date.parse(`${day}T23:59:59+08:00`);
+    const evs = all.filter((e: Any) => Date.parse(e.start_at) <= de && Date.parse(e.end_at) >= ds);
+    total += evs.length;
+    if (range === "week" && !evs.length) continue;          // 7 天的清單不列空白的日子
+    if (shown >= MAX) continue;
+    items.push({ type: "box", layout: "vertical", backgroundColor: "#E2E8F0", cornerRadius: "6px", paddingAll: "6px", margin: items.length ? "xl" : "none", contents: [{ type: "text", text: label(day), weight: "bold", size: "sm", color: "#1E293B" }] });
+    if (!evs.length) { items.push({ type: "text", text: "沒有行程", size: "sm", color: "#94A3B8", margin: "md" }); continue; }
+    evs.forEach((e: Any, i: number) => {
+      if (shown >= MAX) return;
+      if (i) items.push({ type: "separator", margin: "lg" });
+      const box = eventBox(e, day, base, false);
+      box.margin = i ? "lg" : "md";
+      items.push(box);
+      shown++;
+    });
+  }
+  if (total > shown) items.push({ type: "text", text: `還有 ${total - shown} 個行程，請開啟行事曆查看。`, size: "sm", color: "#64748B", margin: "lg", wrap: true });
+  if (!total) items.push({ type: "text", text: range === "week" ? "最近 7 天沒有行程。" : "這段期間沒有行程。", size: "sm", color: "#64748B", margin: "md", wrap: true });
+  const who = me.nickname ? `${me.name} ${me.nickname}` : me.name;
+  const alt = total ? `📅 ${AGENDA_TITLE[range]}：共 ${total} 個` : `📅 ${AGENDA_TITLE[range]}：沒有行程`;
+  return [{
+    type: "flex", altText: alt,
+    contents: {
+      type: "bubble", size: "mega",
+      header: { type: "box", layout: "vertical", backgroundColor: "#1E3A8A", paddingAll: "16px", contents: [
+        { type: "text", text: `📅 ${AGENDA_TITLE[range]}`, color: "#FFFFFF", weight: "bold", size: "lg", wrap: true },
+        { type: "text", text: `${who}・${me.club}`, color: "#BFDBFE", size: "sm", margin: "sm", wrap: true },
+      ] },
+      body: { type: "box", layout: "vertical", paddingAll: "16px", contents: items },
+      footer: { type: "box", layout: "vertical", spacing: "sm", contents: [
+        { type: "button", style: "primary", color: "#1E3A8A", height: "sm", action: { type: "uri", label: "開啟行事曆", uri: base } },
+        { type: "text", text: HINT, size: "xs", color: "#94A3B8", align: "center", margin: "sm" },
+      ] },
+    },
+  }];
 }
 
 // ---------- 後台動作（電腦版 admin-calendar.html，用後台密碼把關） ----------

@@ -9,7 +9,7 @@
 //    這個資料夾裡的 checkin-core.js 是專案根目錄那一份的複本，根目錄的改了要一起複製過來。
 // =====================================================================
 import "./checkin-core.js";
-import { CalError, governorDigest, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
+import { agendaReply, CalError, governorDigest, parseAgendaKeyword, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
 // deno-lint-ignore no-explicit-any
 type Any = any;
 const Core = (globalThis as Any).CheckinCore;
@@ -24,6 +24,8 @@ export interface Deps {
   defaultClubPassword: string;                         // 地區的各社預設密碼（沒有就空字串）
   push?: PushDeps;                                     // LINE 推播（沒有開放的地區不提供）
   calendarAdminPassword?: string;                      // 行事曆後台密碼（secret CALENDAR_ADMIN_PASSWORD；空字串＝後台關閉）
+  reply?: (replyToken: string, messages: Any[]) => Promise<void>;   // LINE 聊天室回覆（Webhook 用；不算推播額度）
+  liffId?: string;                                     // 地區的 LIFF ID（secret LINE_LIFF_ID；聊天室回覆的連結用）
 }
 // LINE 推播：要用「LINE 官方帳號」的 Messaging API 才能主動傳訊息給社友（LINE Login 頻道不行）。
 // token 或 password 任一個是空的＝這個地區沒有開放推播。
@@ -183,6 +185,39 @@ async function requirePush(deps: Deps, body: Any): Promise<PushDeps> {
   if (!push || !push.token || !push.password) return fail("PUSH_DISABLED");
   if (String((body && body.pushPassword) || "") !== push!.password) { await sleep(1000); fail("PUSH_AUTH_FAILED"); }   // 故意等 1 秒，降低被猜密碼的速度
   return push!;
+}
+
+// 驗證 LINE Webhook 簽章：x-line-signature＝以 Channel secret 對「原始內容」做 HMAC-SHA256 再 base64（逐字比對，不提早結束）
+export async function verifyLineSignature(secret: string, raw: string, sig: string): Promise<boolean> {
+  if (!secret || !sig) return false;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(raw)));
+  const want = btoa(String.fromCharCode(...mac));
+  if (want.length !== sig.length) return false;
+  let diff = 0;
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ sig.charCodeAt(i);
+  return diff === 0;
+}
+
+// LINE 官方帳號的 Webhook（簽章已在 index.ts 驗證過）：聊天室傳「行事曆／今天／明天／本週」→ 回覆本人的行程卡片。
+// 其他訊息與事件一律不處理（交給官方帳號原本的自動回應）。一個事件失敗不影響其他事件；回傳處理結果（給測試與紀錄用）。
+export async function handleWebhook(events: Any[], deps: Deps): Promise<{ replied: number; skipped: number }> {
+  let replied = 0, skipped = 0;
+  for (const ev of Array.isArray(events) ? events : []) {
+    try {
+      if (!ev || ev.type !== "message" || !ev.message || ev.message.type !== "text" || !ev.replyToken) { skipped++; continue; }
+      const range = parseAgendaKeyword(ev.message.text);
+      if (!range) { skipped++; continue; }
+      if (!deps.reply || !deps.liffId) { console.error("聊天室回覆未設定（缺 token 或 LINE_LIFF_ID）"); skipped++; continue; }
+      const uid = ev.source && ev.source.type === "user" ? String(ev.source.userId || "") : "";
+      if (!uid) { skipped++; continue; }                     // 群組、多人聊天室不回（不知道是誰）
+      const b = await getBinding(deps, uid);
+      const messages = await agendaReply(deps.admin, b ? { club: b.club, key: b.key, name: b.name, nickname: b.nickname } : null, range, deps.liffId);
+      await deps.reply(String(ev.replyToken), messages);
+      replied++;
+    } catch (e) { console.error("聊天室回覆失敗", (e && (e as Any).message) || e); skipped++; }
+  }
+  return { replied, skipped };
 }
 
 export async function handle(body: Any, deps: Deps): Promise<Any> {
