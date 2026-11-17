@@ -26,6 +26,19 @@ const before = MEMBERS.map((m) => m.id).join();
 ok("排序：P、S 在前，其餘依 Nick Name（不分大小寫），寶尊眷跟在社友下方", Core.sortMembers(MEMBERS).map((m: any) => m.name).join() === WANT);
 ok("排序不改原陣列", MEMBERS.map((m) => m.id).join() === before);
 
+// 實際名單的寫法：P／S 寫在 Nick Name 開頭，職務欄是「社長」「社友」等
+const REAL = [
+  { id: 1, name: "李永曄", nickname: "P Robert", role: "社長" },
+  { id: 2, name: "崔敬福", nickname: "PP Fred", role: "扶輪基金主委" },
+  { id: 3, name: "楊富中", nickname: "PP Fruit", role: "理事" },
+  { id: 4, name: "林玉芝", nickname: "Sherry", role: "寶(尊)眷", spouseOfId: 3 },
+  { id: 5, name: "李瑞琦", nickname: "PP Rachel", role: "理事" },
+  { id: 6, name: "李彥德", nickname: "S Three M", role: "社友" },
+];
+ok("Nick Name 開頭是 S（職務欄寫社友）也排第二", Core.sortMembers(REAL).map((m: any) => m.nickname).join(" / ") === "P Robert / S Three M / PP Fred / PP Fruit / Sherry / PP Rachel");
+ok("Nick Name 開頭判斷：「Ｓ Kevin」「s kevin」＝S；「Sherry」「PP Fred」「IPP Tom」、只有「P」一個字都不算", Core.memberRoleRank({ nickname: "Ｓ Kevin" }) === 1 && Core.memberRoleRank({ nickname: "s kevin" }) === 1 && Core.memberRoleRank({ nickname: "Sherry" }) === 2 && Core.memberRoleRank({ nickname: "PP Fred" }) === 2 && Core.memberRoleRank({ nickname: "IPP Tom" }) === 2 && Core.memberRoleRank({ nickname: "P" }) === 2 && Core.memberRoleRank({ nickname: "P Robert" }) === 0);
+ok("排序時去掉職稱字首：Adam 排在 PP Zed 之前、PE Bill 排在 Carl 之前", Core.sortMembers([{ id: 1, name: "z", nickname: "PP Zed" }, { id: 2, name: "c", nickname: "Carl" }, { id: 3, name: "a", nickname: "Adam" }, { id: 4, name: "b", nickname: "PE Bill" }]).map((m: any) => m.nickname).join() === "Adam,PE Bill,Carl,PP Zed");
+
 // LINE 綁定選名字：雲端回傳的清單照同樣順序，已綁定的人仍標 taken
 const admin = { from(t: string) {
   const q: any = { select() { return q; }, eq() { return q; },

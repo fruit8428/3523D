@@ -167,7 +167,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 
 ### 社友名單的顯示順序（2026-11-17）
 
-規則寫在 `checkin-core.js` 的 `CheckinCore.sortMembers`（另有 `memberRoleRank`、`compareMembers`、`isSpouseMember`），index.html 的 `sortMembersForDisplay()`／`memberRoleRank()` 只是轉呼叫：職務 P（現任社長）→ S（現任秘書）→ 其餘依 Nick Name（沒有就用姓名；`Intl.Collator` 不分大小寫、數字自然排序；同為 P 或 S 時也依 Nick Name），寶(尊)眷緊接在對應社友（`spouseOfId`）下方，找不到對應社友的放最後。比對職務前全形轉半形、去空白、轉大寫，`社長`／`秘書` 也視為 P／S，但 `PP`、`PE`、`執秘` 不算。**只影響畫面、不改 `clubMemberDatabase` 的存檔順序**（表格操作都用 `m.id`，所以安全）。套用在：社友庫表格（含搜尋結果）、`calendar-desk.js` 的 `cdOrderedMembers()`（代為登記、記錄實際出席、例會統計與 Excel）、LINE 綁定選名字（`line-checkin` 的 `members` 動作在雲端排好，所以改了 checkin-core.js 要複製到小程式資料夾並重新部署）。測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/member_sort.ts`、`node check_member_sort.js`（需 8000 埠）。
+規則寫在 `checkin-core.js` 的 `CheckinCore.sortMembers`（另有 `memberRoleRank`、`compareMembers`、`isSpouseMember`），index.html 的 `sortMembersForDisplay()`／`memberRoleRank()` 只是轉呼叫：P（現任社長）→ S（現任秘書）→ 其餘依 Nick Name（**去掉開頭的扶輪職稱**，例如「PP Fred」以 Fred 排，職稱清單 `MEMBER_TITLE_RE` 與貼上接龍的 `RELAY_TITLE_RE` 相同再加 S；沒有就用姓名；`Intl.Collator` 不分大小寫、數字自然排序；同為 P 或 S 時也依 Nick Name），寶(尊)眷緊接在對應社友（`spouseOfId`）下方，找不到對應社友的放最後。**P／S 的判斷看兩處**：職務欄是 P／S／`社長`／`秘書`，或 **Nick Name 開頭是「P 」「S 」**（3523 實際名單的寫法是 Nick Name「P Robert」「S Three M」、職務欄寫「社長」「社友」，2026-11-17 使用者回報 S 沒排第二才發現）；比對前全形轉半形、轉大寫，`PP`、`PE`、`IPP`、`執秘`、沒有空格的「Sherry」都不算。**只影響畫面、不改 `clubMemberDatabase` 的存檔順序**（表格操作都用 `m.id`，所以安全）。套用在：社友庫表格（含搜尋結果）、`calendar-desk.js` 的 `cdOrderedMembers()`（代為登記、記錄實際出席、例會統計與 Excel）、LINE 綁定選名字（`line-checkin` 的 `members` 動作在雲端排好，所以改了 checkin-core.js 要複製到小程式資料夾並重新部署）。測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/member_sort.ts`、`node check_member_sort.js`（需 8000 埠）。
 
 ### 刪除社友與已送出的報名表（2026-11-14）
 

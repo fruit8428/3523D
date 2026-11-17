@@ -198,13 +198,21 @@
     }
 
     // 社友名單的顯示順序（報名系統社友庫、行事曆管理、LINE 綁定選名字共用）：
-    //   1. 職務「P」（現任社長） 2. 職務「S」（現任秘書） 3. 其餘依 Nick Name（沒有就用姓名；不分大小寫）
+    //   1. 現任社長「P」 2. 現任秘書「S」 3. 其餘依 Nick Name（去掉開頭的扶輪職稱，例如「PP Fred」以 Fred 排；沒有 Nick Name 就用姓名；不分大小寫）
+    //   P／S 的判斷：職務欄是 P／S（或「社長」「秘書」），或 Nick Name 開頭是「P 」「S 」（例如「P Robert」「S Three M」）。
+    //   比對前全形轉半形、轉大寫，所以「Ｐ」「p」都算；PP、PE、IPP、執秘等不算。
     //   寶(尊)眷 緊接在對應社友（spouseOfId）下方；找不到對應社友的放最後。只排序、不改原陣列。
-    //   職務比對前全形轉半形、去空白、轉大寫，所以「Ｐ」「p」都算 P；「社長」「秘書」也視為 P、S；PP、PE、執秘不算。
+    const MEMBER_TITLE_RE = /^(IPDG|PDG|DGND|DGE|DGN|DG|PAG|AG|PDS|DS|IPP|PVP|PP|PE|PN|VP|CP|CS|RTN|P|S)$/;
+    const halfUpper = v => String(v || '').replace(/[\uFF01-\uFF5E]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/\u3000/g, ' ').trim().toUpperCase();
+    function nickParts(nick) {           // 「PP Fred」→ { title: 'PP', base: 'Fred' }
+        const raw = String(nick || '').replace(/\u3000/g, ' ').trim(), parts = raw.split(/\s+/);
+        if (parts.length >= 2 && MEMBER_TITLE_RE.test(halfUpper(parts[0]))) return { title: halfUpper(parts[0]), base: parts.slice(1).join(' ') };
+        return { title: '', base: raw };
+    }
     function memberRoleRank(m) {
-        const r = String((m && m.role) || '').replace(/[\uFF01-\uFF5E]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/\s+/g, '').toUpperCase();
-        if (r === 'P' || r === '社長') return 0;
-        if (r === 'S' || r === '秘書') return 1;
+        const r = halfUpper(m && m.role).replace(/\s+/g, ''), t = nickParts(m && m.nickname).title;
+        if (r === 'P' || r === '社長' || t === 'P') return 0;
+        if (r === 'S' || r === '秘書' || t === 'S') return 1;
         return 2;
     }
     let nameCollator = null;
@@ -212,7 +220,8 @@
     function compareMembers(a, b) {
         const ra = memberRoleRank(a), rb = memberRoleRank(b);
         if (ra !== rb) return ra - rb;
-        const ka = String((a && (a.nickname || a.name)) || '').trim(), kb = String((b && (b.nickname || b.name)) || '').trim();
+        const key = m => (nickParts(m && m.nickname).base || String((m && m.name) || '')).trim();
+        const ka = key(a), kb = key(b);
         const c = nameCollator ? nameCollator.compare(ka, kb) : ka.localeCompare(kb);
         return c || String((a && a.name) || '').localeCompare(String((b && b.name) || ''));
     }
@@ -231,6 +240,6 @@
     root.CheckinCore = {
         norm, personKey, makeEventKey, parseEventKey, isApportionEvent, isPelsEvent, PELS_SHORT,
         buildClubIndex, prizeMealGuests, buildRoster, mergeCheckins, computeStats, matchEntry,
-        memberRoleRank, compareMembers, isSpouseMember, sortMembers
+        memberRoleRank, compareMembers, isSpouseMember, sortMembers, nickParts
     };
 })(typeof window !== 'undefined' ? window : globalThis);
