@@ -453,11 +453,11 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
     }
     const [a, r] = await Promise.all([
       admin.from("calendar_attendance").select("person_key").eq("event_id", ev.id).eq("club_name", ev.club_name),
-      admin.from("calendar_rsvp").select("person_key,full_name,nickname,guest_of,guest_role").eq("event_id", ev.id).eq("club_name", ev.club_name),
+      admin.from("calendar_rsvp").select("person_key,full_name,nickname,guest_of,guest_role,proxy_by").eq("event_id", ev.id).eq("club_name", ev.club_name),
     ]);
     if (a.error) dbFail(a.error);
     if (r.error) dbFail(r.error);
-    return { ok: true, title: ev.title, start: ev.start_at, club: ev.club_name, attended: (a.data || []).map((x: Any) => x.person_key), recorded: (a.data || []).length > 0, rsvp: (r.data || []).map((x: Any) => ({ key: x.person_key, name: x.full_name, nickname: x.nickname || "", guest: rsvpIsGuest(x) })) };
+    return { ok: true, title: ev.title, start: ev.start_at, club: ev.club_name, attended: (a.data || []).map((x: Any) => x.person_key), recorded: (a.data || []).length > 0, rsvp: (r.data || []).map((x: Any) => ({ key: x.person_key, name: x.full_name, nickname: x.nickname || "", guest: rsvpIsGuest(x), proxy: !!x.proxy_by })) };
   }
 
   // ---------- 執秘代為登記參加（不會用 LINE 的長輩等） ----------

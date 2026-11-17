@@ -487,28 +487,36 @@ async function cdeskAttend(id, back) {
     const r = await cdApi('cal_desk_attend_get', 'club', { id: id });
     if (!r.ok) { cdToast(cdErr(r.code), '⚠️'); return cdeskBackFromAttend(); }
     const members = cdOrderedMembers(r.club);
-    const rsvp = new Set((r.rsvp || []).map(x => x.key));
+    const rsvpBy = new Map((r.rsvp || []).map(x => [x.key, x]));
     const pre = new Set(r.recorded ? r.attended : (r.rsvp || []).map(x => x.key));   // 還沒記錄過時，先帶入「表示參加」的人
+    // 分兩組：上面＝有報名（社友自己在 LINE 登記＋執秘代登記），以及之前已記錄為出席的人；下面＝其他社友（臨時出席時勾選）
+    const top = new Set([...rsvpBy.keys(), ...(r.attended || [])]);
+    const g1 = members.filter(m => top.has(cdPk(m))), g2 = members.filter(m => !top.has(cdPk(m)));
     const t = cdParts(Date.parse(r.start));
+    const row = m => { const k = cdPk(m), g = cdIsGuestMember(m), x = rsvpBy.get(k); return `<label class="flex items-center gap-2 border ${g ? 'border-pink-200 bg-pink-50/50 ml-4' : 'border-slate-200 bg-white'} rounded-lg px-2.5 py-1.5 text-sm cursor-pointer"><input type="checkbox" class="w-4 h-4 cd-att" data-key="${cdE(k)}" data-guest="${g ? 1 : 0}" ${pre.has(k) ? 'checked' : ''} onchange="cdAttendCount()"><span class="font-bold">${cdE(m.name)}</span>${m.nickname ? `<span class="text-slate-500">${cdE(m.nickname)}</span>` : ''}${g ? '<span class="text-[11px] text-pink-700">寶尊眷</span>' : (m.role ? `<span class="text-[11px] text-slate-400">${cdE(m.role)}</span>` : '')}${x ? `<span class="ml-auto text-[11px] font-bold ${x.proxy ? 'text-violet-700' : 'text-emerald-700'}">${x.proxy ? '🙋 執秘代登記' : '🙋 LINE 報名'}</span>` : ''}</label>`; };
+    const grp = (id, title, hint, list, cls, empty) => `<div class="mt-4 border ${cls} rounded-xl p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2"><div class="font-black text-sm text-slate-900">${title}（${list.length} 人・已勾 <span id="${id}N">0</span>）</div>
+            ${list.length ? `<div class="flex gap-1.5 text-xs"><button type="button" onclick="cdAttendGroup('${id}',true)" class="px-2.5 py-1 bg-white border border-slate-300 rounded-md font-bold">本組全選</button><button type="button" onclick="cdAttendGroup('${id}',false)" class="px-2.5 py-1 bg-white border border-slate-300 rounded-md font-bold">本組清除</button></div>` : ''}</div>
+            <div class="text-[11px] text-slate-500 mt-0.5">${hint}</div>
+            ${list.length ? `<div id="${id}" class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">${list.map(row).join('')}</div>` : `<div class="mt-2 text-xs text-slate-500">${empty}</div>`}
+        </div>`;
     box.innerHTML = `<button type="button" onclick="cdeskBackFromAttend()" class="text-sm font-bold text-blue-700">‹ 返回（不儲存）</button>
         <div class="mt-2"><h4 class="font-black text-lg text-slate-900">✅ 記錄實際出席：${cdE(r.title)}</h4>
-        <div class="text-xs text-slate-500 mt-0.5">${t.y}/${cdP2(t.m)}/${cdP2(t.d)}（${CDESK_WD[t.wd]}）・${cdE(r.club)}　${r.recorded ? '<b class="text-emerald-700">已記錄過，可修改後重新儲存</b>' : '<b class="text-amber-700">尚未記錄，已先勾選在 LINE 表示參加的人</b>'}</div></div>
-        <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
-            <button type="button" onclick="cdAttendAll(true)" class="px-2.5 py-1 bg-white border border-slate-300 rounded-md font-bold">全選</button>
-            <button type="button" onclick="cdAttendAll(false)" class="px-2.5 py-1 bg-white border border-slate-300 rounded-md font-bold">全部清除</button>
-            <span class="text-slate-600">已勾選 <b id="cdAttendCount">0</b> 人（社友 <b id="cdAttendM">0</b>、寶尊眷 <b id="cdAttendG">0</b>）　🙋＝在 LINE 表示參加</span>
-        </div>
-        ${members.length ? `<div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">${members.map(m => { const k = cdPk(m), g = cdIsGuestMember(m); return `<label class="flex items-center gap-2 border ${g ? 'border-pink-200 bg-pink-50/50 ml-4' : 'border-slate-200 bg-white'} rounded-lg px-2.5 py-1.5 text-sm cursor-pointer"><input type="checkbox" class="w-4 h-4 cd-att" data-key="${cdE(k)}" data-guest="${g ? 1 : 0}" ${pre.has(k) ? 'checked' : ''} onchange="cdAttendCount()"><span class="font-bold">${cdE(m.name)}</span>${m.nickname ? `<span class="text-slate-500">${cdE(m.nickname)}</span>` : ''}${g ? '<span class="text-[11px] text-pink-700">寶尊眷</span>' : (m.role ? `<span class="text-[11px] text-slate-400">${cdE(m.role)}</span>` : '')}${rsvp.has(k) ? '<span class="ml-auto">🙋</span>' : ''}</label>`; }).join('')}</div>`
+        <div class="text-xs text-slate-500 mt-0.5">${t.y}/${cdP2(t.m)}/${cdP2(t.d)}（${CDESK_WD[t.wd]}）・${cdE(r.club)}　${r.recorded ? '<b class="text-emerald-700">已記錄過，可修改後重新儲存</b>' : '<b class="text-amber-700">尚未記錄，已先勾選有報名的人</b>'}</div></div>
+        <div class="mt-3 text-xs text-slate-600">總共勾選 <b id="cdAttendCount">0</b> 人（社友 <b id="cdAttendM">0</b>、寶尊眷 <b id="cdAttendG">0</b>）</div>
+        ${members.length ? grp('cdAttG1', '📋 有報名的人', '社友自己在 LINE 報名，或執秘代為登記的人。沒來的請取消勾選。', g1, 'border-emerald-300 bg-emerald-50/40', '這次還沒有人報名。')
+            + grp('cdAttG2', '👥 其他社友（沒有報名）', '沒有報名但臨時出席的人，在這裡勾選。', g2, 'border-slate-200 bg-slate-50', '社友庫裡的人都已經在上面一組。')
             : '<div class="mt-3 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-3">這個社的社友庫是空的，請先在報名系統建立社友名單。</div>'}
         <button type="button" id="cdAttendSave" onclick="cdeskAttendSave('${cdE(id)}')" class="mt-4 px-8 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg text-sm shadow-sm">儲存出席紀錄</button>`;
     cdAttendCount();
 }
-function cdAttendAll(on) { document.querySelectorAll('.cd-att').forEach(c => { c.checked = on; }); cdAttendCount(); }
+function cdAttendGroup(id, on) { document.querySelectorAll(`#${id} .cd-att`).forEach(c => { c.checked = on; }); cdAttendCount(); }
 function cdAttendCount() {
     const on = Array.from(document.querySelectorAll('.cd-att')).filter(c => c.checked);
     const g = on.filter(c => c.dataset.guest === '1').length;
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     set('cdAttendCount', on.length); set('cdAttendM', on.length - g); set('cdAttendG', g);
+    ['cdAttG1', 'cdAttG2'].forEach(id => set(id + 'N', document.querySelectorAll(`#${id} .cd-att:checked`).length));
 }
 async function cdeskAttendSave(id) {
     if (cdeskBusy) return;
