@@ -48,7 +48,17 @@
         </section>
 
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-            <h2 class="font-black text-lg">③ 活動類型</h2>
+            <h2 class="font-black text-lg">③ 誰可以在 LINE 看「全社出席率」</h2>
+            <p class="text-sm text-slate-600 mt-1 leading-relaxed">每位社友在 LINE 都能看<b>自己的</b>出席率。能看<b>全社每個人</b>出席率的人，預設是<b>社長（P）、秘書（S）</b>；各社文化不同，可以在這裡逐社勾選要開放給誰（例如前社長、理事）。勾選後立刻生效，「恢復預設」回到社長、秘書。</p>
+            <div class="mt-3 flex flex-wrap gap-2 items-center">
+                <select id="vwClub" class="flex-1 min-w-[14rem] border border-slate-300 rounded-lg px-3 py-2.5 text-base" onchange="loadViewers()"></select>
+            </div>
+            <div id="vwCustom" class="mt-2 text-xs text-slate-500"></div>
+            <div id="vwBox" class="mt-3"></div>
+        </section>
+
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h2 class="font-black text-lg">④ 活動類型</h2>
             <p class="text-sm text-slate-600 mt-1">刪除某個類型後，使用它的行程會變成「未分類」。</p>
             <div id="typeList" class="mt-3 space-y-2"></div>
             <div class="mt-3 flex gap-2">
@@ -113,7 +123,67 @@
         $('noEditor').innerHTML = groups.map(g => `<div><div class="text-sm font-black text-slate-700">${E(g.division)}　<span class="font-normal text-slate-500">（${g.clubs.length} 社）</span></div><div class="mt-1 flex flex-wrap gap-1.5 text-sm">${g.clubs.map(c => `<span class="text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-0.5"><span class="font-mono text-xs text-rose-400">${E(c.code)}</span> ${E(c.name)}</span>`).join('')}</div></div>`).join('') || '<span class="text-emerald-700 font-bold">每一社都有管理者 ✅</span>';
         $('typeList').innerHTML = state.types.map(t => `<div class="flex gap-2"><input type="text" id="type_${t.id}" value="${E(t.name)}" maxlength="30" class="flex-1 border border-slate-300 rounded-lg px-3 py-2"><button type="button" onclick="renameType(${t.id})" class="border border-slate-300 rounded-lg px-4 font-bold">改名</button><button type="button" onclick="delType(${t.id})" class="border border-rose-300 text-rose-700 rounded-lg px-4 font-bold">刪除</button></div>`).join('');
         renderResults();
+        renderViewerClubs();
     }
+
+    // ---------- ③ 誰可以在 LINE 看全社出席率 ----------
+    let vw = null;      // 目前載入的社：{club, custom, members:[{key,name,nickname,role,spouse,isDefault,allowed}]}
+    function renderViewerClubs() {
+        const sel = $('vwClub'), cur = sel.value, groups = [];
+        (state.clubInfos || []).forEach(c => { let g = groups.find(x => x.division === c.division); if (!g) { g = { division: c.division, clubs: [] }; groups.push(g); } g.clubs.push(c); });
+        const custom = {}; (state.reportCustomClubs || []).forEach(x => { custom[x.club] = x.count; });
+        sel.innerHTML = '<option value="">— 請選擇社 —</option>' + groups.map(g => `<optgroup label="${E(g.division)}">${g.clubs.map(c => `<option value="${E(c.name)}">${E(c.code ? c.code + ' ' : '')}${E(c.name)}${custom[c.name] != null ? `（自訂 ${custom[c.name]} 人）` : ''}</option>`).join('')}</optgroup>`).join('');
+        if (cur) sel.value = cur;
+        const names = Object.keys(custom);
+        $('vwCustom').textContent = names.length ? `已自訂的社：${names.join('、')}（其他社都是預設：社長、秘書）` : '目前每一社都是預設（社長、秘書）。';
+    }
+    async function loadViewers() {
+        const club = $('vwClub').value;
+        vw = null;
+        if (!club) { $('vwBox').innerHTML = ''; return; }
+        $('vwBox').innerHTML = '<div class="text-sm text-slate-500">讀取中…</div>';
+        const r = await api('cal_admin_viewers_get', { club: club });
+        if ($('vwClub').value !== club) return;          // 讀取中又換了社，丟掉舊結果
+        if (!r.ok) { $('vwBox').innerHTML = `<div class="text-sm font-bold text-rose-700">${E(errText(r.code))}</div>`; return; }
+        vw = r; renderViewers();
+    }
+    function renderViewers() {
+        if (!vw) return;
+        const list = vw.members;
+        if (!list.length) { $('vwBox').innerHTML = '<div class="text-sm text-slate-500">這一社的社友庫還沒有資料。</div>'; return; }
+        const status = vw.custom
+            ? '<span class="text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 font-bold">目前：自訂</span>'
+            : '<span class="text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5 font-bold">目前：預設（社長、秘書）</span>';
+        $('vwBox').innerHTML = `<div class="flex flex-wrap items-center gap-2 text-sm">${status}<span class="text-slate-500">打勾＝可以看全社出席率</span></div>
+            <div class="mt-2 border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-96 overflow-y-auto">${list.map((m, i) => `<label class="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50 ${m.spouse ? 'pl-8 text-slate-500' : ''}">
+                <input type="checkbox" class="vw-ck w-5 h-5" data-i="${i}" ${m.allowed ? 'checked' : ''} onchange="vwDirty()">
+                <span class="min-w-0 flex-1"><span class="font-bold">${E(m.nickname || m.name)}</span>${m.nickname ? `<span class="ml-1 text-slate-500">${E(m.name)}</span>` : ''}${m.role ? `<span class="ml-2 text-xs text-slate-400">${E(m.role)}</span>` : ''}</span>
+                ${m.isDefault ? '<span class="text-xs text-emerald-700 font-bold">預設</span>' : ''}</label>`).join('')}</div>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <button type="button" id="vwSave" onclick="saveViewers()" class="bg-blue-700 text-white font-bold rounded-lg px-5 py-2.5">儲存</button>
+                <button type="button" onclick="resetViewers()" class="border border-slate-300 font-bold rounded-lg px-4 py-2.5" ${vw.custom ? '' : 'disabled style="opacity:.4"'}>恢復預設（社長、秘書）</button>
+                <span id="vwMsg" class="self-center text-sm"></span>
+            </div>`;
+    }
+    function vwDirty() { const m = $('vwMsg'); if (m) { m.className = 'self-center text-sm font-bold text-amber-700'; m.textContent = '尚未儲存'; } }
+    async function saveViewers() {
+        if (!vw) return;
+        const keys = Array.from(document.querySelectorAll('.vw-ck')).filter(x => x.checked).map(x => vw.members[Number(x.dataset.i)].key);
+        if (!keys.length && !confirm('一個人都沒勾，這一社就沒有人能在 LINE 看全社出席率（每個人仍可看自己的）。確定要這樣儲存嗎？')) return;
+        const btn = $('vwSave'); btn.disabled = true; btn.textContent = '儲存中…';
+        const r = await api('cal_admin_viewers_save', { club: vw.club, keys: keys });
+        if (!r.ok) { btn.disabled = false; btn.textContent = '儲存'; return alert(errText(r.code)); }
+        vw = r; await refreshViewerSummary(); renderViewers();
+        const m = $('vwMsg'); m.className = 'self-center text-sm font-bold text-emerald-700'; m.textContent = '✅ 已儲存，立刻生效';
+    }
+    async function resetViewers() {
+        if (!vw || !confirm(`確定讓「${vw.club}」恢復預設嗎？之後只有社長（P）、秘書（S）可以看全社出席率。`)) return;
+        const r = await api('cal_admin_viewers_save', { club: vw.club, reset: true });
+        if (!r.ok) return alert(errText(r.code));
+        vw = r; await refreshViewerSummary(); renderViewers();
+        const m = $('vwMsg'); m.className = 'self-center text-sm font-bold text-emerald-700'; m.textContent = '✅ 已恢復預設';
+    }
+    async function refreshViewerSummary() { const r = await api('cal_admin_state'); if (r.ok) { state = r; renderViewerClubs(); } }
     async function search() {
         const q = $('q').value.trim(); if (!q) return;
         const r = await api('cal_admin_members', { q: q });

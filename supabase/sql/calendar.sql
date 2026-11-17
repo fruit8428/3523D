@@ -131,11 +131,21 @@ create table if not exists public.calendar_makeups (
 create index if not exists calendar_makeups_club_day on public.calendar_makeups (club_name, made_on);
 alter table public.calendar_makeups enable row level security;
 
+-- 誰可以在 LINE 看「全社出席率」（2026-11-17）：一社一列。沒有這一列＝預設（社長 P、秘書 S）；
+-- 有這一列＝只有 viewers 裡的人（姓名|Nick Name 陣列），由最高管理者在行事曆後台勾選。anon 讀不到。
+create table if not exists public.calendar_report_viewers (
+    club_name  text primary key,
+    viewers    jsonb not null default '[]'::jsonb,
+    updated_by text not null default '',
+    updated_at timestamptz not null default now()
+);
+alter table public.calendar_report_viewers enable row level security;
+
 alter table public.calendar_rsvp        enable row level security;
 alter table public.calendar_ics         enable row level security;
 alter table public.calendar_event_types enable row level security;
 alter table public.calendar_roles       enable row level security;
 alter table public.calendar_events      enable row level security;
-revoke all on public.calendar_event_types, public.calendar_roles, public.calendar_events, public.calendar_ics, public.calendar_rsvp, public.calendar_attendance, public.calendar_makeups from anon, authenticated;
+revoke all on public.calendar_event_types, public.calendar_roles, public.calendar_events, public.calendar_ics, public.calendar_rsvp, public.calendar_attendance, public.calendar_makeups, public.calendar_report_viewers from anon, authenticated;
 revoke all on sequence public.calendar_event_types_id_seq, public.calendar_roles_id_seq, public.calendar_makeups_id_seq from anon, authenticated;
 notify pgrst, 'reload schema';

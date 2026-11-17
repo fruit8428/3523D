@@ -3,18 +3,18 @@ import { handleMember, handleAdmin, handleDesk, icsFeed, buildIcs, AUTO_SYNC_MAR
 function fake(tables: Record<string, any[]>) {
   let seq = 1000;
   return { from(t: string) {
-    tables[t] ||= []; const f: any[] = []; let op = "select", payload: any = null, one = "", conflict: string[] | null = null;
+    tables[t] ||= []; const f: any[] = []; let op = "select", payload: any = null, one = "", conflict: string[] | null = null, upd = false;
     const run = () => {
       const m = (r: any) => f.every((x) => x(r));
       if (op === "insert") { const list = Array.isArray(payload) ? payload : [payload]; return list.map((pl: any) => { const r = { id: t === "calendar_events" ? "ev" + (seq++) : seq++, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), status: "confirmed", ...pl }; tables[t].push(r); return r; }); }
-      if (op === "upsert") { const dup = tables[t].find((r) => (conflict || ["club_name","person_key","role","managed_club"]).every((k) => r[k] === payload[k])); if (!dup) tables[t].push({ id: seq++, granted_at: "x", ...payload }); return []; }
+      if (op === "upsert") { const dup = tables[t].find((r) => (conflict || ["club_name","person_key","role","managed_club"]).every((k) => r[k] === payload[k])); if (!dup) tables[t].push({ id: seq++, granted_at: "x", ...payload }); else if (upd) Object.assign(dup, payload); return []; }
       if (op === "update") { const rs = tables[t].filter(m); rs.forEach((r) => Object.assign(r, payload)); return rs; }
       if (op === "delete") { const keep = tables[t].filter((r) => !m(r)); tables[t].length = 0; tables[t].push(...keep); return []; }
       return tables[t].filter(m);
     };
     const b: any = {
       select() { return b; }, insert(p: any) { op = "insert"; payload = p; return b; }, update(p: any) { op = "update"; payload = p; return b; },
-      upsert(p: any, o: any) { op = "upsert"; payload = p; conflict = o && o.onConflict ? o.onConflict.split(",") : null; return b; }, in(k: string, vs: any[]) { f.push((r: any) => vs.includes(r[k])); return b; }, delete() { op = "delete"; return b; },
+      upsert(p: any, o: any) { op = "upsert"; payload = p; conflict = o && o.onConflict ? o.onConflict.split(",") : null; upd = !!(o && o.onConflict && !o.ignoreDuplicates); return b; }, in(k: string, vs: any[]) { f.push((r: any) => vs.includes(r[k])); return b; }, delete() { op = "delete"; return b; },
       eq(k: string, v: any) { f.push((r: any) => r[k] === v); return b; }, gte(k: string, v: any) { f.push((r: any) => r[k] >= v); return b; }, lte(k: string, v: any) { f.push((r: any) => r[k] <= v); return b; },
       order() { return b; }, limit() { return b; }, maybeSingle() { one = "maybe"; return b; }, single() { one = "single"; return b; },
       then(res: any) { const d = run(); res({ data: one ? d[0] || null : d, error: null }); },
@@ -324,6 +324,23 @@ ok("出席率：一般社友不能看全社", await code(handleMember("cal_atten
 const wr = await handleMember("cal_attend_report", { scope: "club", periods: PER }, db, mkU("王|", "王"), regM);
 const w = wr.people.find((p: any) => p.key === "王|");
 ok("出席率（社長）：看得到全社（王、王子、趙），社長排第一", wr.canClub === true && wr.people[0].key === "王|" && ["王子|", "趙|Z"].every((k) => wr.people.some((p: any) => p.key === k)));
+
+// ---------- 誰可以在 LINE 看全社出席率（後台逐社設定） ----------
+const admV = (action: string, extra: any) => handleAdmin(action, { adminPassword: "pw", ...extra }, { admin: db, password: "pw", members: async () => MEMBERS, clubInfos: async () => [{ name: "甲社", division: "第一分區", code: "01-1" }, { name: "乙社", division: "第一分區", code: "01-2" }] });
+const zU = { club: "甲社", key: "趙|Z", name: "趙", nickname: "Z" };
+const v0 = await admV("cal_admin_viewers_get", { club: "甲社" });
+ok("看全社設定：沒設定過＝預設，社長打勾、其他人沒勾，名單照 P→S→Nick Name 排", v0.custom === false && v0.members[0].key === "王|" && v0.members[0].allowed && v0.members[0].isDefault && !v0.members.find((m: any) => m.key === "趙|Z").allowed);
+ok("看全社設定：不認得的社被擋、後台密碼錯被擋", await code(admV("cal_admin_viewers_get", { club: "鬼社" })) === "BAD_REQUEST" && await code(handleAdmin("cal_admin_viewers_get", { adminPassword: "x", club: "甲社" }, { admin: db, password: "pw", members: async () => MEMBERS, clubInfos: async () => [] })) === "CAL_ADMIN_AUTH_FAILED");
+const v1 = await admV("cal_admin_viewers_save", { club: "甲社", keys: ["趙|Z", "鬼|", "趙|Z"] });
+ok("看全社設定：只存社友庫裡的人、不重複；改成只有趙", v1.custom === true && T.calendar_report_viewers.find((r: any) => r.club_name === "甲社").viewers.join() === "趙|Z" && v1.members.find((m: any) => m.key === "趙|Z").allowed && !v1.members.find((m: any) => m.key === "王|").allowed);
+ok("設定後：趙在 LINE 可以看全社", (await handleMember("cal_attend_report", { scope: "club", periods: PER }, db, zU, regM)).canClub === true);
+ok("設定後：社長沒被勾就不能看全社", await code(handleMember("cal_attend_report", { scope: "club", periods: PER }, db, mkU("王|", "王"), regM)) === "CAL_FORBIDDEN");
+ok("別社（乙社）不受甲社設定影響", (await admV("cal_admin_viewers_get", { club: "乙社" })).custom === false);
+ok("後台總覽列出有自訂的社與人數", (await adm("cal_admin_state", {})).reportCustomClubs.some((x: any) => x.club === "甲社" && x.count === 1));
+await admV("cal_admin_viewers_save", { club: "甲社", keys: ["王|", "趙|Z"] });
+ok("再改一次會覆蓋（王、趙）", T.calendar_report_viewers.filter((r: any) => r.club_name === "甲社").length === 1 && T.calendar_report_viewers[0].viewers.length === 2);
+const v2 = await admV("cal_admin_viewers_save", { club: "甲社", reset: true });
+ok("恢復預設：回到社長可看、趙不能看", v2.custom === false && (await handleMember("cal_attend_report", { scope: "me", periods: PER }, db, zU, regM)).canClub === false && (await handleMember("cal_attend_report", { scope: "me", periods: PER }, db, mkU("王|", "王"), regM)).canClub === true);
 ok("出席率：王 上半年 例會 1/2＋補出席 1 → 100%，純例會 50%", w.sum.h1.held === 2 && w.sum.h1.attended === 1 && w.sum.h1.makeup === 1 && w.sum.h1.rate === 1 && w.sum.h1.meetRate === 0.5);
 ok("出席率：全年 例會 1/2＋補出席 2 → 150%（分母固定是本社例會，可以超過 100%）", w.sum.year.makeup === 2 && w.sum.year.district === 2 && w.sum.year.effective === 3 && w.sum.year.rate === 1.5);
 ok("出席率：還沒記錄出席的三月例會不列入分母，但列在明細（尚未記錄）", wr.meetings.some((m: any) => m.id === mc.id && m.recorded === false) && wr.periods.find((p: any) => p.id === "h1").held === 2);

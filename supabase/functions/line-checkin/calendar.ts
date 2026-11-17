@@ -129,6 +129,18 @@ export function memberRank(m: Any): number {
   const r = String((m && m.role) || "").trim().toUpperCase();
   return r === "P" || r === "社長" ? 0 : r === "S" || r === "秘書" ? 1 : 2;
 }
+// 誰可以在 LINE 看全社出席率：最高管理者在後台設定過的社＝只有勾選的人；沒設定過＝社長（P）、秘書（S）。
+// 回傳 null＝沒設定（用預設）。資料表還沒建立時也當作沒設定，不讓 LINE 出席頁壞掉。
+export async function loadReportViewers(admin: Any, club: string): Promise<string[] | null> {
+  const { data, error } = await admin.from("calendar_report_viewers").select("viewers").eq("club_name", club).maybeSingle();
+  if (error) {
+    if (/does not exist|schema cache|could not find|PGRST20[25]|42P01/i.test(String(error.message || "") + " " + String(error.code || ""))) return null;
+    dbFail(error);
+  }
+  return data && Array.isArray(data.viewers) ? data.viewers.map(String) : null;
+}
+export const canViewClubReport = (m: Any, viewers: string[] | null) =>
+  !!m && (viewers ? viewers.includes(`${m.name || ""}|${m.nickname || ""}`) : memberRank(m) <= 1);
 export async function attendanceReport(admin: Any, club: string, periodsIn: Any, members: Any[], onlyKey?: string): Promise<Any> {
   const periods = (Array.isArray(periodsIn) ? periodsIn : []).slice(0, 3).map((p: Any) => ({ id: String(p && p.id || "").slice(0, 20), from: Date.parse(String(p && p.from || "")), to: Date.parse(String(p && p.to || "")) }));
   if (!periods.length || periods.some((p) => !p.id || !Number.isFinite(p.from) || !Number.isFinite(p.to) || p.to < p.from || p.to - p.from > MAX_RANGE_MS)) fail("CAL_BAD_TIME");
@@ -362,11 +374,11 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
     return { ok: true, ...(await rsvpStatus(admin, ev, me, reg, true)) };
   }
 
-  // ---------- 出席率：本人；社長（P）、秘書（S）可看全社 ----------
+  // ---------- 出席率：本人；可看全社的人＝後台設定的名單，沒設定時是社長（P）、秘書（S） ----------
   if (action === "cal_attend_report") {
     const list: Any[] = reg && reg.members ? await reg.members(me.club) : [];
     const mine = list.find((m: Any) => m && m.name && personKey(m) === me.key);
-    const canClub = !!mine && memberRank(mine) <= 1;
+    const canClub = !!mine && canViewClubReport(mine, await loadReportViewers(admin, me.club));
     const scope = body.scope === "club" ? "club" : "me";
     if (scope === "club" && !canClub) fail("CAL_FORBIDDEN");
     const r = await attendanceReport(admin, me.club, body.periods, list, scope === "club" ? undefined : me.key);
@@ -812,6 +824,12 @@ const isExtGuestKey = (k: Any) => String(k || "").startsWith(EXT_GUEST_PREFIX);
 const rsvpIsGuest = (r: Any) => !!(r && (r.guest_of || r.guest_role));
 const personKey = (p: Any) => `${(p && p.name) || ""}|${(p && p.nickname) || ""}`;
 
+async function reportCustomClubs(admin: Any): Promise<{ club: string; count: number }[]> {
+  const { data, error } = await admin.from("calendar_report_viewers").select("club_name,viewers");
+  if (error) return [];      // 資料表還沒建立時，後台其他功能照常
+  return (data || []).map((r: Any) => ({ club: r.club_name, count: Array.isArray(r.viewers) ? r.viewers.length : 0 }));
+}
+
 export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Promise<Any> {
   if (!ctx.password) return fail("CAL_ADMIN_DISABLED");
   if (String(body.adminPassword || "") !== ctx.password) { await sleep(1000); fail("CAL_ADMIN_AUTH_FAILED"); }   // 故意等 1 秒，降低被猜密碼的速度
@@ -827,6 +845,40 @@ export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Pro
       ok: true, types: await loadTypes(admin), clubs, clubInfos,
       roles: (data || []).map((r: Any) => ({ id: r.id, club: r.club_name, name: r.full_name, nickname: r.nickname, role: r.role, managedClub: r.managed_club })),
       clubsWithoutEditor: clubs.filter((c) => !covered.has(c)),
+      reportCustomClubs: await reportCustomClubs(admin),
+    };
+  }
+
+  // ---------- 誰可以在 LINE 看全社出席率（每社自己的文化不同，由這裡逐社設定） ----------
+  if (action === "cal_admin_viewers_get" || action === "cal_admin_viewers_save") {
+    const club = String(body.club || "");
+    if (!(await ctx.clubInfos()).some((c) => c.name === club)) fail("BAD_REQUEST");
+    const raw = (await ctx.members())[club];
+    const list: Any[] = (Array.isArray(raw) ? raw : []).filter((m: Any) => m && m.name);
+    if (action === "cal_admin_viewers_save") {
+      if (body.reset) {
+        const { error } = await admin.from("calendar_report_viewers").delete().eq("club_name", club);
+        if (error) dbFail(error);
+      } else {
+        if (!Array.isArray(body.keys)) fail("BAD_REQUEST");
+        const valid = new Set(list.map(personKey));
+        const keys = [...new Set<string>(body.keys.map((k: Any) => String(k)))].filter((k) => valid.has(k)).slice(0, 200);   // 只收這社社友庫裡的人
+        const { error } = await admin.from("calendar_report_viewers").upsert(
+          { club_name: club, viewers: keys, updated_by: String(body.by || "行事曆後台").slice(0, 60), updated_at: new Date().toISOString() },
+          { onConflict: "club_name" });
+        if (error) dbFail(error);
+      }
+    }
+    const viewers = await loadReportViewers(admin, club);
+    const C = coreOf();
+    const sorted = C && C.sortMembers ? C.sortMembers(list) : list;
+    return {
+      ok: true, club, custom: viewers !== null,
+      members: sorted.map((m: Any) => ({
+        key: personKey(m), name: m.name, nickname: m.nickname || "", role: m.role || "",
+        spouse: !!m.spouseOfId || /眷/.test(String(m.role || "")),
+        isDefault: memberRank(m) <= 1, allowed: canViewClubReport(m, viewers),
+      })),
     };
   }
 
