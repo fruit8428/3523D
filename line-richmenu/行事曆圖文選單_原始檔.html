@@ -1,6 +1,6 @@
 <!doctype html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{width:2500px;height:843px;overflow:hidden}
+html{background:#334155}body{width:2500px;height:843px;overflow:hidden}
 body{font-family:"PingFang TC","Heiti TC","Noto Sans TC",sans-serif;background:linear-gradient(135deg,#1c4fa0 0%,#17458f 45%,#0f2f66 100%);color:#fff;position:relative}
 .ring{position:absolute;border-radius:50%;border:60px solid rgba(255,255,255,.05)}
 .r1{width:900px;height:900px;right:-260px;top:-380px}
@@ -32,4 +32,9 @@ body{font-family:"PingFang TC","Heiti TC","Noto Sans TC",sans-serif;background:l
     <div class="s">地區活動・本社例會・我的行程</div>
     <div class="btn">點我開啟 ›</div>
   </div>
-</div></body></html>
+</div>
+<script>
+/* 這是 LINE 圖文選單背景圖的原始檔（固定 2500×843 像素）。在一般瀏覽器打開時自動縮小到視窗寬度方便預覽；
+   產生圖片時視窗就是 2500 寬，不會縮放。 */
+(function fit(){ var k = Math.min(1, window.innerWidth / 2500); document.body.style.zoom = k; window.onresize = fit; })();
+</script></body></html>
