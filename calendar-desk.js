@@ -20,6 +20,7 @@ const CDESK_ERR = {
     CAL_END_BEFORE_START: '結束時間不能早於開始時間。',
     CAL_BAD_LAYER: '行程層級不正確。',
     CAL_TABLE_MISSING: '行事曆資料表還沒建立，請先在 Supabase 執行 supabase/sql/calendar.sql。',
+    CAL_IMPORT_TOO_MANY: '一次最多匯入 300 筆，請把檔案分成幾份。',
     LINE_NOT_CONFIGURED: '行事曆雲端小程式尚未部署。',
     NETWORK: '網路連線不穩，請再試一次。',
     SERVER_ERROR: '系統忙碌中，請稍後再試。'
@@ -98,7 +99,7 @@ function openCalendarDesk() {
 }
 function closeCalendarDesk() { const el = document.getElementById('calDeskModal'); if (el) el.classList.add('hidden'); }
 function cdeskSwitch(tab) {
-    cdeskTab = tab;
+    cdeskTab = tab; cdImp = null;
     const T = [['club', '🏠 本社行程'], ['stats', '📊 例會統計'], ['report', '📈 出席率'], ['district', '🌐 地區行程']];
     if (cdIsSuper()) T.push(['admin', '🔑 管理者與活動類型']);
     document.getElementById('cdeskTabs').innerHTML = T.map(t => `<button type="button" onclick="cdeskSwitch('${t[0]}')" class="px-3.5 py-2 rounded-lg text-sm font-bold border ${cdeskTab === t[0] ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}">${t[1]}</button>`).join('');
@@ -138,7 +139,8 @@ async function cdeskReload() {
     const title = layer === 'district' ? '地區行程（全地區社友都看得到）' : `${cdE(cdMyClub())} 的社內行程（只有本社社友看得到）`;
     box.innerHTML = `<div class="flex flex-wrap items-center justify-between gap-2">
             <div class="min-w-0"><div class="font-black text-slate-900">${layer === 'club' && cdIsSuper() ? '社內行程　' + clubPicker : title}</div><div class="text-xs text-slate-500 mt-0.5">顯示最近 30 天前～未來一年。社友在 LINE 行事曆裡看到的就是這裡的內容。</div></div>
-            <button type="button" onclick="cdeskOpenForm()" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg text-sm shadow-sm">＋ 新增行程</button>
+            <div class="flex flex-wrap gap-2"><button type="button" onclick="cdImpOpen()" class="px-3 py-2 bg-white border border-emerald-400 text-emerald-800 hover:bg-emerald-50 font-bold rounded-lg text-sm">📥 Excel 匯入</button>
+            <button type="button" onclick="cdeskOpenForm()" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg text-sm shadow-sm">＋ 新增行程</button></div>
         </div>
         <div id="cdeskList" class="mt-4"><div class="text-sm text-slate-500 py-6 text-center">讀取中…</div></div>`;
     const r = await cdApi('cal_desk_list', layer, { layer: layer, targetClub: layer === 'club' ? cdMyClub() : '', from: new Date(Date.now() - 30 * 86400e3).toISOString(), to: new Date(Date.now() + 365 * 86400e3).toISOString() });
@@ -943,4 +945,257 @@ async function cdArMakeupDel(id) {
     if (!r.ok) return cdToast(cdErr(r.code), '⚠️');
     cdToast('已刪除');
     cdeskRenderReport();
+}
+
+
+// =====================================================================
+// 📥 Excel 匯入行程（本社行程用社的登入密碼；地區行程用行事曆後台密碼，與手動新增相同）
+//   流程：下載範本 → 選檔案 → 預覽（有錯誤的列標紅色並說明原因、與現有行程重複的標黃色）→ 確認後才寫入。
+//   日期接受 2026/12/5、2026-12-05、2026.12.5、民國 115/12/5、Excel 日期數字；時間接受 19:00、1900、下午7:00、Excel 時間。
+//   沒填開始時間或「全天」填「是」＝全天行程。活動類型找不到時歸為「其他」。「開放我要參加」預設是。
+//   讀檔與整理在前端（cdImpParse 是純函式），雲端 cal_desk_import 再逐筆檢查一次（dryRun＝只檢查不寫入）。
+// =====================================================================
+const CD_IMP_COLS = [
+    ['date', '日期', ['日期', '開始日期', '活動日期']],
+    ['start', '開始時間', ['開始時間', '時間', '開始']],
+    ['end', '結束時間', ['結束時間', '結束']],
+    ['allDay', '全天', ['全天', '整天', '全日']],
+    ['title', '標題', ['標題', '活動名稱', '行程名稱', '名稱', '行程', '活動']],
+    ['type', '活動類型', ['活動類型', '類型', '類別']],
+    ['location', '地點', ['地點', '場地']],
+    ['address', '地址', ['地址']],
+    ['dress', '服裝', ['服裝', '服裝規定']],
+    ['cp', '聯絡人', ['聯絡人']],
+    ['ph', '聯絡電話', ['聯絡電話', '電話']],
+    ['notes', '備註', ['備註', '說明']],
+    ['endDate', '結束日期（多天活動才填）', ['結束日期']],
+    ['rsvp', '開放我要參加', ['開放我要參加', '我要參加', '開放參加']],
+];
+const CD_IMP_MAX = 300;
+let cdImp = null;   // {layer, club, fileName, rows, dup:{row:reason}, checking, result, err}
+const cdImpHalf = v => String(v == null ? '' : v).replace(/[！-～]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/　/g, ' ').trim();
+function cdImpHeaderKey(h) {
+    const t = cdImpHalf(h).replace(/[（(].*?[）)]/g, '').replace(/\s+/g, '');
+    if (!t) return '';
+    for (const c of CD_IMP_COLS) if (c[2].includes(t)) return c[0];
+    for (const c of CD_IMP_COLS) if (c[2].some(n => n.length >= 2 && t.startsWith(n))) return c[0];
+    return '';
+}
+// 日期 → 'YYYY-MM-DD'；空白回 ''；看不懂回 null
+function cdImpDate(v) {
+    if (v === null || v === undefined || v === '') return '';
+    let y, m, d;
+    if (v instanceof Date) { y = v.getFullYear(); m = v.getMonth() + 1; d = v.getDate(); }
+    else if (typeof v === 'number') {
+        if (!(v > 20000 && v < 80000)) return null;                     // Excel 日期數字（約 1954～2119 年）
+        const t = new Date(Math.round((Math.floor(v) - 25569) * 86400e3));
+        y = t.getUTCFullYear(); m = t.getUTCMonth() + 1; d = t.getUTCDate();
+    } else {
+        const s = cdImpHalf(v).replace(/^民國\s*/, '').replace(/[年月]/g, '/').replace(/日/g, '').replace(/[.\-]/g, '/').replace(/\s*[（(][^）)]*[）)]\s*$/, '').replace(/\s+.*$/, '');
+        const mm = s.match(/^(\d{2,4})\/(\d{1,2})\/(\d{1,2})$/) || s.match(/^(\d{4})(\d{2})(\d{2})$/);
+        if (!mm) return null;
+        y = Number(mm[1]); m = Number(mm[2]); d = Number(mm[3]);
+        if (y < 1000) y += 1911;                                         // 民國年
+    }
+    if (y < 2000 || y > 2100 || m < 1 || m > 12 || d < 1) return null;
+    const chk = new Date(Date.UTC(y, m - 1, d));
+    if (chk.getUTCMonth() !== m - 1 || chk.getUTCDate() !== d) return null;  // 2/30 這種不存在的日期
+    return `${y}-${cdP2(m)}-${cdP2(d)}`;
+}
+// 時間 → 'HH:MM'；空白回 ''；看不懂回 null
+function cdImpTime(v) {
+    if (v === null || v === undefined || v === '') return '';
+    let h, mi;
+    if (v instanceof Date) { h = v.getHours(); mi = v.getMinutes(); }
+    else if (typeof v === 'number') {
+        if (v >= 0 && v < 1) { const t = Math.round(v * 1440); h = Math.floor(t / 60); mi = t % 60; }   // Excel 時間（一天的幾分之幾）
+        else if (Number.isInteger(v) && v >= 0 && v <= 23) { h = v; mi = 0; }
+        else if (Number.isInteger(v) && v >= 100 && v <= 2359) { h = Math.floor(v / 100); mi = v % 100; }
+        else if (v > 1 && v % 1) { const t = Math.round((v % 1) * 1440); h = Math.floor(t / 60); mi = t % 60; }   // 日期＋時間的數字
+        else return null;
+    } else {
+        let s = cdImpHalf(v).toLowerCase().replace(/\s+/g, '');
+        const pm = /下午|晚上|晚間|傍晚|pm|p\.m\./.test(s), am = /上午|早上|凌晨|清晨|am|a\.m\./.test(s), noon = /中午/.test(s);
+        s = s.replace(/下午|晚上|晚間|傍晚|上午|早上|凌晨|清晨|中午|p\.?m\.?|a\.?m\.?/g, '').replace(/[時点點]/g, ':').replace(/分|半$/g, m => m === '半' ? '30' : '');
+        let mm = s.match(/^(\d{1,2}):(\d{1,2})(?::\d{1,2})?$/) || s.match(/^(\d{1,2}):?$/) || s.match(/^(\d{2})(\d{2})$/);
+        if (!mm) return null;
+        h = Number(mm[1]); mi = Number(mm[2] || 0);
+        if ((pm || (noon && h < 6)) && h < 12) h += 12;
+        if (am && h === 12) h = 0;
+    }
+    if (!(h >= 0 && h <= 23 && mi >= 0 && mi <= 59)) return null;
+    return `${cdP2(h)}:${cdP2(mi)}`;
+}
+function cdImpBool(v, def) {
+    const s = cdImpHalf(v).toUpperCase();
+    if (!s) return def;
+    if (['是', 'Y', 'YES', 'TRUE', '1', 'V', '✓', '✔', 'O', '○', '要', '開放', '全天'].includes(s)) return true;
+    if (['否', 'N', 'NO', 'FALSE', '0', 'X', '✕', '×', '不要', '不開放'].includes(s)) return false;
+    return def;
+}
+// aoa＝工作表的二維陣列（sheet_to_json header:1, raw:true）；types＝[{id,name}]
+// 回傳 {ok, error, rows:[{row, ev, errors[], warns[], view{}}]}
+function cdImpParse(aoa, types) {
+    const rowsIn = Array.isArray(aoa) ? aoa : [];
+    let hi = -1, map = {};
+    for (let i = 0; i < Math.min(rowsIn.length, 15); i++) {
+        const m = {};
+        (rowsIn[i] || []).forEach((h, c) => { const k = cdImpHeaderKey(h); if (k && m[k] === undefined) m[k] = c; });
+        if (m.date !== undefined && m.title !== undefined) { hi = i; map = m; break; }
+    }
+    if (hi < 0) return { ok: false, error: '找不到標題列：第一列要有「日期」和「標題」這兩個欄位，請用範本檔填寫。', rows: [] };
+    const other = (types || []).find(t => t.name === '其他');
+    const out = [];
+    for (let i = hi + 1; i < rowsIn.length; i++) {
+        const raw = rowsIn[i] || [];
+        const g = k => map[k] === undefined ? '' : raw[map[k]];
+        const txt = k => cdImpHalf(g(k)) === '' ? '' : String(g(k)).trim();
+        if (!raw.some(x => cdImpHalf(x) !== '')) continue;               // 整列空白就略過
+        const errors = [], warns = [];
+        const date = cdImpDate(g('date')), endDate0 = cdImpDate(g('endDate'));
+        const st = cdImpTime(g('start')), et = cdImpTime(g('end'));
+        const title = txt('title');
+        if (date === '') errors.push('缺少日期'); else if (date === null) errors.push(`日期看不懂「${cdImpHalf(g('date'))}」`);
+        if (!title) errors.push('缺少標題'); else if (title.length > 100) errors.push('標題超過 100 字');
+        if (st === null) errors.push(`開始時間看不懂「${cdImpHalf(g('start'))}」`);
+        if (et === null) errors.push(`結束時間看不懂「${cdImpHalf(g('end'))}」`);
+        if (endDate0 === null) errors.push(`結束日期看不懂「${cdImpHalf(g('endDate'))}」`);
+        const allDay = cdImpBool(g('allDay'), false) || !st;
+        const endDate = endDate0 || date;
+        let typeId = null, typeName = txt('type');
+        if (typeName) {
+            const t = (types || []).find(x => x.name === typeName) || (types || []).find(x => x.name.toLowerCase() === typeName.toLowerCase());
+            if (t) typeId = t.id;
+            else { typeId = other ? other.id : null; warns.push(`找不到活動類型「${typeName}」，歸為「其他」`); }
+        }
+        let start = '', end = '';
+        if (date && !errors.length) {
+            start = allDay ? `${date}T00:00:00+08:00` : `${date}T${st}:00+08:00`;
+            end = allDay ? `${endDate}T23:59:00+08:00` : (et ? `${endDate}T${et}:00+08:00` : (endDate !== date ? `${endDate}T${st}:00+08:00` : start));
+            if (endDate < date) errors.push('結束日期早於開始日期');
+            else if (Date.parse(end) < Date.parse(start)) errors.push('結束時間早於開始時間');
+            if (allDay && (st || et) && cdImpBool(g('allDay'), false)) warns.push('「全天」填了是，時間不採用');
+        }
+        const ev = { row: i + 1, title, start, end, allDay, typeId, location: txt('location'), address: txt('address'), dressCode: txt('dress'), contactPerson: txt('cp'), contactPhone: txt('ph'), notes: txt('notes'), rsvpEnabled: cdImpBool(g('rsvp'), true) };
+        out.push({ row: i + 1, ev, errors, warns, view: { date: date || cdImpHalf(g('date')), endDate: endDate0 || '', time: allDay ? '全天' : (st + (et ? '–' + et : '')), title, type: typeId ? ((types || []).find(t => t.id === typeId) || {}).name || '' : '', location: ev.location, rsvp: ev.rsvpEnabled } });
+    }
+    if (!out.length) return { ok: false, error: '檔案裡沒有任何行程資料（標題列下面是空的）。', rows: [] };
+    return { ok: true, rows: out };
+}
+function cdImpOpen() {
+    cdImp = { layer: cdeskTab === 'district' ? 'district' : 'club', club: cdMyClub(), fileName: '', rows: [], dup: {}, checking: false, result: null, err: '' };
+    cdImpRender();
+}
+function cdImpTarget() { return cdImp.layer === 'district' ? '地區行程（全地區社友都看得到）' : `${cdImp.club} 的社內行程`; }
+function cdImpTemplate() {
+    if (typeof XLSX === 'undefined') return cdToast('Excel 元件尚未載入，請重新整理後再試', '⚠️');
+    const head = CD_IMP_COLS.map(c => c[1]);
+    const ex1 = ['2026/12/05', '19:00', '21:00', '否', '松景社授證典禮', '授證典禮', '○○飯店 3 樓宴會廳', '台北市○○路 1 號', '正式服裝', '王小明', '0912-345-678', '請準時入席', '', '是'];
+    const ex2 = ['2026/12/12', '', '', '是', '社區淨灘服務', '社區服務', '八里海灘', '', '輕便服裝', '', '', '', '', '是'];
+    const ex3 = ['2027/01/16', '09:00', '17:00', '否', '地區年會', '地區活動', '○○會議中心', '', '', '', '', '兩天活動：結束日期填第二天', '2027/01/17', '是'];
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([head, ex1, ex2, ex3]);
+    ws['!cols'] = head.map((h, i) => ({ wch: [12, 9, 9, 6, 26, 10, 20, 22, 10, 10, 14, 24, 14, 12][i] || 12 }));
+    XLSX.utils.book_append_sheet(wb, ws, '行程');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['活動類型（請從這裡挑，找不到的會歸為「其他」）']].concat((cdeskTypes || []).map(t => [t.name]))), '活動類型');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+        ['填寫說明'],
+        ['1. 一列一筆行程，第一列的欄位名稱不要改。範例的三列請刪掉再填自己的資料。'],
+        ['2. 必填：日期、標題。日期可寫 2026/12/5、2026-12-05、115/12/5（民國）。'],
+        ['3. 時間寫 19:00 或 下午7:00。沒填開始時間、或「全天」填「是」＝全天行程。'],
+        ['4. 結束時間沒填＝和開始時間相同。跨天的活動在「結束日期」填最後一天。'],
+        ['5. 活動類型請用「活動類型」工作表裡的名稱，找不到的會歸為「其他」。'],
+        ['6. 「開放我要參加」沒填＝是（社友可在 LINE 按我要參加）；不想開放請填「否」。'],
+        ['7. 匯入前會先預覽，有錯誤的列會標出原因；和現有行程「標題＋開始時間」相同的會略過，重複匯入不會變兩筆。'],
+        [`8. 一次最多 ${CD_IMP_MAX} 筆。`],
+    ]), '填寫說明');
+    XLSX.writeFile(wb, '行程匯入範本.xlsx');
+    cdToast('已下載範本', '⬇️');
+}
+function cdImpFile(file) {
+    if (!file || !cdImp) return;
+    if (typeof XLSX === 'undefined') return cdToast('Excel 元件尚未載入，請重新整理後再試', '⚠️');
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            const wb = XLSX.read(new Uint8Array(reader.result), { type: 'array' });
+            const name = wb.SheetNames.includes('行程') ? '行程' : wb.SheetNames[0];
+            const aoa = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: '' });
+            const r = cdImpParse(aoa, cdeskTypes);
+            cdImp.fileName = file.name; cdImp.rows = r.rows; cdImp.dup = {}; cdImp.result = null;
+            cdImp.err = r.ok ? (r.rows.length > CD_IMP_MAX ? `一次最多匯入 ${CD_IMP_MAX} 筆，這個檔案有 ${r.rows.length} 筆，請分成幾個檔案。` : '') : r.error;
+        } catch (e) { cdImp.fileName = file.name; cdImp.rows = []; cdImp.err = '讀不出這個檔案，請確認是 Excel（.xlsx）檔。'; }
+        cdImpRender();
+        if (!cdImp.err) cdImpCheck();
+    };
+    reader.readAsArrayBuffer(file);
+}
+const cdImpGood = () => cdImp.rows.filter(r => !r.errors.length && !cdImp.dup[r.row]);
+const CD_IMP_REASON = { CAL_NEED_TITLE: '缺少標題', CAL_BAD_TIME: '日期或時間格式不正確', CAL_END_BEFORE_START: '結束時間早於開始時間', DUP_EXISTING: '已有相同的行程（標題＋開始時間相同），略過' };
+const cdImpReason = c => String(c || '').startsWith('DUP_IN_FILE:') ? `和第 ${String(c).split(':')[1]} 列重複，略過` : (CD_IMP_REASON[c] || '無法匯入');
+// 預覽時先問雲端：有沒有和現有行程重複（不寫入）
+async function cdImpCheck() {
+    const valid = cdImp.rows.filter(r => !r.errors.length);
+    if (!valid.length) return;
+    cdImp.checking = true; cdImpRender();
+    const me = cdImp;
+    const r = await cdApi('cal_desk_import', cdImp.layer, { layer: cdImp.layer, targetClub: cdImp.club, events: valid.map(x => x.ev), dryRun: true });
+    if (me !== cdImp) return;
+    cdImp.checking = false;
+    if (!r.ok) cdImp.err = cdErr(r.code);
+    else (r.skipped || []).forEach(x => { cdImp.dup[x.row] = cdImpReason(x.reason); });
+    cdImpRender();
+}
+async function cdImpGo() {
+    if (cdeskBusy || !cdImp || cdImp.checking) return;
+    const good = cdImpGood();
+    if (!good.length) return;
+    if (!confirm(`要把 ${good.length} 筆行程匯入「${cdImpTarget()}」嗎？`)) return;
+    cdeskBusy = true; cdImp.checking = true; cdImpRender();
+    const me = cdImp;
+    const r = await cdApi('cal_desk_import', cdImp.layer, { layer: cdImp.layer, targetClub: cdImp.club, events: good.map(x => x.ev) });
+    cdeskBusy = false;
+    if (me !== cdImp) { if (r.ok) cdToast(`成功匯入 ${r.imported || 0} 筆`, '✅'); return; }   // 匯入期間切換了分頁
+    cdImp.checking = false;
+    if (!r.ok) { cdImp.err = cdErr(r.code); return cdImpRender(); }
+    const skipped = cdImp.rows.filter(x => x.errors.length).map(x => ({ row: x.row, reason: x.errors.join('、') }))
+        .concat(cdImp.rows.filter(x => !x.errors.length && cdImp.dup[x.row]).map(x => ({ row: x.row, reason: cdImp.dup[x.row] })))
+        .concat((r.skipped || []).map(x => ({ row: x.row, reason: cdImpReason(x.reason) })))
+        .sort((a, b) => a.row - b.row);
+    cdImp.result = { imported: r.imported || 0, skipped };
+    cdImpRender();
+    cdToast(`成功匯入 ${r.imported || 0} 筆`, '✅');
+}
+function cdImpRender() {
+    const box = document.getElementById('cdeskBody'); if (!box || !cdImp) return;
+    const back = `<button type="button" onclick="cdImp=null; cdeskReload()" class="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 font-bold rounded-lg text-sm">← 回到行程列表</button>`;
+    const headHtml = `<div class="flex flex-wrap items-center justify-between gap-2"><div class="min-w-0"><div class="font-black text-slate-900">📥 Excel 匯入行程</div><div class="text-xs text-slate-500 mt-0.5">匯入到：<b class="text-slate-800">${cdE(cdImpTarget())}</b></div></div>${back}</div>`;
+    if (cdImp.result) {
+        const R = cdImp.result;
+        box.innerHTML = headHtml + `<div class="mt-4 border border-emerald-300 bg-emerald-50 rounded-xl px-4 py-4"><div class="font-black text-emerald-800 text-lg">✅ 成功匯入 ${R.imported} 筆，略過 ${R.skipped.length} 筆</div>
+            <div class="text-xs text-slate-600 mt-1">匯入的行程已預設開放社友在 LINE 按「我要參加」（檔案裡填「否」的除外）。回到行程列表就看得到。</div></div>
+            ${R.skipped.length ? `<div class="mt-3 text-sm font-bold text-slate-700">略過的列</div><ul class="mt-1 text-sm space-y-0.5">${R.skipped.map(x => `<li><span class="font-mono text-slate-500">第 ${x.row} 列</span>　${cdE(x.reason)}</li>`).join('')}</ul>` : ''}`;
+        return;
+    }
+    const steps = `<div class="mt-4 grid sm:grid-cols-2 gap-3">
+        <div class="border border-slate-200 rounded-xl p-3"><div class="font-bold text-sm text-slate-800">① 下載範本</div><div class="text-xs text-slate-500 mt-1 leading-relaxed">欄位：日期、開始時間、結束時間、全天、標題、活動類型、地點、地址、服裝、聯絡人、聯絡電話、備註（另有結束日期、開放我要參加）。必填只有日期和標題。</div>
+            <button type="button" onclick="cdImpTemplate()" class="mt-2 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 font-bold rounded-lg text-sm">⬇️ 下載範本（.xlsx）</button></div>
+        <div class="border border-slate-200 rounded-xl p-3"><div class="font-bold text-sm text-slate-800">② 選擇填好的檔案</div><div class="text-xs text-slate-500 mt-1">選好後會先預覽，<b>確認後才寫入</b>。</div>
+            <label class="mt-2 inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-sm cursor-pointer">📂 選擇 Excel 檔<input id="cdImpFile" type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="cdImpFile(this.files[0]); this.value=''"></label>
+            ${cdImp.fileName ? `<span class="ml-2 text-xs text-slate-600">${cdE(cdImp.fileName)}</span>` : ''}</div></div>`;
+    let body = '';
+    if (cdImp.err) body = `<div class="mt-3 text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-3">${cdE(cdImp.err)}</div>`;
+    if (cdImp.rows.length && !(cdImp.err && !cdImp.rows.some(r => !r.errors.length))) {
+        const nErr = cdImp.rows.filter(r => r.errors.length).length, nDup = cdImp.rows.filter(r => !r.errors.length && cdImp.dup[r.row]).length, good = cdImpGood().length;
+        const tr = cdImp.rows.map(r => {
+            const bad = r.errors.length, dup = !bad && cdImp.dup[r.row];
+            const st = bad ? `<span class="text-rose-700 font-bold">❌ ${cdE(r.errors.join('、'))}</span>` : dup ? `<span class="text-amber-700 font-bold">⚠️ ${cdE(dup)}</span>` : `<span class="text-emerald-700 font-bold">✅ 可匯入</span>${r.warns.length ? `<div class="text-[11px] text-amber-700">${cdE(r.warns.join('、'))}</div>` : ''}`;
+            return `<tr class="border-b border-slate-100 ${bad ? 'bg-rose-50' : dup ? 'bg-amber-50' : ''}"><td class="py-1.5 pr-2 font-mono text-slate-500 whitespace-nowrap">${r.row}</td><td class="pr-2 whitespace-nowrap">${cdE(String(r.view.date).replace(/-/g, '/'))}${r.view.endDate && r.view.endDate !== r.view.date ? `<div class="text-[11px] text-slate-500">～${cdE(r.view.endDate.replace(/-/g, '/'))}</div>` : ''}</td><td class="pr-2 whitespace-nowrap">${cdE(r.view.time)}</td><td class="pr-2 font-bold">${cdE(r.view.title)}</td><td class="pr-2 whitespace-nowrap">${cdE(r.view.type)}</td><td class="pr-2">${cdE(r.view.location)}</td><td class="pr-2 text-center">${r.view.rsvp ? '是' : '否'}</td><td class="min-w-[9rem]">${st}</td></tr>`;
+        }).join('');
+        body += `<div class="mt-4 flex flex-wrap items-center gap-2 text-sm"><b>預覽：共 ${cdImp.rows.length} 列</b><span class="text-emerald-700 font-bold">可匯入 ${good}</span>${nErr ? `<span class="text-rose-700 font-bold">有錯誤 ${nErr}</span>` : ''}${nDup ? `<span class="text-amber-700 font-bold">重複 ${nDup}</span>` : ''}${cdImp.checking ? '<span class="text-slate-500">檢查中…</span>' : ''}</div>
+            <div class="overflow-x-auto mt-2"><table class="w-full text-xs"><thead><tr class="text-left text-slate-500 border-b"><th class="py-1">列</th><th>日期</th><th>時間</th><th>標題</th><th>類型</th><th>地點</th><th class="text-center">我要參加</th><th>狀態</th></tr></thead><tbody>${tr}</tbody></table></div>
+            <div class="mt-3 flex flex-wrap items-center gap-2"><button type="button" onclick="cdImpGo()" ${good && !cdImp.checking ? '' : 'disabled'} class="px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:bg-slate-300 text-white font-bold rounded-lg text-sm">確認匯入 ${good} 筆</button>
+            ${nErr || nDup ? `<span class="text-xs text-slate-500">有錯誤或重複的列不會匯入；要匯入就修改 Excel 後重新選擇檔案。</span>` : ''}</div>`;
+    }
+    box.innerHTML = headHtml + steps + body;
 }

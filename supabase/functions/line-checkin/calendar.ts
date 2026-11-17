@@ -22,6 +22,7 @@ export interface CalRoles { district: boolean; clubs: string[]; governor: boolea
 export const LAYERS = ["district", "club", "private"];
 const LIMITS: Record<string, number> = { title: 100, location: 200, address: 300, dressCode: 100, contactPerson: 50, contactPhone: 50, notes: 2000 };
 const MAX_RANGE_MS = 400 * 86400_000;
+const IMPORT_MAX = 300;          // Excel 匯入一次最多幾筆
 
 const clip = (v: Any, n: number) => String(v == null ? "" : v).trim().slice(0, n);
 
@@ -803,6 +804,54 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
     const { data, error } = await admin.from("calendar_events").insert({ layer, club_name: target, owner_key: "", ...fields, created_by: by, updated_by: by }).select().single();
     if (error) dbFail(error);
     return { ok: true, event: toView(data, true) };
+  }
+
+  // ---------- Excel 匯入行程（前端用 SheetJS 讀檔、整理成行程，這裡逐筆檢查後一次寫入） ----------
+  // body.events＝[{row, title, start, end, allDay, typeId, location, …, rsvpEnabled}]（最多 IMPORT_MAX 筆）；
+  // body.dryRun＝true 時只檢查不寫入（預覽用）。同一層、同一社「標題＋開始時間」相同的行程視為重複，略過不匯入。
+  if (action === "cal_desk_import") {
+    const layer = String(body.layer || "");
+    if (layer !== "district" && layer !== "club") fail("CAL_BAD_LAYER");
+    const target = layer === "club" ? String((isAdmin ? body.targetClub : club) || "") : "";
+    if (layer === "club" && !target) fail("CAL_BAD_LAYER");
+    if (!can(layer, target)) fail("CAL_FORBIDDEN");
+    const input: Any[] = Array.isArray(body.events) ? body.events : [];
+    if (!input.length) fail("BAD_REQUEST");
+    if (input.length > IMPORT_MAX) fail("CAL_IMPORT_TOO_MANY");
+    const types = await loadTypes(admin);
+    const typeIds = new Set(types.map((t: Any) => Number(t.id)));
+    const ok: { row: number; fields: Any }[] = [], skipped: { row: number; reason: string }[] = [];
+    const seen = new Map<string, number>();
+    input.forEach((e: Any, i: number) => {
+      const row = Number(e && e.row) || i + 1;
+      let fields: Any;
+      try { fields = normalizeEvent({ ...e, registrationKey: undefined, rsvpEnabled: e && e.rsvpEnabled === false ? false : true }); }
+      catch (err: Any) { skipped.push({ row, reason: (err && err.code) || "BAD_REQUEST" }); return; }
+      if (fields.event_type_id && !typeIds.has(fields.event_type_id)) fields.event_type_id = null;
+      const k = fields.title + "|" + Date.parse(fields.start_at);
+      if (seen.has(k)) { skipped.push({ row, reason: "DUP_IN_FILE:" + seen.get(k) }); return; }
+      seen.set(k, row);
+      ok.push({ row, fields });
+    });
+    // 與資料庫裡已有的行程比對（同層、同社、標題與開始時間相同）
+    if (ok.length) {
+      const starts = ok.map((x) => Date.parse(x.fields.start_at));
+      let q = admin.from("calendar_events").select("title,start_at").eq("layer", layer)
+        .gte("start_at", new Date(Math.min(...starts)).toISOString()).lte("start_at", new Date(Math.max(...starts)).toISOString()).limit(5000);
+      if (layer === "club") q = q.eq("club_name", target);
+      const { data: ex, error } = await q;
+      if (error) dbFail(error);
+      const have = new Set((ex || []).map((r: Any) => String(r.title).trim() + "|" + Date.parse(r.start_at)));
+      for (let i = ok.length - 1; i >= 0; i--) {
+        if (have.has(ok[i].fields.title + "|" + Date.parse(ok[i].fields.start_at))) { skipped.push({ row: ok[i].row, reason: "DUP_EXISTING" }); ok.splice(i, 1); }
+      }
+    }
+    skipped.sort((a, b) => a.row - b.row);
+    if (body.dryRun || !ok.length) return { ok: true, dryRun: !!body.dryRun, imported: 0, willImport: ok.map((x) => x.row), skipped };
+    const rows = ok.map((x) => ({ layer, club_name: target, owner_key: "", ...x.fields, created_by: by, updated_by: by }));
+    const { error } = await admin.from("calendar_events").insert(rows);
+    if (error) dbFail(error);
+    return { ok: true, dryRun: false, imported: rows.length, importedRows: ok.map((x) => x.row), skipped };
   }
 
   if (action === "cal_desk_cancel" || action === "cal_desk_delete") {

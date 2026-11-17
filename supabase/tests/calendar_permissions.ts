@@ -325,6 +325,22 @@ const wr = await handleMember("cal_attend_report", { scope: "club", periods: PER
 const w = wr.people.find((p: any) => p.key === "王|");
 ok("出席率（社長）：看得到全社（王、王子、趙），社長排第一", wr.canClub === true && wr.people[0].key === "王|" && ["王子|", "趙|Z"].every((k) => wr.people.some((p: any) => p.key === k)));
 
+// ---------- Excel 匯入行程 ----------
+const imp = (o: any) => ({ title: "匯入例會", start: "2027-02-03T19:00:00+08:00", end: "2027-02-03T21:00:00+08:00", ...o });
+const nEv0 = T.calendar_events.length;
+const id1 = await deskM("cal_desk_import", { ...A1, layer: "club", events: [imp({ row: 2 }), imp({ row: 3, title: "社遊", rsvpEnabled: false, typeId: 999 }), imp({ row: 4 }), imp({ row: 5, title: "" }), imp({ row: 6, end: "2027-02-03T18:00:00+08:00" })], dryRun: true });
+ok("匯入預覽（dryRun）：不寫入；同檔重複、缺標題、時間顛倒都列出原因", T.calendar_events.length === nEv0 && id1.willImport.join() === "2,3" && id1.skipped.map((x: any) => x.row + x.reason).join() === "4DUP_IN_FILE:2,5CAL_NEED_TITLE,6CAL_END_BEFORE_START");
+const id2 = await deskM("cal_desk_import", { ...A1, layer: "club", targetClub: "乙社", events: [imp({ row: 2 }), imp({ row: 3, title: "社遊", rsvpEnabled: false, typeId: 999 })] });
+const got = T.calendar_events.slice(nEv0);
+ok("匯入：寫入 2 筆，只進自己的社（帶別社名稱也一樣）、記錄匯入者", id2.imported === 2 && got.length === 2 && got.every((e: any) => e.layer === "club" && e.club_name === "甲社" && e.created_by === "報名系統（甲社）"));
+ok("匯入：預設開放我要參加，填否的關閉；不存在的類型改成未分類", got.find((e: any) => e.title === "匯入例會").rsvp_enabled === true && got.find((e: any) => e.title === "社遊").rsvp_enabled === false && got.find((e: any) => e.title === "社遊").event_type_id === null);
+const id3 = await deskM("cal_desk_import", { ...A1, layer: "club", events: [imp({ row: 2 }), imp({ row: 3, title: "新的一筆" })] });
+ok("再匯入同一份：已有的略過（DUP_EXISTING），只新增新的", id3.imported === 1 && id3.skipped.length === 1 && id3.skipped[0].reason === "DUP_EXISTING" && T.calendar_events.length === nEv0 + 3);
+ok("社密碼不能匯入地區行程", await code(deskM("cal_desk_import", { ...A1, layer: "district", events: [imp({})] })) === "CAL_FORBIDDEN");
+ok("後台密碼可以匯入地區行程", (await deskM("cal_desk_import", { adminPassword: "pw", layer: "district", events: [imp({ title: "地區研習" })] })).imported === 1 && T.calendar_events.some((e: any) => e.layer === "district" && e.title === "地區研習" && e.club_name === ""));
+ok("匯入：沒資料、超過 300 筆、層級錯誤都被擋", await code(deskM("cal_desk_import", { ...A1, layer: "club", events: [] })) === "BAD_REQUEST" && await code(deskM("cal_desk_import", { ...A1, layer: "club", events: Array.from({ length: 301 }, (_, i) => imp({ row: i })) })) === "CAL_IMPORT_TOO_MANY" && await code(deskM("cal_desk_import", { ...A1, layer: "private", events: [imp({})] })) === "CAL_BAD_LAYER");
+T.calendar_events.splice(nEv0);    // 還原，不影響後面的測試
+
 // ---------- 誰可以在 LINE 看全社出席率（後台逐社設定） ----------
 const admV = (action: string, extra: any) => handleAdmin(action, { adminPassword: "pw", ...extra }, { admin: db, password: "pw", members: async () => MEMBERS, clubInfos: async () => [{ name: "甲社", division: "第一分區", code: "01-1" }, { name: "乙社", division: "第一分區", code: "01-2" }] });
 const zU = { club: "甲社", key: "趙|Z", name: "趙", nickname: "Z" };
