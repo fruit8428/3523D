@@ -783,14 +783,17 @@ async function cdeskRenderReport() {
     const picker = cdIsSuper() ? `<select onchange="cdeskClub=this.value; cdeskRenderReport()" class="border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm bg-white max-w-full">${cdAllClubs().map(c => `<option value="${cdE(c.name)}" ${c.name === club ? 'selected' : ''}>${cdE(c.division)} ${cdE(c.code)} ${cdE(c.name)}</option>`).join('')}</select>` : `<b>${cdE(club)}</b>`;
     box.innerHTML = `<div class="flex flex-wrap items-center justify-between gap-2">
             <div class="font-black text-slate-900">📈 出席率　${picker}</div>
-            <button type="button" onclick="cdArExport()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-sm shadow-sm">⬇️ 匯出 Excel</button>
+            <div class="flex flex-wrap gap-2"><button type="button" onclick="cdVwToggle()" class="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold rounded-lg text-sm">⚙️ LINE 上誰可以看全社</button>
+            <button type="button" onclick="cdArExport()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-sm shadow-sm">⬇️ 匯出 Excel</button></div>
         </div>
+        <div id="cdVwBox" class="${cdVwOpen ? '' : 'hidden'} mt-3 border border-slate-300 bg-slate-50 rounded-xl p-3"></div>
         <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">${[[0, '本扶輪年度'], [-1, '上個扶輪年度']].map(x => `<button type="button" onclick="cdArYear=${x[0]}; cdArOpen=''; cdeskRenderReport()" class="px-2.5 py-1 rounded-md border font-bold ${cdArYear === x[0] ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-slate-700 border-slate-300'}">${x[1]}</button>`).join('')}
             <span class="text-slate-500 ml-1">${cdE(rp.label)}　上半年＝7/1～12/31</span></div>
         <div class="mt-2 flex flex-wrap items-center gap-2"><input id="cdArSearch" type="search" value="${cdE(cdArQuery)}" oninput="cdArQuery=this.value; cdArRenderTable()" class="flex-1 min-w-[12rem] border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="🔍 搜尋姓名、Nick Name、職務">
             <label class="text-xs text-slate-600 flex items-center gap-1"><input type="checkbox" ${cdArGuests ? 'checked' : ''} onchange="cdArGuests=this.checked; cdArRenderTable()" class="w-4 h-4"> 含寶尊眷</label></div>
         <div id="cdArBody" class="mt-3"><div class="text-sm text-slate-500 py-6 text-center">讀取中…</div></div>
         <p class="text-[11px] text-slate-500 mt-3 leading-relaxed">出席率＝(例會出席＋補出席) ÷ 已記錄出席的例會場數，分母固定是本社例會，所以可以超過 100%；「純例會」不含補出席。例會要在「本社行程」按「✅ 記錄實際出席」儲存後才列入。補出席＝地區活動報到（LINE 掃碼或櫃台點名，自動計入）＋執秘手動登記（例如參加友社例會：點社友姓名後登記）。</p>`;
+    if (cdVwOpen) cdVwLoad();
     const r = await cdApi('cal_desk_attend_report', 'club', { periods: rp.periods, targetClub: club });
     if (seq !== cdArSeq) return;
     const body = document.getElementById('cdArBody'); if (!body) return;
@@ -857,6 +860,66 @@ function cdArExport() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s3.length ? s3.map(x => x.row) : [{ '姓名': '（沒有資料）' }]), '補出席明細');
     XLSX.writeFile(wb, `${cdAr.club}_出席率_${cdAr.label}.xlsx`);
     cdToast('已匯出 Excel', '⬇️');
+}
+
+// ---------- ⚙️ LINE 上誰可以看全社出席率（執秘設定自己的社；最高管理員可設定選到的社） ----------
+// 預設＝社長（P）、秘書（S）；勾選後儲存＝只有勾選的人；恢復預設＝回到 P、S。社友看自己的出席率不受影響。
+let cdVw = null, cdVwOpen = false, cdVwSeq = 0;
+function cdVwToggle() {
+    cdVwOpen = !cdVwOpen;
+    const box = document.getElementById('cdVwBox'); if (!box) return;
+    box.classList.toggle('hidden', !cdVwOpen);
+    if (cdVwOpen) cdVwLoad();
+}
+async function cdVwLoad() {
+    const box = document.getElementById('cdVwBox'), club = cdMyClub(), seq = ++cdVwSeq;
+    if (!box) return;
+    cdVw = null;
+    box.innerHTML = '<div class="text-sm text-slate-500">讀取中…</div>';
+    const r = await cdApi('cal_desk_viewers_get', 'club', { targetClub: club });
+    if (seq !== cdVwSeq || !document.getElementById('cdVwBox')) return;
+    if (!r.ok) { box.innerHTML = `<div class="text-sm font-bold text-rose-700">${cdE(cdErr(r.code))}</div>`; return; }
+    cdVw = r; cdVwRender();
+}
+function cdVwRender(msg) {
+    const box = document.getElementById('cdVwBox'); if (!box || !cdVw) return;
+    const list = cdVw.members;
+    const status = cdVw.custom
+        ? `<span class="text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 font-bold">目前：自訂（${list.filter(m => m.allowed).length} 人）</span>${cdVw.updatedBy ? `<span class="text-slate-400">由 ${cdE(cdVw.updatedBy)} 設定</span>` : ''}`
+        : '<span class="text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5 font-bold">目前：預設（社長、秘書）</span>';
+    box.innerHTML = `<div class="font-black text-slate-800 text-sm">⚙️ 誰可以在 LINE 看「${cdE(cdVw.club)}」的全社出席率</div>
+        <p class="text-[11px] text-slate-500 mt-0.5 leading-relaxed">每位社友在 LINE 都能看自己的出席率；打勾的人另外可以看全社每個人的出席率。預設是社長（P）、秘書（S），可依貴社習慣加上前社長、理事等。儲存後立刻生效。</p>
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">${status}</div>
+        ${list.length ? `<div class="mt-2 bg-white border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-72 overflow-y-auto">${list.map((m, i) => `<label class="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-slate-50 text-sm ${m.spouse ? 'pl-7 text-slate-500' : ''}">
+            <input type="checkbox" class="cd-vw w-4 h-4" data-i="${i}" ${m.allowed ? 'checked' : ''} onchange="cdVwDirty()">
+            <span class="min-w-0 flex-1"><b>${cdE(m.nickname || m.name)}</b>${m.nickname ? ` <span class="text-slate-500">${cdE(m.name)}</span>` : ''}${m.role ? ` <span class="text-[11px] text-slate-400">${cdE(m.role)}</span>` : ''}</span>
+            ${m.isDefault ? '<span class="text-[11px] text-emerald-700 font-bold">預設</span>' : ''}</label>`).join('')}</div>
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" id="cdVwSave" onclick="cdVwSave()" class="px-4 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg text-sm">儲存</button>
+            <button type="button" onclick="cdVwReset()" class="px-3 py-1.5 border border-slate-300 bg-white font-bold rounded-lg text-sm" ${cdVw.custom ? '' : 'disabled style="opacity:.4"'}>恢復預設（社長、秘書）</button>
+            <span id="cdVwMsg" class="text-xs font-bold ${msg ? 'text-emerald-700' : ''}">${cdE(msg || '')}</span></div>`
+        : '<div class="mt-2 text-sm text-slate-500">社友庫還沒有資料，請先建立社友名單。</div>'}`;
+}
+function cdVwDirty() { const m = document.getElementById('cdVwMsg'); if (m) { m.className = 'text-xs font-bold text-amber-700'; m.textContent = '尚未儲存'; } }
+async function cdVwSave() {
+    if (cdeskBusy || !cdVw) return;
+    const keys = Array.from(document.querySelectorAll('.cd-vw')).filter(x => x.checked).map(x => cdVw.members[Number(x.dataset.i)].key);
+    if (!keys.length && !confirm('一個人都沒勾，貴社就沒有人能在 LINE 看全社出席率（每個人仍可看自己的）。確定要這樣儲存嗎？')) return;
+    cdeskBusy = true;
+    const btn = document.getElementById('cdVwSave'); if (btn) { btn.disabled = true; btn.textContent = '儲存中…'; }
+    const r = await cdApi('cal_desk_viewers_save', 'club', { targetClub: cdVw.club, keys: keys });
+    cdeskBusy = false;
+    if (!r.ok) { if (btn) { btn.disabled = false; btn.textContent = '儲存'; } return cdToast(cdErr(r.code), '⚠️'); }
+    cdVw = r; cdVwRender('✅ 已儲存，立刻生效');
+    cdToast('已更新 LINE 上可看全社出席率的人', '✅');
+}
+async function cdVwReset() {
+    if (cdeskBusy || !cdVw || !confirm('確定恢復預設嗎？之後只有社長（P）、秘書（S）可以在 LINE 看全社出席率。')) return;
+    cdeskBusy = true;
+    const r = await cdApi('cal_desk_viewers_save', 'club', { targetClub: cdVw.club, reset: true });
+    cdeskBusy = false;
+    if (!r.ok) return cdToast(cdErr(r.code), '⚠️');
+    cdVw = r; cdVwRender('✅ 已恢復預設');
 }
 
 async function cdArMakeupAdd(key) {

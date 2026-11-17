@@ -667,6 +667,15 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
     return { ok: true, makeup: { id: data.id, key: data.person_key, name: data.full_name, date: data.made_on, kind: data.kind, note: data.note } };
   }
 
+  // ---------- 誰可以在 LINE 看全社出席率（執秘只能設定自己的社；後台可指定任何一社） ----------
+  if (action === "cal_desk_viewers_get" || action === "cal_desk_viewers_save") {
+    const target = isAdmin ? String(body.targetClub || "") : club;
+    if (!target) fail("BAD_REQUEST");
+    const list: Any[] = ctx.members ? await ctx.members(target) : [];
+    if (action === "cal_desk_viewers_save" && !list.length) fail("CAL_NOT_FOUND");      // 沒有社友庫（或社名不對）就不寫入
+    return await reportViewersAction(admin, target, list, body, action === "cal_desk_viewers_save", by);
+  }
+
   // ---------- 出席率報表（全社，執秘／後台） ----------
   if (action === "cal_desk_attend_report") {
     const target = isAdmin ? String(body.targetClub || "") : club;
@@ -824,6 +833,40 @@ const isExtGuestKey = (k: Any) => String(k || "").startsWith(EXT_GUEST_PREFIX);
 const rsvpIsGuest = (r: Any) => !!(r && (r.guest_of || r.guest_role));
 const personKey = (p: Any) => `${(p && p.name) || ""}|${(p && p.nickname) || ""}`;
 
+// 讀取／設定「誰可以在 LINE 看全社出席率」：行事曆後台（任何一社）與報名系統的執秘（只限自己的社）共用。
+// save 時 body.reset＝恢復預設（刪掉這一列）；否則 body.keys＝勾選的人（只收這社社友庫裡的人）。
+export async function reportViewersAction(admin: Any, club: string, members: Any[], body: Any, save: boolean, by: string): Promise<Any> {
+  const list: Any[] = (Array.isArray(members) ? members : []).filter((m: Any) => m && m.name);
+  if (save) {
+    if (body.reset) {
+      const { error } = await admin.from("calendar_report_viewers").delete().eq("club_name", club);
+      if (error) dbFail(error);
+    } else {
+      if (!Array.isArray(body.keys)) fail("BAD_REQUEST");
+      const valid = new Set(list.map(personKey));
+      const keys = [...new Set<string>(body.keys.map((k: Any) => String(k)))].filter((k) => valid.has(k)).slice(0, 200);
+      const { error } = await admin.from("calendar_report_viewers").upsert(
+        { club_name: club, viewers: keys, updated_by: by.slice(0, 60), updated_at: new Date().toISOString() },
+        { onConflict: "club_name" });
+      if (error) dbFail(error);
+    }
+  }
+  const { data: row, error: e2 } = await admin.from("calendar_report_viewers").select("viewers,updated_by,updated_at").eq("club_name", club).maybeSingle();
+  if (e2 && !/does not exist|schema cache|could not find|PGRST20[25]|42P01/i.test(String(e2.message || "") + " " + String(e2.code || ""))) dbFail(e2);
+  const viewers: string[] | null = row && Array.isArray(row.viewers) ? row.viewers.map(String) : null;
+  const C = coreOf();
+  const sorted = C && C.sortMembers ? C.sortMembers(list) : list;
+  return {
+    ok: true, club, custom: viewers !== null,
+    updatedBy: viewers ? String(row.updated_by || "") : "", updatedAt: viewers ? String(row.updated_at || "") : "",
+    members: sorted.map((m: Any) => ({
+      key: personKey(m), name: m.name, nickname: m.nickname || "", role: m.role || "",
+      spouse: !!m.spouseOfId || /眷/.test(String(m.role || "")),
+      isDefault: memberRank(m) <= 1, allowed: canViewClubReport(m, viewers),
+    })),
+  };
+}
+
 async function reportCustomClubs(admin: Any): Promise<{ club: string; count: number }[]> {
   const { data, error } = await admin.from("calendar_report_viewers").select("club_name,viewers");
   if (error) return [];      // 資料表還沒建立時，後台其他功能照常
@@ -854,32 +897,7 @@ export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Pro
     const club = String(body.club || "");
     if (!(await ctx.clubInfos()).some((c) => c.name === club)) fail("BAD_REQUEST");
     const raw = (await ctx.members())[club];
-    const list: Any[] = (Array.isArray(raw) ? raw : []).filter((m: Any) => m && m.name);
-    if (action === "cal_admin_viewers_save") {
-      if (body.reset) {
-        const { error } = await admin.from("calendar_report_viewers").delete().eq("club_name", club);
-        if (error) dbFail(error);
-      } else {
-        if (!Array.isArray(body.keys)) fail("BAD_REQUEST");
-        const valid = new Set(list.map(personKey));
-        const keys = [...new Set<string>(body.keys.map((k: Any) => String(k)))].filter((k) => valid.has(k)).slice(0, 200);   // 只收這社社友庫裡的人
-        const { error } = await admin.from("calendar_report_viewers").upsert(
-          { club_name: club, viewers: keys, updated_by: String(body.by || "行事曆後台").slice(0, 60), updated_at: new Date().toISOString() },
-          { onConflict: "club_name" });
-        if (error) dbFail(error);
-      }
-    }
-    const viewers = await loadReportViewers(admin, club);
-    const C = coreOf();
-    const sorted = C && C.sortMembers ? C.sortMembers(list) : list;
-    return {
-      ok: true, club, custom: viewers !== null,
-      members: sorted.map((m: Any) => ({
-        key: personKey(m), name: m.name, nickname: m.nickname || "", role: m.role || "",
-        spouse: !!m.spouseOfId || /眷/.test(String(m.role || "")),
-        isDefault: memberRank(m) <= 1, allowed: canViewClubReport(m, viewers),
-      })),
-    };
+    return await reportViewersAction(admin, club, Array.isArray(raw) ? raw : [], body, action === "cal_admin_viewers_save", "行事曆後台");
   }
 
   if (action === "cal_admin_members") {

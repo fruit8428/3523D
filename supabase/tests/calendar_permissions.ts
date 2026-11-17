@@ -341,6 +341,20 @@ await admV("cal_admin_viewers_save", { club: "甲社", keys: ["王|", "趙|Z"] }
 ok("再改一次會覆蓋（王、趙）", T.calendar_report_viewers.filter((r: any) => r.club_name === "甲社").length === 1 && T.calendar_report_viewers[0].viewers.length === 2);
 const v2 = await admV("cal_admin_viewers_save", { club: "甲社", reset: true });
 ok("恢復預設：回到社長可看、趙不能看", v2.custom === false && (await handleMember("cal_attend_report", { scope: "me", periods: PER }, db, zU, regM)).canClub === false && (await handleMember("cal_attend_report", { scope: "me", periods: PER }, db, mkU("王|", "王"), regM)).canClub === true);
+// 執秘在報名系統設定自己社（用社密碼）
+const dv0 = await deskM("cal_desk_viewers_get", { ...A1, targetClub: "乙社" });
+ok("執秘：只能看自己的社（帶別社名稱也只回甲社）", dv0.club === "甲社" && dv0.custom === false);
+const dv1 = await deskM("cal_desk_viewers_save", { ...A1, targetClub: "乙社", keys: ["趙|Z", "李|"] });
+ok("執秘：儲存只寫自己的社，別社的人不收，記錄是誰設定的", dv1.club === "甲社" && T.calendar_report_viewers.find((r: any) => r.club_name === "甲社").viewers.join() === "趙|Z" && dv1.updatedBy === "報名系統（甲社）" && !T.calendar_report_viewers.some((r: any) => r.club_name === "乙社"));
+ok("執秘設定後：趙在 LINE 可以看全社", (await handleMember("cal_attend_report", { scope: "club", periods: PER }, db, zU, regM)).canClub === true);
+ok("後台看得到執秘的設定", (await admV("cal_admin_viewers_get", { club: "甲社" })).custom === true);
+ok("社密碼錯誤被擋", await code(deskM("cal_desk_viewers_save", { club: "甲社", clubPassword: "x", keys: [] })) === "CLUB_AUTH_FAILED");
+await deskM("cal_desk_viewers_save", { ...A1, reset: true });
+ok("執秘恢復預設", (await deskM("cal_desk_viewers_get", A1)).custom === false && !T.calendar_report_viewers.some((r: any) => r.club_name === "甲社"));
+const dv2 = await deskM("cal_desk_viewers_save", { adminPassword: "pw", targetClub: "乙社", keys: ["李|"] });
+ok("後台密碼在報名系統可設定任何一社", dv2.club === "乙社" && dv2.custom === true && dv2.updatedBy === "報名系統（後台）");
+ok("後台密碼沒指定社被擋；沒有社友庫的社不寫入", await code(deskM("cal_desk_viewers_get", { adminPassword: "pw" })) === "BAD_REQUEST" && await code(deskM("cal_desk_viewers_save", { adminPassword: "pw", targetClub: "鬼社", keys: [] })) === "CAL_NOT_FOUND");
+await deskM("cal_desk_viewers_save", { adminPassword: "pw", targetClub: "乙社", reset: true });
 ok("出席率：王 上半年 例會 1/2＋補出席 1 → 100%，純例會 50%", w.sum.h1.held === 2 && w.sum.h1.attended === 1 && w.sum.h1.makeup === 1 && w.sum.h1.rate === 1 && w.sum.h1.meetRate === 0.5);
 ok("出席率：全年 例會 1/2＋補出席 2 → 150%（分母固定是本社例會，可以超過 100%）", w.sum.year.makeup === 2 && w.sum.year.district === 2 && w.sum.year.effective === 3 && w.sum.year.rate === 1.5);
 ok("出席率：還沒記錄出席的三月例會不列入分母，但列在明細（尚未記錄）", wr.meetings.some((m: any) => m.id === mc.id && m.recorded === false) && wr.periods.find((p: any) => p.id === "h1").held === 2);
