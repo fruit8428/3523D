@@ -3484,32 +3484,10 @@
             if (typeof renderRemitInfoBox === 'function') renderRemitInfoBox(); // 換社後匯款回報狀態也要換
         }
 
-        // 社友名單的顯示順序（只影響畫面，不改變社友庫存檔的順序）：
-        //   1. 職務「P」（現任社長）  2. 職務「S」（現任秘書）  3. 其他社友依 Nick Name 排序（沒有 Nick Name 用姓名）
-        //   寶(尊)眷 緊接在對應社友的下方；找不到對應社友的寶尊眷放最後。
-        //   職務比對前先把全形轉半形、去空白、轉大寫，所以「Ｐ」「p」都算 P；「社長」「秘書」也視為 P、S。
-        function memberRoleRank(m) {
-            const r = String((m && m.role) || '').replace(/[\uFF01-\uFF5E]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/\s+/g, '').toUpperCase();
-            if (r === 'P' || r === '社長') return 0;
-            if (r === 'S' || r === '秘書') return 1;
-            return 2;
-        }
-        const memberNameCollator = (typeof Intl !== 'undefined' && Intl.Collator) ? new Intl.Collator(['en', 'zh-Hant-TW'], { sensitivity: 'base', numeric: true }) : null;
-        function compareMembersForDisplay(a, b) {
-            const ra = memberRoleRank(a), rb = memberRoleRank(b);
-            if (ra !== rb) return ra - rb;
-            const ka = String((a && (a.nickname || a.name)) || '').trim(), kb = String((b && (b.nickname || b.name)) || '').trim();
-            const c = memberNameCollator ? memberNameCollator.compare(ka, kb) : ka.localeCompare(kb);
-            return c || String((a && a.name) || '').localeCompare(String((b && b.name) || ''));
-        }
-        function isMemberSpouse(m) { return !!(m && (m.spouseOfId || /眷/.test(String(m.role || '')))); }
-        function sortMembersForDisplay(list) {
-            const all = (list || []).filter(Boolean);
-            const heads = all.filter(m => !isMemberSpouse(m)).sort(compareMembersForDisplay), out = [];
-            heads.forEach(h => { out.push(h); all.filter(m => isMemberSpouse(m) && m.spouseOfId === h.id).sort(compareMembersForDisplay).forEach(g => out.push(g)); });
-            all.filter(m => !out.includes(m)).sort(compareMembersForDisplay).forEach(g => out.push(g));   // 找不到對應社友的寶尊眷
-            return out;
-        }
+        // 社友名單的顯示順序（只影響畫面，不改變社友庫存檔的順序）：P（社長）→ S（秘書）→ Nick Name，寶尊眷緊接在社友下方。
+        // 規則寫在 checkin-core.js（CheckinCore.sortMembers），與 LINE 綁定選名字的清單共用同一套。
+        function memberRoleRank(m) { return CheckinCore.memberRoleRank(m); }
+        function sortMembersForDisplay(list) { return CheckinCore.sortMembers(list); }
 
         function renderMemberMasterTable() {
             const isGolf = isCurrentEventGolf();

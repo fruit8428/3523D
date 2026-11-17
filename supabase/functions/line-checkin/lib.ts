@@ -357,7 +357,8 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
     const { data, error } = await deps.admin.from("line_bindings").select("person_key").eq("club_name", club);
     if (error) dbFail(error);
     const taken = new Set((data || []).map((r: Any) => r.person_key));
-    const list = (Array.isArray(state.members[club]) ? state.members[club] : []).filter((m: Any) => m && m.name)
+    // 顯示順序：P（社長）→ S（秘書）→ Nick Name，寶尊眷跟在社友下方（與報名系統社友庫同一套規則）
+    const list = Core.sortMembers((Array.isArray(state.members[club]) ? state.members[club] : []).filter((m: Any) => m && m.name))
       .map((m: Any) => ({ key: personKey(m), name: m.name, nickname: m.nickname || "", role: m.role || "", taken: taken.has(personKey(m)) }));
     return { ok: true, members: list };
   }

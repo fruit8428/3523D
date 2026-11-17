@@ -197,8 +197,40 @@
         return norm(e.name).includes(k) || norm(e.nickname).includes(k) || norm(e.club).includes(k);
     }
 
+    // 社友名單的顯示順序（報名系統社友庫、行事曆管理、LINE 綁定選名字共用）：
+    //   1. 職務「P」（現任社長） 2. 職務「S」（現任秘書） 3. 其餘依 Nick Name（沒有就用姓名；不分大小寫）
+    //   寶(尊)眷 緊接在對應社友（spouseOfId）下方；找不到對應社友的放最後。只排序、不改原陣列。
+    //   職務比對前全形轉半形、去空白、轉大寫，所以「Ｐ」「p」都算 P；「社長」「秘書」也視為 P、S；PP、PE、執秘不算。
+    function memberRoleRank(m) {
+        const r = String((m && m.role) || '').replace(/[\uFF01-\uFF5E]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/\s+/g, '').toUpperCase();
+        if (r === 'P' || r === '社長') return 0;
+        if (r === 'S' || r === '秘書') return 1;
+        return 2;
+    }
+    let nameCollator = null;
+    try { nameCollator = new Intl.Collator(['en', 'zh-Hant-TW'], { sensitivity: 'base', numeric: true }); } catch (e) { nameCollator = null; }
+    function compareMembers(a, b) {
+        const ra = memberRoleRank(a), rb = memberRoleRank(b);
+        if (ra !== rb) return ra - rb;
+        const ka = String((a && (a.nickname || a.name)) || '').trim(), kb = String((b && (b.nickname || b.name)) || '').trim();
+        const c = nameCollator ? nameCollator.compare(ka, kb) : ka.localeCompare(kb);
+        return c || String((a && a.name) || '').localeCompare(String((b && b.name) || ''));
+    }
+    function isSpouseMember(m) { return !!(m && (m.spouseOfId || /眷/.test(String(m.role || '')))); }
+    function sortMembers(list) {
+        const all = (Array.isArray(list) ? list : []).filter(Boolean);
+        const heads = all.filter(m => !isSpouseMember(m)).sort(compareMembers), out = [], used = new Set();
+        heads.forEach(h => {
+            out.push(h); used.add(h);
+            all.filter(m => isSpouseMember(m) && m.spouseOfId != null && m.spouseOfId === h.id).sort(compareMembers).forEach(g => { out.push(g); used.add(g); });
+        });
+        all.filter(m => !used.has(m)).sort(compareMembers).forEach(g => out.push(g));   // 找不到對應社友的寶尊眷
+        return out;
+    }
+
     root.CheckinCore = {
         norm, personKey, makeEventKey, parseEventKey, isApportionEvent, isPelsEvent, PELS_SHORT,
-        buildClubIndex, prizeMealGuests, buildRoster, mergeCheckins, computeStats, matchEntry
+        buildClubIndex, prizeMealGuests, buildRoster, mergeCheckins, computeStats, matchEntry,
+        memberRoleRank, compareMembers, isSpouseMember, sortMembers
     };
 })(typeof window !== 'undefined' ? window : globalThis);
