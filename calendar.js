@@ -521,7 +521,8 @@ async function calIcsCopy() {
 // =====================================================================
 // 📊 出席率：社友看自己的上半年／全年出席率與明細；社長（P）、秘書（S）可以看全社。
 // 計算在雲端（cal_attend_report，與執秘在報名系統看到的同一套）：
-//   出席率＝min(已記錄例會場數, 例會出席＋地區活動補出席) ÷ 已記錄例會場數；另附純例會出席率。
+//   出席率＝(例會出席＋補出席) ÷ 已記錄例會場數（分母固定是本社例會，可以超過 100%）；另附純例會出席率。
+//   補出席＝地區活動報到（自動）＋執秘手動登記（友社例會等）。
 // =====================================================================
 let calAr = null, calArYear = 0, calArScope = 'me', calArQuery = '', calArView = '', calArSeq = 0;
 function calRotaryPeriods(offset) {
@@ -550,11 +551,14 @@ function calArSumCard(title, x) {
 function calArDetailHtml(p) {
     const day = iso => { const t = tpParts(Date.parse(iso)); return `${t.m}/${t.d}（${CAL_WD[t.wd]}）`; };
     const ms = calAr.meetings.map(m => `<li class="flex items-center gap-2 py-2 border-b border-slate-100"><span class="w-20 shrink-0 text-sm text-slate-500">${day(m.start)}</span><span class="flex-1 text-base">${E(m.title)}</span><span class="text-sm font-black ${!m.recorded ? 'text-slate-400' : p.att.includes(m.id) ? 'text-emerald-700' : 'text-rose-600'}">${!m.recorded ? '尚未記錄' : p.att.includes(m.id) ? '✅ 出席' : '✕ 缺席'}</span></li>`).join('');
-    const ds = calAr.district.filter(d => p.dist.includes(d.key)).map(d => `<li class="flex items-center gap-2 py-2 border-b border-slate-100"><span class="w-20 shrink-0 text-sm text-slate-500">${day(d.date)}</span><span class="flex-1 text-base">${E(d.title)}</span><span class="text-sm font-black text-blue-700">🎫 已報到</span></li>`).join('');
+    const items = calAr.district.filter(d => p.dist.includes(d.key)).map(d => ({ date: d.date, title: d.title, tag: '<span class="text-sm font-black text-blue-700">🎫 已報到</span>' }))
+        .concat((calAr.manual || []).filter(x => x.key === p.key).map(x => ({ date: x.date + 'T12:00:00+08:00', title: x.kind + (x.note ? '：' + x.note : ''), tag: '<span class="text-sm font-black text-violet-700">📝 執秘登記</span>' })))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    const ds = items.map(x => `<li class="flex items-center gap-2 py-2 border-b border-slate-100"><span class="w-20 shrink-0 text-sm text-slate-500">${day(x.date)}</span><span class="flex-1 text-base">${E(x.title)}</span>${x.tag}</li>`).join('');
     return `<div class="grid grid-cols-2 gap-2 mt-3">${calArSumCard('上半年', p.sum.h1)}${calArSumCard('全年', p.sum.year)}</div>
         <div class="bg-white rounded-2xl border border-slate-200 p-4 mt-3"><div class="font-black text-lg">例會（${calAr.meetings.length} 場）</div><ul class="mt-1">${ms || '<li class="text-slate-500 py-2">這個年度還沒有例會</li>'}</ul></div>
-        <div class="bg-white rounded-2xl border border-slate-200 p-4 mt-3"><div class="font-black text-lg">地區活動補出席（${p.dist.length} 場）</div><ul class="mt-1">${ds || '<li class="text-slate-500 py-2">沒有地區活動報到紀錄</li>'}</ul></div>
-        <p class="text-xs text-slate-500 mt-3 leading-relaxed">出席率＝(例會出席＋地區活動補出席) ÷ 已記錄出席的例會場數，最高 100%。例會由執秘記錄出席後才列入；地區活動以現場報到（LINE 掃碼或櫃台點名）為準。</p>`;
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 mt-3"><div class="font-black text-lg">補出席（${items.length} 次）</div><ul class="mt-1">${ds || '<li class="text-slate-500 py-2">沒有補出席紀錄</li>'}</ul></div>
+        <p class="text-xs text-slate-500 mt-3 leading-relaxed">出席率＝(例會出席＋補出席) ÷ 已記錄出席的例會場數，分母固定是本社例會，所以可以超過 100%。例會由執秘記錄出席後才列入；地區活動有現場報到（LINE 掃碼或櫃台點名）會自動算補出席；參加友社例會等，請告訴執秘幫您登記。</p>`;
 }
 function calArRender() {
     if (!calAr) return;

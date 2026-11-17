@@ -117,11 +117,12 @@ export interface RegDeps {
 // =====================================================================
 // 出席率報表（社友本人、社長／秘書在 LINE；執秘在報名系統）——三邊同一套算法，都在雲端算好再回傳。
 //   例會：本社的社內行程（開放參加、或已有出席紀錄；已取消的不算）。只有「已記錄出席」的場次列入分母。
-//   補出席：地區活動的報到紀錄（event_checkins，status＝in，本社、本人）。
-//   出席率＝min(例會場數, 例會出席＋補出席) ÷ 已記錄的例會場數；另附純例會出席率。
+//   補出席：地區活動的報到紀錄（event_checkins，status＝in，本社、本人，自動）＋執秘手動登記的補出席（calendar_makeups，例如友社例會）。
+//   出席率＝(例會出席＋補出席) ÷ 已記錄的例會場數（分母固定是本社例會，所以可以超過 100%）；另附純例會出席率。
 //   periods：[{id, from, to}]（最多 3 段，例如上半年、全年），每段各算一次。
 // =====================================================================
 const coreOf = () => (globalThis as Any).CheckinCore || null;
+export const MAKEUP_KINDS = ["友社例會", "地區活動", "其他"];
 export function memberRank(m: Any): number {
   const C = coreOf();
   if (C && C.memberRoleRank) return C.memberRoleRank(m);
@@ -160,6 +161,13 @@ export async function attendanceReport(admin: Any, club: string, periodsIn: Any,
     ck = ck.concat(data || []);
     if (!q.range || (data || []).length < 1000) break;
   }
+  // 手動登記的補出席（日期是台灣日期）
+  const tpDay = (ms: number) => new Date(ms + 8 * 3600_000).toISOString().slice(0, 10);
+  let mq = admin.from("calendar_makeups").select("id,person_key,full_name,nickname,made_on,kind,note,created_by").eq("club_name", club).gte("made_on", tpDay(from)).lte("made_on", tpDay(to)).order("made_on");
+  if (onlyKey) mq = mq.eq("person_key", onlyKey);
+  const { data: mkRows, error: e4 } = await mq;
+  if (e4) dbFail(e4);
+  const manual: Any[] = (mkRows || []).map((x: Any) => ({ id: x.id, key: x.person_key, name: x.full_name, nickname: x.nickname || "", date: x.made_on, kind: x.kind, note: x.note || "", by: x.created_by || "" }));
   const recorded = new Set<string>(at.map((x) => x.event_id));
   const meetings = live.filter((e: Any) => e.rsvp_enabled || recorded.has(e.id) || rs.some((x) => x.event_id === e.id))
     .map((e: Any) => ({ id: e.id, title: e.title, start: e.start_at, allDay: !!e.all_day, typeId: e.event_type_id, recorded: recorded.has(e.id) }));
@@ -179,6 +187,8 @@ export async function attendanceReport(admin: Any, club: string, periodsIn: Any,
   for (const x of at) if (meetIds.has(x.event_id)) touch(x.person_key, { name: x.full_name, nickname: x.nickname, role: x.role, guest: x.is_guest });
   for (const x of rs) if (meetIds.has(x.event_id)) touch(x.person_key, { name: x.full_name, nickname: x.nickname, role: x.guest_role, guest: !!(x.guest_of || x.guest_role) });
   for (const x of ck) touch(x.person_key, { name: x.full_name, nickname: x.nickname });
+  for (const x of manual) touch(x.key, { name: x.name, nickname: x.nickname });
+  const dayIn = (d: string, p: Any) => d >= tpDay(p.from) && d <= tpDay(p.to);     // 台灣日期落在期間內
   const inP = (iso: string, p: Any) => { const t = Date.parse(iso); return t >= p.from && t <= p.to; };
   const meetById = new Map<string, Any>(meetings.map((m: Any) => [m.id, m]));
   const out: Any[] = [];
@@ -187,18 +197,21 @@ export async function attendanceReport(admin: Any, club: string, periodsIn: Any,
     const att = at.filter((x) => x.person_key === p.key && meetIds.has(x.event_id)).map((x) => x.event_id);
     const rsv = rs.filter((x) => x.person_key === p.key && meetIds.has(x.event_id)).map((x) => x.event_id);
     const dk = [...new Set<string>(ck.filter((x) => x.person_key === p.key).map((x) => x.event_key))];
+    const mine = manual.filter((x) => x.key === p.key);
     const sum: Record<string, Any> = {};
     for (const per of periods) {
       const held = meetings.filter((m: Any) => m.recorded && inP(m.start, per)).length;
       const attended = att.filter((id) => inP(meetById.get(id).start, per)).length;
-      const makeup = dk.filter((k) => inP(dist.get(k)!.date, per)).length;
-      const effective = Math.min(held, attended + makeup);
-      sum[per.id] = { held, attended, makeup, effective, rate: held ? effective / held : null, meetRate: held ? attended / held : null, rsvp: rsv.filter((id) => inP(meetById.get(id).start, per)).length };
+      const district = dk.filter((k) => inP(dist.get(k)!.date, per)).length;
+      const manualN = mine.filter((x) => dayIn(x.date, per)).length;
+      const makeup = district + manualN;
+      const effective = attended + makeup;
+      sum[per.id] = { held, attended, makeup, district, manual: manualN, effective, rate: held ? effective / held : null, meetRate: held ? attended / held : null, rsvp: rsv.filter((id) => inP(meetById.get(id).start, per)).length };
     }
-    out.push({ ...p, att, rsvp: rsv, dist: dk, sum });
+    out.push({ ...p, att, rsvp: rsv, dist: dk, mk: mine.map((x) => x.id), sum });
   }
   const distList = [...dist.values()].filter((d) => !onlyKey || out.some((p) => p.dist.includes(d.key))).sort((a, b) => a.date.localeCompare(b.date));
-  return { ok: true, club, periods: periods.map((p) => ({ id: p.id, from: new Date(p.from).toISOString(), to: new Date(p.to).toISOString(), held: meetings.filter((m: Any) => m.recorded && inP(m.start, p)).length })), meetings, district: distList, people: out };
+  return { ok: true, club, manual: manual.filter((x) => out.some((p) => p.key === x.key)), periods: periods.map((p) => ({ id: p.id, from: new Date(p.from).toISOString(), to: new Date(p.to).toISOString(), held: meetings.filter((m: Any) => m.recorded && inP(m.start, p)).length })), meetings, district: distList, people: out };
 }
 
 // 目前這個行程裡「我們社」有哪些人報名／表示參加
@@ -616,6 +629,30 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
     if (e3) dbFail(e3);
     return { ok: true, title: ev.title, start: ev.start_at, club: ev.club_name, cancelled: ev.status === "cancelled",
       people: (data || []).map((r: Any) => ({ key: r.person_key, name: r.full_name, nickname: r.nickname || "", guest: rsvpIsGuest(r), proxy: !!r.proxy_by, ext: isExtGuestKey(r.person_key), guestOf: r.guest_of || "", role: r.guest_role || "" })) };
+  }
+
+  // ---------- 手動登記補出席（友社例會等）：新增／刪除 ----------
+  if (action === "cal_desk_makeup_add" || action === "cal_desk_makeup_delete") {
+    const target = isAdmin ? String(body.targetClub || "") : club;
+    if (!target) fail("BAD_REQUEST");
+    if (action === "cal_desk_makeup_delete") {
+      const { data: row, error } = await admin.from("calendar_makeups").select("id,club_name").eq("id", Number(body.id) || 0).maybeSingle();
+      if (error) dbFail(error);
+      if (!row || row.club_name !== target) fail("CAL_NOT_FOUND");
+      const { error: e2 } = await admin.from("calendar_makeups").delete().eq("id", row.id);
+      if (e2) dbFail(e2);
+      return { ok: true };
+    }
+    const list: Any[] = ctx.members ? await ctx.members(target) : [];
+    const m = list.find((x: Any) => x && x.name && personKey(x) === String(body.person || ""));
+    if (!m) fail("CAL_NOT_FOUND");                                    // 只能登記社友庫裡的人
+    const date = String(body.date || "").trim(), kind = String(body.kind || "友社例會");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date + "T00:00:00+08:00"))) fail("CAL_BAD_TIME");
+    if (!MAKEUP_KINDS.includes(kind)) fail("BAD_REQUEST");
+    const row = { club_name: target, person_key: personKey(m), full_name: m.name, nickname: m.nickname || "", made_on: date, kind, note: String(body.note || "").trim().slice(0, 100), created_by: by };
+    const { data, error } = await admin.from("calendar_makeups").insert(row).select().single();
+    if (error) dbFail(error);
+    return { ok: true, makeup: { id: data.id, key: data.person_key, name: data.full_name, date: data.made_on, kind: data.kind, note: data.note } };
   }
 
   // ---------- 出席率報表（全社，執秘／後台） ----------

@@ -114,11 +114,28 @@ create table if not exists public.calendar_attendance (
 );
 alter table public.calendar_attendance  enable row level security;
 
+-- 手動登記的補出席（2026-11-17）：社友去友社例會等，執秘在報名系統「📈 出席率」登記。
+-- 地區活動的補出席不用登記（自動取報到系統的紀錄）。一人一天可以有多筆。anon 讀不到。
+create table if not exists public.calendar_makeups (
+    id         bigserial primary key,
+    club_name  text not null,
+    person_key text not null,             -- 姓名|Nick Name
+    full_name  text not null,
+    nickname   text not null default '',
+    made_on    date not null,             -- 補出席的日期（台灣日期）
+    kind       text not null default '友社例會' check (kind in ('友社例會', '地區活動', '其他')),
+    note       text not null default '',  -- 例：台北東區扶輪社例會
+    created_by text not null default '',
+    created_at timestamptz not null default now()
+);
+create index if not exists calendar_makeups_club_day on public.calendar_makeups (club_name, made_on);
+alter table public.calendar_makeups enable row level security;
+
 alter table public.calendar_rsvp        enable row level security;
 alter table public.calendar_ics         enable row level security;
 alter table public.calendar_event_types enable row level security;
 alter table public.calendar_roles       enable row level security;
 alter table public.calendar_events      enable row level security;
-revoke all on public.calendar_event_types, public.calendar_roles, public.calendar_events, public.calendar_ics, public.calendar_rsvp, public.calendar_attendance from anon, authenticated;
-revoke all on sequence public.calendar_event_types_id_seq, public.calendar_roles_id_seq from anon, authenticated;
+revoke all on public.calendar_event_types, public.calendar_roles, public.calendar_events, public.calendar_ics, public.calendar_rsvp, public.calendar_attendance, public.calendar_makeups from anon, authenticated;
+revoke all on sequence public.calendar_event_types_id_seq, public.calendar_roles_id_seq, public.calendar_makeups_id_seq from anon, authenticated;
 notify pgrst, 'reload schema';

@@ -765,9 +765,10 @@ function cdStatsExport() {
 
 
 // =====================================================================
-// 📈 出席率（例會＋地區活動補出席）：全社每位社友的上半年／全年出席率與明細，可搜尋、匯出 Excel。
+// 📈 出席率（例會＋補出席）：全社每位社友的上半年／全年出席率與明細，可搜尋、匯出 Excel。
 // 計算在雲端（cal_desk_attend_report，與社友在 LINE 看到的同一套）：
-//   出席率＝min(已記錄例會場數, 例會出席＋地區活動補出席) ÷ 已記錄例會場數；另附純例會出席率。
+//   出席率＝(例會出席＋補出席) ÷ 已記錄例會場數（分母固定是本社例會，可以超過 100%）；另附純例會出席率。
+//   補出席＝地區活動報到（自動）＋執秘手動登記（友社例會等，cal_desk_makeup_add／cal_desk_makeup_delete）。
 // =====================================================================
 let cdAr = null, cdArYear = 0, cdArQuery = '', cdArOpen = '', cdArGuests = false, cdArSeq = 0;
 // 扶輪年度（7/1～隔年 6/30）：offset 0＝本年度、-1＝上年度。回傳上半年與全年兩段。
@@ -789,7 +790,7 @@ async function cdeskRenderReport() {
         <div class="mt-2 flex flex-wrap items-center gap-2"><input id="cdArSearch" type="search" value="${cdE(cdArQuery)}" oninput="cdArQuery=this.value; cdArRenderTable()" class="flex-1 min-w-[12rem] border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="🔍 搜尋姓名、Nick Name、職務">
             <label class="text-xs text-slate-600 flex items-center gap-1"><input type="checkbox" ${cdArGuests ? 'checked' : ''} onchange="cdArGuests=this.checked; cdArRenderTable()" class="w-4 h-4"> 含寶尊眷</label></div>
         <div id="cdArBody" class="mt-3"><div class="text-sm text-slate-500 py-6 text-center">讀取中…</div></div>
-        <p class="text-[11px] text-slate-500 mt-3 leading-relaxed">出席率＝(例會出席＋地區活動補出席) ÷ 已記錄出席的例會場數，最高 100%；「純例會」不含補出席。例會要在「本社行程」按「✅ 記錄實際出席」儲存後才列入；地區活動以報到系統（LINE 掃碼或櫃台點名）的紀錄為準，只報名沒報到不算。</p>`;
+        <p class="text-[11px] text-slate-500 mt-3 leading-relaxed">出席率＝(例會出席＋補出席) ÷ 已記錄出席的例會場數，分母固定是本社例會，所以可以超過 100%；「純例會」不含補出席。例會要在「本社行程」按「✅ 記錄實際出席」儲存後才列入。補出席＝地區活動報到（LINE 掃碼或櫃台點名，自動計入）＋執秘手動登記（例如參加友社例會：點社友姓名後登記）。</p>`;
     const r = await cdApi('cal_desk_attend_report', 'club', { periods: rp.periods, targetClub: club });
     if (seq !== cdArSeq) return;
     const body = document.getElementById('cdArBody'); if (!body) return;
@@ -804,7 +805,7 @@ function cdArVisible() {
 }
 function cdArCell(x) {
     if (!x || !x.held) return '<td class="text-center text-slate-400" colspan="3">尚無已記錄的例會</td>';
-    return `<td class="text-center">${x.attended}/${x.held}</td><td class="text-center">${x.makeup || ''}</td><td class="text-center"><b class="${x.rate >= 0.6 ? 'text-emerald-700' : 'text-rose-700'}">${cdPct(x.rate)}</b>${x.makeup ? `<div class="text-[10px] text-slate-400">純例會 ${cdPct(x.meetRate)}</div>` : ''}</td>`;
+    return `<td class="text-center">${x.attended}/${x.held}</td><td class="text-center" title="地區活動 ${x.district || 0}、執秘登記 ${x.manual || 0}">${x.makeup || ''}</td><td class="text-center"><b class="${x.rate >= 0.6 ? 'text-emerald-700' : 'text-rose-700'}">${cdPct(x.rate)}</b>${x.makeup ? `<div class="text-[10px] text-slate-400">純例會 ${cdPct(x.meetRate)}</div>` : ''}</td>`;
 }
 function cdArRenderTable() {
     const body = document.getElementById('cdArBody'); if (!body || !cdAr) return;
@@ -821,26 +822,62 @@ function cdArToggle(key) { cdArOpen = cdArOpen === key ? '' : key; cdArRenderTab
 function cdArDetail(p) {
     const day = iso => { const t = cdParts(Date.parse(iso)); return `${t.y}/${cdP2(t.m)}/${cdP2(t.d)}（${CDESK_WD[t.wd]}）`; };
     const ms = cdAr.meetings.map(m => `<li class="flex gap-2 py-0.5"><span class="w-28 shrink-0 text-slate-500">${day(m.start)}</span><span class="flex-1">${cdE(m.title)}</span><span class="font-bold ${!m.recorded ? 'text-slate-400' : p.att.includes(m.id) ? 'text-emerald-700' : 'text-rose-600'}">${!m.recorded ? '尚未記錄' : p.att.includes(m.id) ? '✅ 出席' : '✕ 缺席'}</span></li>`).join('');
-    const ds = cdAr.district.filter(d => p.dist.includes(d.key)).map(d => `<li class="flex gap-2 py-0.5"><span class="w-28 shrink-0 text-slate-500">${day(d.date)}</span><span class="flex-1">${cdE(d.title)}</span><span class="font-bold text-blue-700">🎫 已報到</span></li>`).join('');
+    const items = cdAr.district.filter(d => p.dist.includes(d.key)).map(d => ({ date: d.date, html: `<span class="flex-1">${cdE(d.title)}</span><span class="font-bold text-blue-700">🎫 地區活動報到</span>` }))
+        .concat((cdAr.manual || []).filter(x => x.key === p.key).map(x => ({ date: x.date + 'T12:00:00+08:00', html: `<span class="flex-1">${cdE(x.kind)}${x.note ? '：' + cdE(x.note) : ''}</span><span class="font-bold text-violet-700">📝 執秘登記</span><button type="button" onclick="event.stopPropagation(); cdArMakeupDel(${Number(x.id)})" class="text-slate-400 hover:text-rose-600 font-bold px-1" title="刪除">✕</button>` })))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    const ds = items.map(x => `<li class="flex items-center gap-2 py-0.5"><span class="w-28 shrink-0 text-slate-500">${day(x.date)}</span>${x.html}</li>`).join('');
+    const today = cdYmd(Date.now());
     return `<div class="grid sm:grid-cols-2 gap-3 text-xs"><div><div class="font-black text-slate-700">例會（${cdAr.meetings.length} 場）</div><ul class="mt-1">${ms || '<li class="text-slate-400">這段期間沒有例會</li>'}</ul></div>
-        <div><div class="font-black text-slate-700">地區活動補出席（${p.dist.length} 場）</div><ul class="mt-1">${ds || '<li class="text-slate-400">沒有地區活動報到紀錄</li>'}</ul></div></div>`;
+        <div><div class="font-black text-slate-700">補出席（${items.length} 次）</div><ul class="mt-1">${ds || '<li class="text-slate-400">沒有補出席紀錄</li>'}</ul>
+        ${p.left ? '' : `<div class="mt-2 border border-violet-200 bg-white rounded-lg p-2" onclick="event.stopPropagation()"><div class="font-bold text-violet-800">＋ 登記補出席（例如參加友社例會）</div>
+            <div class="mt-1 flex flex-wrap items-center gap-1.5"><input id="cdMkDate" type="date" value="${today}" class="border border-slate-300 rounded px-1.5 py-1">
+            <select id="cdMkKind" class="border border-slate-300 rounded px-1.5 py-1 bg-white"><option>友社例會</option><option>地區活動</option><option>其他</option></select>
+            <input id="cdMkNote" type="text" maxlength="100" class="flex-1 min-w-[8rem] border border-slate-300 rounded px-2 py-1" placeholder="說明，例：台北東區扶輪社例會">
+            <button type="button" data-key="${cdE(p.key)}" onclick="cdArMakeupAdd(this.dataset.key)" class="px-2.5 py-1 bg-violet-700 hover:bg-violet-800 text-white rounded font-bold">登記</button></div>
+            <div class="text-[10px] text-slate-500 mt-1">地區活動有現場報到的會自動計入，不用另外登記。</div></div>`}</div></div>`;
 }
 function cdArExport() {
     if (!cdAr) return cdToast('請先等資料讀取完成', '⚠️');
     if (typeof XLSX === 'undefined') return cdToast('Excel 元件尚未載入，請重新整理後再試', '⚠️');
     const list = cdArVisible(), day = iso => { const t = cdParts(Date.parse(iso)); return `${t.y}/${cdP2(t.m)}/${cdP2(t.d)}`; };
     const pct = v => v === null || v === undefined ? '' : Math.round(v * 100) + '%';
-    const seg = (x, n) => ({ [`${n}例會場數`]: x.held, [`${n}例會出席`]: x.attended, [`${n}補出席`]: x.makeup, [`${n}出席率`]: pct(x.rate), [`${n}純例會出席率`]: pct(x.meetRate) });
+    const seg = (x, n) => ({ [`${n}例會場數`]: x.held, [`${n}例會出席`]: x.attended, [`${n}補出席`]: x.makeup, [`${n}出席率`]: pct(x.rate), [`${n}純例會出席率`]: pct(x.meetRate) });   // 出席率可以超過 100%
     const s1 = list.map(p => Object.assign({ '姓名': p.name, 'Nick Name': p.nickname, '職務': p.guest ? '寶尊眷' : p.role }, seg(p.sum.h1, '上半年'), seg(p.sum.year, '全年'), { '備註': p.left ? '已不在社友庫' : '' }));
     const uniq = (arr) => { const used = new Set(); return arr.map(h => { let x = h.slice(0, 60), n = 2; while (used.has(x)) x = `${h.slice(0, 55)}（${n++}）`; used.add(x); return x; }); };
     const mh = uniq(cdAr.meetings.map(m => `${day(m.start).slice(5)} ${m.title}`));
     const s2 = list.map(p => { const o = { '姓名': p.name, 'Nick Name': p.nickname }; cdAr.meetings.forEach((m, i) => { o[mh[i]] = !m.recorded ? '未記錄' : p.att.includes(m.id) ? '出席' : '缺席'; }); return o; });
-    const dh = uniq(cdAr.district.map(d => `${day(d.date).slice(5)} ${d.title}`));
-    const s3 = list.map(p => { const o = { '姓名': p.name, 'Nick Name': p.nickname }; cdAr.district.forEach((d, i) => { o[dh[i]] = p.dist.includes(d.key) ? '已報到' : ''; }); return o; });
+    const s3 = [];
+    list.forEach(p => {
+        cdAr.district.filter(d => p.dist.includes(d.key)).forEach(d => s3.push({ sort: d.date, row: { '姓名': p.name, 'Nick Name': p.nickname, '日期': day(d.date), '類別': '地區活動', '說明': d.title, '來源': '報到系統' } }));
+        (cdAr.manual || []).filter(x => x.key === p.key).forEach(x => s3.push({ sort: x.date, row: { '姓名': p.name, 'Nick Name': p.nickname, '日期': x.date.replace(/-/g, '/'), '類別': x.kind, '說明': x.note, '來源': '執秘登記' } }));
+    });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s1.length ? s1 : [{ '姓名': '（沒有資料）' }]), '出席率總表');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s2.length ? s2 : [{ '姓名': '（沒有資料）' }]), '例會出席明細');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s3.length ? s3 : [{ '姓名': '（沒有資料）' }]), '地區活動補出席');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s3.length ? s3.map(x => x.row) : [{ '姓名': '（沒有資料）' }]), '補出席明細');
     XLSX.writeFile(wb, `${cdAr.club}_出席率_${cdAr.label}.xlsx`);
     cdToast('已匯出 Excel', '⬇️');
+}
+
+async function cdArMakeupAdd(key) {
+    if (cdeskBusy || !cdAr) return;
+    const date = (document.getElementById('cdMkDate') || {}).value, kind = (document.getElementById('cdMkKind') || {}).value, note = ((document.getElementById('cdMkNote') || {}).value || '').trim();
+    if (!date) return cdToast('請選擇日期', '⚠️');
+    if (kind === '友社例會' && !note) return cdToast('請填寫是哪一個社的例會', '⚠️');
+    cdeskBusy = true;
+    const r = await cdApi('cal_desk_makeup_add', 'club', { targetClub: cdAr.club, person: key, date: date, kind: kind, note: note });
+    cdeskBusy = false;
+    if (!r.ok) return cdToast(r.code === 'CAL_NOT_FOUND' ? '這位社友不在社友庫裡，無法登記。' : cdErr(r.code), '⚠️');
+    cdToast('已登記補出席', '✅');
+    cdArOpen = key; cdeskRenderReport();
+}
+async function cdArMakeupDel(id) {
+    if (cdeskBusy || !cdAr) return;
+    if (!confirm('要刪除這筆補出席紀錄嗎？')) return;
+    cdeskBusy = true;
+    const r = await cdApi('cal_desk_makeup_delete', 'club', { targetClub: cdAr.club, id: id });
+    cdeskBusy = false;
+    if (!r.ok) return cdToast(cdErr(r.code), '⚠️');
+    cdToast('已刪除');
+    cdeskRenderReport();
 }

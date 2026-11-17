@@ -325,10 +325,24 @@ const wr = await handleMember("cal_attend_report", { scope: "club", periods: PER
 const w = wr.people.find((p: any) => p.key === "王|");
 ok("出席率（社長）：看得到全社（王、王子、趙），社長排第一", wr.canClub === true && wr.people[0].key === "王|" && ["王子|", "趙|Z"].every((k) => wr.people.some((p: any) => p.key === k)));
 ok("出席率：王 上半年 例會 1/2＋補出席 1 → 100%，純例會 50%", w.sum.h1.held === 2 && w.sum.h1.attended === 1 && w.sum.h1.makeup === 1 && w.sum.h1.rate === 1 && w.sum.h1.meetRate === 0.5);
-ok("出席率：全年補出席 2 次，但最多補到 100%（不超過例會場數）", w.sum.year.makeup === 2 && w.sum.year.effective === 2 && w.sum.year.rate === 1);
+ok("出席率：全年 例會 1/2＋補出席 2 → 150%（分母固定是本社例會，可以超過 100%）", w.sum.year.makeup === 2 && w.sum.year.district === 2 && w.sum.year.effective === 3 && w.sum.year.rate === 1.5);
 ok("出席率：還沒記錄出席的三月例會不列入分母，但列在明細（尚未記錄）", wr.meetings.some((m: any) => m.id === mc.id && m.recorded === false) && wr.periods.find((p: any) => p.id === "h1").held === 2);
 ok("出席率：地區活動只算本社、已報到的，並附活動名稱與日期", wr.district.map((d: any) => d.title).sort().join() === "地區研習,地區高球" && w.dist.length === 2);
 const dr2 = await deskM("cal_desk_attend_report", { ...A1, periods: PER });
 ok("執秘（報名系統）：看得到全社出席率", dr2.club === "甲社" && dr2.people.find((p: any) => p.key === "趙|Z").sum.year.rate === 0.5);
 ok("執秘：乙社的密碼只能看乙社", (await deskM("cal_desk_attend_report", { club: "乙社", clubPassword: "b123", targetClub: "甲社", periods: PER })).club === "乙社");
 ok("出席率：期間格式錯誤或超過一年被擋", await code(deskM("cal_desk_attend_report", { ...A1, periods: [{ id: "x", from: "2025-01-01", to: "2027-01-01" }] })) === "CAL_BAD_TIME" && await code(deskM("cal_desk_attend_report", { ...A1, periods: [] })) === "CAL_BAD_TIME");
+
+// ---------- 手動登記補出席（友社例會等） ----------
+const mk1 = await deskM("cal_desk_makeup_add", { ...A1, person: "趙|Z", date: "2027-03-10", kind: "友社例會", note: "台北東區扶輪社例會" });
+ok("登記補出席：只收社友庫裡的人，記錄日期、類別、說明、登記者", mk1.ok && mk1.makeup.key === "趙|Z" && T.calendar_makeups.find((x: any) => x.id === mk1.makeup.id).created_by === "報名系統（甲社）");
+await deskM("cal_desk_makeup_add", { ...A1, person: "趙|Z", date: "2027-05-05", kind: "其他", note: "扶青社活動" });
+const zr2 = await handleMember("cal_attend_report", { scope: "me", periods: PER }, db, { club: "甲社", key: "趙|Z", name: "趙", nickname: "Z" }, regM);
+ok("出席率：趙 上半年 例會 1/2＋友社例會 1 → 100%；全年再加一筆 → 150%", zr2.people[0].sum.h1.manual === 1 && zr2.people[0].sum.h1.rate === 1 && zr2.people[0].sum.year.manual === 2 && zr2.people[0].sum.year.rate === 1.5);
+ok("社友本人看得到自己的手動補出席明細（類別、說明）", zr2.manual.length === 2 && zr2.manual.every((x: any) => x.key === "趙|Z") && zr2.manual.some((x: any) => x.note === "台北東區扶輪社例會" && x.kind === "友社例會") && zr2.people[0].mk.length === 2);
+const wr2 = await handleMember("cal_attend_report", { scope: "me", periods: PER }, db, mkU("王|", "王"), regM);
+ok("別人（王）看自己時看不到趙的補出席", wr2.manual.length === 0);
+ok("登記補出席：不在社友庫、日期格式錯、類別不對都被擋", await code(deskM("cal_desk_makeup_add", { ...A1, person: "鬼|", date: "2027-03-10" })) === "CAL_NOT_FOUND" && await code(deskM("cal_desk_makeup_add", { ...A1, person: "趙|Z", date: "3/10" })) === "CAL_BAD_TIME" && await code(deskM("cal_desk_makeup_add", { ...A1, person: "趙|Z", date: "2027-03-10", kind: "亂寫" })) === "BAD_REQUEST");
+ok("乙社不能刪甲社的補出席", await code(deskM("cal_desk_makeup_delete", { club: "乙社", clubPassword: "b123", id: mk1.makeup.id })) === "CAL_NOT_FOUND");
+await deskM("cal_desk_makeup_delete", { ...A1, id: mk1.makeup.id });
+ok("刪除補出席後出席率跟著變", (await deskM("cal_desk_attend_report", { ...A1, periods: PER })).people.find((p: any) => p.key === "趙|Z").sum.h1.rate === 0.5);
