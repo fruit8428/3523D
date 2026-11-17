@@ -377,7 +377,7 @@ function calOpenForm(mode) {
     } else {
         const day = calPrefs.range === 'month' ? calSelDay : ymd(Date.now());
         const pre = calPrefs.layer !== 'all' && layers.includes(calPrefs.layer) ? calPrefs.layer : layers[0];
-        v = { layer: pre, club: calRoles.clubs[0] || '', title: '', typeId: null, rsvpEnabled: pre === 'club', allDay: false, sd: day, st: '09:00', ed: day, et: '10:00', location: '', address: '', dressCode: '', contactPerson: '', contactPhone: '', notes: '' };
+        v = { layer: pre, club: calRoles.clubs[0] || '', title: '', typeId: null, rsvpEnabled: true, allDay: false, sd: day, st: '09:00', ed: day, et: '10:00', location: '', address: '', dressCode: '', contactPerson: '', contactPhone: '', notes: '' };
     }
     const editing = mode === 'edit';
     calRsvpTouched = !!src;        // 編輯／複製時尊重原本的設定，不要自動改
@@ -419,8 +419,7 @@ function calOpenForm(mode) {
 function calFormLayerChanged() {
     const l = $('cfLayer').value; $('cfClubBox').classList.toggle('hidden', !(l === 'club' && calRoles.clubs.length > 1));
     $('cfRsvpBox').classList.toggle('hidden', l === 'private');                 // 私人行程不能開放別人參加
-    if (l === 'club' && !calRsvpTouched) $('cfRsvp').checked = true;            // 社內行程（例會等）預設開放參加
-    if (l !== 'club' && !calRsvpTouched) $('cfRsvp').checked = false;
+    if (l !== 'private' && !calRsvpTouched) $('cfRsvp').checked = true;         // 地區、社內行程一律預設開放參加（私人行程沒有這個選項）
 }
 let calRsvpTouched = false;
 function calFormAllDay() { const a = $('cfAllDay').checked; $('cfStBox').classList.toggle('hidden', a); $('cfEtBox').classList.toggle('hidden', a); }

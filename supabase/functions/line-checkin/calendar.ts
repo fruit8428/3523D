@@ -593,7 +593,7 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
       if (e1) dbFail(e1);
       return { ok: true, created: false, event: toView(data, true) };
     }
-    const { data, error: e2 } = await admin.from("calendar_events").insert({ layer: "district", club_name: "", owner_key: "", title: roster.title || key.split("::")[1] || "活動", ...times, registration_key: key, created_by: AUTO_SYNC_MARK, updated_by: by }).select().single();
+    const { data, error: e2 } = await admin.from("calendar_events").insert({ layer: "district", club_name: "", owner_key: "", title: roster.title || key.split("::")[1] || "活動", ...times, registration_key: key, rsvp_enabled: true, created_by: AUTO_SYNC_MARK, updated_by: by }).select().single();
     if (e2) dbFail(e2);
     return { ok: true, created: true, event: toView(data, true) };
   }

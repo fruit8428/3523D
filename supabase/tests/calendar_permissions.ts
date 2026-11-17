@@ -154,7 +154,7 @@ ok("非主委的社不能同步日期", await code(sync({ club: "乙社", clubPa
 ok("主委社密碼錯誤被擋", await code(sync({ club: "甲社", clubPassword: "bad", key: SK, date: "2026-12-20" })) === "CLUB_AUTH_FAILED");
 ok("不需要報名的活動（分攤金等）不能同步", await code(sync({ club: "甲社", clubPassword: "a123", key: "apportion::x", date: "2026-12-20" })) === "CAL_FORBIDDEN" && await code(sync({ adminPassword: "pw", key: "apportion::x", date: "2026-12-20" })) === "CAL_REG_UNAVAILABLE");
 const s1 = await sync({ club: "甲社", clubPassword: "a123", key: SK, date: "2026-12-20", startTime: "07:30", endTime: "17:00" });
-ok("主委填日期時間 → 建立地區行程、對應報名活動、標題為活動名", s1.created && s1.event.layer === "district" && s1.event.title === "1. 地區高爾夫球聯誼賽" && s1.event.registrationKey === SK && !s1.event.allDay && s1.event.start === "2026-12-19T23:30:00.000Z");
+ok("主委填日期時間 → 建立地區行程、對應報名活動、開放參加、標題為活動名", s1.created && s1.event.layer === "district" && s1.event.title === "1. 地區高爾夫球聯誼賽" && s1.event.registrationKey === SK && s1.event.rsvpEnabled === true && !s1.event.allDay && s1.event.start === "2026-12-19T23:30:00.000Z");
 const s2 = await sync({ club: "甲社", clubPassword: "a123", key: SK, date: "2026-12-21" });
 ok("改日期 → 更新同一筆（不重複建立），沒填時間＝全天", !s2.created && dsyn({}).length === 1 && s2.event.allDay && s2.event.start === "2026-12-20T16:00:00.000Z");
 T.calendar_events.find((e) => e.registration_key === SK).title = "管理者改過的標題";

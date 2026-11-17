@@ -215,7 +215,7 @@ function cdeskOpenForm(mode, i) {
         v = { id: mode === 'edit' ? src.id : '', title: src.title, typeId: src.typeId, registrationKey: src.registrationKey || '', rsvpEnabled: !!src.rsvpEnabled, allDay: src.allDay, sd: cdYmd(s), st: src.allDay ? '09:00' : cdHm(s), ed: cdYmd(e), et: src.allDay ? '10:00' : cdHm(e), location: src.location, address: src.address, dressCode: src.dressCode, contactPerson: src.contactPerson, contactPhone: src.contactPhone, notes: src.notes };
     } else {
         const d = cdYmd(Date.now());
-        v = { id: '', title: '', typeId: null, registrationKey: '', rsvpEnabled: cdeskTab === 'club', allDay: false, sd: d, st: '09:00', ed: d, et: '10:00', location: '', address: '', dressCode: '', contactPerson: '', contactPhone: '', notes: '' };
+        v = { id: '', title: '', typeId: null, registrationKey: '', rsvpEnabled: true, allDay: false, sd: d, st: '09:00', ed: d, et: '10:00', location: '', address: '', dressCode: '', contactPerson: '', contactPhone: '', notes: '' };
     }
     const inp = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white', lab = 'block text-xs font-bold text-slate-600 mb-1 mt-3';
     const where = cdeskTab === 'district' ? '地區行程' : `${cdMyClub()} 社內行程`;
@@ -226,7 +226,7 @@ function cdeskOpenForm(mode, i) {
             <label class="${lab}" for="cdTitle">標題 <span class="text-rose-600">*</span></label><input id="cdTitle" type="text" maxlength="100" value="${cdE(v.title)}" class="${inp}" placeholder="例：松景社授證典禮">
             <label class="${lab}" for="cdType">活動類型</label><select id="cdType" class="${inp}"><option value="">未分類</option>${cdeskTypes.map(t => `<option value="${t.id}" ${v.typeId === t.id ? 'selected' : ''}>${cdE(t.name)}</option>`).join('')}</select>
             <label class="${lab}" for="cdReg">對應報名活動（選填）</label><select id="cdReg" class="${inp}"><option value="">不對應（社友只能查看，沒有「我要參加」）</option>${cdeskRegOptions(v.registrationKey).map(o => `<option value="${cdE(o.key)}" ${v.registrationKey === o.key ? 'selected' : ''}>${cdE(o.label)}</option>`).join('')}</select><p class="text-[11px] text-slate-500 mt-1">選了之後，社友在 LINE 看到這個行程會有「我要參加」按鈕，並看得到本社誰已報名。</p>
-            <label class="flex items-start gap-2 mt-3 text-sm font-bold text-slate-700 border border-emerald-300 bg-emerald-50 rounded-lg px-3 py-2"><input id="cdRsvpOn" type="checkbox" class="w-4 h-4 mt-0.5" ${v.rsvpEnabled ? 'checked' : ''}><span>開放社友按「我要參加」<span class="block text-[11px] font-normal text-slate-600">適合社內例會、聯誼等不需要報名的活動。社友在 LINE 按了就看得到社內名單，並可一起勾選寶尊眷（名字從社友庫帶出）。選了上面的「對應報名活動」時，也可以開啟。</span></span></label>
+            <label class="flex items-start gap-2 mt-3 text-sm font-bold text-slate-700 border border-emerald-300 bg-emerald-50 rounded-lg px-3 py-2"><input id="cdRsvpOn" type="checkbox" class="w-4 h-4 mt-0.5" ${v.rsvpEnabled ? 'checked' : ''}><span>開放社友按「我要參加」<span class="block text-[11px] font-normal text-slate-600">新增行程預設開啟（例會、運動賽事、研討會…都一樣）。社友在 LINE 按了就看得到社內名單，並可一起勾選寶尊眷（名字從社友庫帶出）。選了上面的「對應報名活動」時，也可以開啟。</span></span></label>
             <label class="flex items-center gap-2 mt-3 text-sm font-bold text-slate-700"><input id="cdAllDay" type="checkbox" onchange="cdeskAllDay()" class="w-4 h-4" ${v.allDay ? 'checked' : ''}> 全天行程</label>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div><label class="${lab}" for="cdSd">開始日期</label><input id="cdSd" type="date" value="${v.sd}" class="${inp}"></div>
