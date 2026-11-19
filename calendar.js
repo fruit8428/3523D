@@ -152,6 +152,21 @@ async function calOpenDeep(id, day) {
     if (calEvents.some(x => x.id === id)) calOpenDetail(id);
 }
 
+// 從別的畫面切回 LINE 行事曆時，自動重新讀取列表（例如秘書剛幫總監加了行程，總監切回來就看得到）。停在詳細頁或表單時不動。
+let calLastLoad = 0;
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !$('calBody') || !$('calMain') || $('calMain').classList.contains('hidden')) return;
+    if ($('viewCalendar').classList.contains('hidden') || Date.now() - calLastLoad < 5000) return;
+    calReloadQuiet();
+});
+async function calReloadQuiet() {
+    const rg = calRange(), seq = ++calFetchSeq;
+    const r = await api('cal_list', calGovArg({ from: new Date(rg.gridFrom || rg.from).toISOString(), to: new Date((rg.gridTo || rg.to) + 86400e3 - 1).toISOString() }));
+    if (seq !== calFetchSeq || !r.ok) return;
+    calLastLoad = Date.now(); calEvents = r.events || [];
+    if (!$('calMain').classList.contains('hidden')) calRenderBody();
+}
+
 // ---------- 主畫面 ----------
 function calShell() {
     $('viewCalendar').innerHTML = `
@@ -196,7 +211,7 @@ async function calReload() {
         $('calBody').innerHTML = `<div class="bg-white rounded-2xl border border-rose-200 p-5 text-center"><div class="font-black text-rose-700">${E(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : calErrText(r.code))}</div><button type="button" onclick="calReload()" class="mt-3 border border-slate-300 rounded-xl px-5 py-2.5 font-bold">重新整理</button></div>`;
         return;
     }
-    calEvents = r.events || [];
+    calEvents = r.events || []; calLastLoad = Date.now();
     calRenderBody();
 }
 // 「私人」頁＝我自己的私人行程＋我參加的地區／社內活動（已被執秘報名，或我按了「我要參加」），後者標 🔗 並保留原層級的顏色
@@ -294,6 +309,11 @@ function calOpenDetail(id) {
         </div>
         ${hasReg ? '<div id="calReg" class="mt-4"></div>' : ''}
         ${e.withGov && !calGov ? '<div class="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5">🤝 這筆行程與總監同步：總監的行事曆上也有，您或總監修改、取消、刪除，兩邊會一起變。</div>' : ''}
+        ${calGov && e.layer !== 'private' && (e.registrationKey || e.rsvpEnabled) ? `<div id="calGovReg" class="mt-4 bg-white rounded-2xl border-2 border-amber-400 shadow-sm p-4"><div class="font-black text-lg">👔 總監 ${E(calGovName(calGov))} 的參加狀況</div>${
+            cancelled ? '<div class="mt-2 text-slate-500 font-bold">行程已取消。</div>'
+            : e.joined === 'registered' ? '<div class="mt-3 text-center bg-emerald-50 border border-emerald-300 text-emerald-800 font-black rounded-xl py-3">✅ 總監已由執秘正式報名</div>'
+            : e.joined === 'interested' ? '<div class="mt-3 text-center bg-amber-50 border border-amber-300 text-amber-900 font-black rounded-xl py-3">🙋 總監已表示要參加</div><div class="mt-1 text-xs text-slate-500 text-center">這個活動在總監的私人行事曆上，每晚的推播也會包含。</div><button type="button" onclick="calGovRsvp(false)" class="mt-2 w-full bg-white border border-slate-300 text-slate-700 font-bold rounded-xl py-3">取消總監的參加</button>'
+            : '<button type="button" onclick="calGovRsvp(true)" class="mt-3 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black text-xl rounded-xl py-4 shadow">🙋 幫總監登記參加</button><div class="mt-1 text-xs text-slate-500 text-center">登記後會出現在總監的私人行事曆，每晚的推播也會包含。</div>'}</div>` : ''}
         ${calGov && e.layer === 'private' ? `<div class="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5">這是總監 ${E(calGovName(calGov))} 的私人行程，只有總監本人與總監秘書看得到。</div>` : ''}
         ${e.canEdit ? `<div class="grid grid-cols-2 gap-2 mt-4">
             <button type="button" onclick="calOpenForm('edit')" class="bg-blue-700 active:bg-blue-800 text-white font-black text-base rounded-xl py-3.5">編輯</button>
@@ -388,6 +408,16 @@ async function calRsvp(join) {
     calGuestSel = null; calGovSyncSel = null;
     toast(join && arg.withGov ? '已表示要參加，並同步加入總監的行事曆' : join ? (guests.length ? `已表示要參加（含 ${guests.length} 位寶尊眷），社內社友都看得到` : '已表示要參加，社內社友都看得到') : '已取消參加');
     calRegRender(e.id, r);
+}
+// 總監秘書在「總監的行事曆」裡，直接幫總監登記／取消參加
+async function calGovRsvp(join) {
+    const e = calCurrent; if (!e || busy || !calGov) return;
+    if (!join && !confirm(`要取消總監參加「${e.title}」嗎？`)) return;
+    busy = true; const r = await api('cal_gov_rsvp', calGovArg({ id: e.id, join: join })); busy = false;
+    if (!r.ok) return toast(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : r.code === 'CAL_RSVP_LOCKED' ? '總監已由執秘正式報名，要取消請洽執秘。' : calErrText(r.code));
+    e.joined = r.joined || null;
+    toast(join ? '已幫總監登記參加' : '已取消總監的參加');
+    calOpenDetail(e.id);
 }
 async function calToggleCancel() {
     const e = calCurrent; if (!e || busy) return;

@@ -220,6 +220,15 @@ window.confirm=()=>true; const FN_URL='https://x.supabase.co/functions/v1/line-c
   await p.evaluate(() => { window.__gov = { name: 'DG Gov', joined: true, byMe: false }; return calLoadReg('meet'); }); await new Promise(r => setTimeout(r, 300));
   ok('總監自己已登記：勾選鎖住並說明', await p.evaluate(() => { const c = document.getElementById('calGovSync'); return c.checked && c.disabled && document.getElementById('calReg').innerText.includes('總監已經登記參加'); }));
   await p.evaluate(() => { calBack(); calSetGov(0); }); await new Promise(r => setTimeout(r, 200));
+  // 代管總監行事曆：看得到總監參加的活動，並可直接幫總監登記
+  await p.evaluate(() => { const o = api; api = async (a, x) => { if (a === 'cal_gov_rsvp') { window.__calls.push([a, x]); const e = store.find(s => s.id === x.id); e.joined = x.join ? 'interested' : null; return { ok: true, joined: e.joined }; } return o(a, x); }; store.find(s => s.id === 'meet').joined = null; calSetGov(0); });
+  await new Promise(r => setTimeout(r, 300)); await p.evaluate(() => calOpenDetail('meet'));
+  ok('總監行事曆的活動詳細頁：出現「幫總監登記參加」', await p.evaluate(() => !!document.getElementById('calGovReg') && document.getElementById('calGovReg').innerText.includes('幫總監登記參加') && !document.getElementById('calReg')));
+  await p.evaluate(() => { window.__calls.length = 0; return calGovRsvp(true); }); await new Promise(r => setTimeout(r, 300));
+  ok('按下後：帶上代管的總監，畫面改成「總監已表示要參加」', await p.evaluate(() => { const c = window.__calls.find(c => c[0] === 'cal_gov_rsvp'); return !!c && c[1].join === true && c[1].forGov.key === '陳|Gov' && document.getElementById('calGovReg').innerText.includes('總監已表示要參加'); }));
+  await p.evaluate(() => { calBack(); calSetLayer('private'); }); await new Promise(r => setTimeout(r, 200));
+  ok('「總監私人」頁列出總監參加的活動', (await p.evaluate(() => document.getElementById('calBody').innerText)).includes('甲社例會'));
+  await p.evaluate(() => { calSetLayer('all'); calSetGov(-1); }); await new Promise(r => setTimeout(r, 200));
   ok('無 JS 錯誤', errs.length === 0); if (errs.length) console.log(errs);
   await b.close();
 })();

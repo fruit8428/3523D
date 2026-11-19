@@ -468,6 +468,16 @@ ok("刪除補出席後出席率跟著變", (await deskM("cal_desk_attend_report"
   ok("社內活動同步：秘書與總監同社，總監也被登記", j2.gov.joined && j2.gov.byMe && (await govJoined("gc")) === "interested" && !G.calendar_events.some((e) => e.layer === "private" && e.title === "甲社例會"));
   await handleMember("cal_rsvp_set", { id: "gc", join: false }, g, SEC);
   ok("秘書取消社內活動：總監的登記一併取消", (await govJoined("gc")) === null);
+  // 秘書在「總監的行事曆」裡看得到總監參加的活動，並可直接幫總監登記／取消
+  await handleMember("cal_rsvp_set", { id: "gc", join: true, withGov: true }, g, SEC);
+  const gl = (await handleMember("cal_list", { ...W, ...FG }, g, SEC)).events;
+  ok("總監的行事曆：同步進來的活動標示總監已參加（秘書看得到）", gl.find((e: any) => e.id === "gc").joined === "interested" && gl.find((e: any) => e.id === "gd").joined === "interested");
+  await handleMember("cal_rsvp_set", { id: "gc", join: false }, g, SEC);
+  ok("秘書取消後，總監的行事曆上也不再標示參加", (await handleMember("cal_list", { ...W, ...FG }, g, SEC)).events.find((e: any) => e.id === "gc").joined === null);
+  const gr1 = await handleMember("cal_gov_rsvp", { id: "gc", join: true, ...FG }, g, SEC);
+  ok("在總監行事曆直接幫總監登記：總監參加、秘書自己沒有被登記", gr1.joined === "interested" && (await govJoined("gc")) === "interested" && !G.calendar_rsvp.some((r) => r.event_id === "gc" && r.person_key === "秘|S"));
+  ok("在總監行事曆取消總監的參加（含總監自己登記的）", (await handleMember("cal_gov_rsvp", { id: "gc", join: false, ...FG }, g, SEC)).joined === null && (await handleMember("cal_gov_rsvp", { id: "gd", join: false, ...FG }, g, SEC)).joined === null && (await govJoined("gd")) === null);
+  ok("一般社友不能幫總監登記；私人行程、沒開放參加的行程不能登記", await code(handleMember("cal_gov_rsvp", { id: "gc", join: true, ...FG }, g, X)) === "CAL_FORBIDDEN" && await code(handleMember("cal_gov_rsvp", { id: "gp", join: true, ...FG }, g, SEC)) === "CAL_NOT_FOUND" && await code(handleMember("cal_gov_rsvp", { id: "sc", join: true, ...FG }, g, SEC)) === "CAL_NOT_FOUND");
   const OUT = { club: "乙社", key: "外|O", name: "外", nickname: "O" };
   ok("不同社的總監秘書：沒有可代管的總監，也不能代管", (await handleMember("cal_init", {}, g, OUT)).roles.govs.length === 0 && await code(handleMember("cal_list", { ...W, ...FG }, g, OUT)) === "CAL_FORBIDDEN");
   {

@@ -349,7 +349,11 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
     for (const r of [d, c, p]) if (r.error) dbFail(r.error);
     const rows = [...(d.data || []), ...(c.data || []), ...(p.data || [])]
       .sort((a: Any, b: Any) => String(a.start_at).localeCompare(String(b.start_at)));
-    if (gov) return { ok: true, forGov: gov, events: rows.map((r: Any) => ({ ...toView(r, r.layer === "private", null), withGov: r.layer === "private" && r.created_by === syncMark(me) })) };
+    if (gov) {
+      // 總監參加了哪些活動（我要參加／正式報名）：秘書在「總監私人」頁才看得到同步進來的地區、社內活動
+      const gj = await joinedMap(admin, rows, { club: gov.club, key: gov.key, name: gov.name, nickname: gov.nickname }, reg);
+      return { ok: true, forGov: gov, events: rows.map((r: Any) => ({ ...toView(r, r.layer === "private", gj.get(r.id) || null), withGov: r.layer === "private" && r.created_by === syncMark(me) })) };
+    }
     // 總監秘書：我勾了「同時加入總監行事曆」的行程（存在總監名下）也列在我自己的行事曆
     const shared = new Set<string>();
     for (const gv of (roles.secretary ? roles.govs || [] : [])) {
@@ -404,6 +408,30 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
     const { data, error } = await admin.from("calendar_events").insert({ ...row, ...fields, created_by: byMe(me), updated_by: byMe(me) }).select().single();
     if (error) dbFail(error);
     return { ok: true, event: toView(data, true) };
+  }
+
+  // ---------- 總監秘書在「總監的行事曆」裡，直接幫總監登記／取消參加地區、社內活動 ----------
+  if (action === "cal_gov_rsvp") {
+    const gov = govTarget(body, roles);
+    if (!gov) fail("CAL_FORBIDDEN");
+    const g = gov as CalGov;
+    const { data: ev, error } = await admin.from("calendar_events").select("*").eq("id", String(body.id || "")).maybeSingle();
+    if (error) dbFail(error);
+    if (!ev || ev.layer === "private" || (ev.layer === "club" && ev.club_name !== g.club)) fail("CAL_NOT_FOUND");
+    if (!ev.rsvp_enabled && !ev.registration_key) fail("CAL_REG_UNAVAILABLE");
+    const gme = { club: g.club, key: g.key, name: g.name, nickname: g.nickname };
+    if (body.join === true) {
+      if (ev.status === "cancelled") fail("CAL_EVENT_CANCELLED");
+      const { error: e1 } = await admin.from("calendar_rsvp").upsert(
+        { event_id: ev.id, club_name: g.club, person_key: g.key, full_name: g.name, nickname: g.nickname || "", proxy_by: secProxy(me) },
+        { onConflict: "event_id,club_name,person_key", ignoreDuplicates: true });
+      if (e1) dbFail(e1);
+    } else {
+      if ((await joinedMap(admin, [ev], gme, reg)).get(ev.id) === "registered") fail("CAL_RSVP_LOCKED");      // 執秘已送出正式報名，要取消請洽執秘
+      const { error: e2 } = await admin.from("calendar_rsvp").delete().eq("event_id", ev.id).eq("club_name", g.club).eq("person_key", g.key);
+      if (e2) dbFail(e2);
+    }
+    return { ok: true, joined: (await joinedMap(admin, [ev], gme, reg)).get(ev.id) || null };
   }
 
   // ---------- 社內已報名名單、我要參加 ----------
