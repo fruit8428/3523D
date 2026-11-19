@@ -23,10 +23,10 @@
         .ln-pop { animation: lnPop .45s ease-out; }
     </style>
     <style>
-        /* 讀取中：扶輪徽章。徽章本身慢慢自轉（約 6.7 秒一圈），整體再做立體的傾斜擺動與上下飄浮，
+        /* 讀取中：扶輪徽章。徽章本身正面慢慢自轉（約 6.7 秒一圈，不做傾斜——傾斜時看起來像橢圓，使用者不喜歡），整體輕輕上下飄浮，
            後面有金色光暈、下方有跟著縮放的影子，看起來像浮在空中的立體徽章。使用者設定「減少動態效果」時全部靜止。 */
         @keyframes rotarySpin { to { transform: rotate(360deg); } }
-        @keyframes rotaryTilt { 0%, 100% { transform: translateY(0) rotateX(26deg) rotateY(-24deg); } 50% { transform: translateY(-7px) rotateX(14deg) rotateY(24deg); } }
+        @keyframes rotaryTilt { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
         @keyframes rotaryGlow { 0%, 100% { opacity: .55; transform: scale(.92); } 50% { opacity: .95; transform: scale(1.06); } }
         @keyframes rotaryShadow { 0%, 100% { transform: scaleX(1); opacity: .30; } 50% { transform: scaleX(.78); opacity: .16; } }
         .rotary-stage { position: relative; width: 132px; height: 138px; margin: 0 auto; perspective: 520px; }
