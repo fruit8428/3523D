@@ -25,7 +25,7 @@
     <style>
         /* 讀取中：扶輪徽章緩慢旋轉（使用者設定「減少動態效果」時不轉） */
         @keyframes rotarySpin { to { transform: rotate(360deg); } }
-        .rotary-spin { animation: rotarySpin 2.4s linear infinite; }
+        .rotary-spin { animation: rotarySpin 6s linear infinite; }
         @media (prefers-reduced-motion: reduce) { .rotary-spin { animation: none; } }
     </style>
     <script>/* 從圖文選單打開行事曆時，LINE 上方標題顯示「扶輪行事曆」而不是「LINE 自助報到」 */ if (/[?&]p=calendar\b/.test(location.search) || /p%3Dcalendar/i.test(location.search)) document.title = '扶輪行事曆';</script>
