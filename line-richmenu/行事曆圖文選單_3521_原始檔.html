@@ -1,0 +1,40 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+html{background:#334155}body{width:2500px;height:843px;overflow:hidden}
+body{font-family:"PingFang TC","Heiti TC","Noto Sans TC",sans-serif;background:linear-gradient(135deg,#1c4fa0 0%,#17458f 45%,#0f2f66 100%);color:#fff;position:relative}
+.ring{position:absolute;border-radius:50%;border:60px solid rgba(255,255,255,.05)}
+.r1{width:900px;height:900px;right:-260px;top:-380px}
+.r2{width:620px;height:620px;right:380px;bottom:-470px;border-color:rgba(247,168,27,.10)}
+.wrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:130px;padding-right:80px}
+.cal{width:470px;height:500px;background:#fff;border-radius:56px;box-shadow:0 30px 60px rgba(0,0,0,.28);overflow:hidden;flex:none;position:relative}
+.cal .top{height:150px;background:#F7A81B;display:flex;align-items:center;justify-content:center;font-size:84px;font-weight:900;color:#17458f;letter-spacing:6px}
+.cal .ring1,.cal .ring2{position:absolute;top:44px;width:46px;height:62px;background:#0f2f66;border-radius:23px;z-index:2}
+.cal .ring1{left:110px}.cal .ring2{right:110px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:26px;padding:44px 52px}
+.grid i{display:block;height:64px;border-radius:14px;background:#e6ecf6}
+.grid i.on{background:#17458f}
+.grid i.gold{background:#F7A81B}
+.txt{flex:none}
+.k{font-size:58px;font-weight:700;color:#F7A81B;letter-spacing:4px}
+.t{font-size:190px;font-weight:900;letter-spacing:14px;line-height:1.08;margin-top:6px}
+.s{font-size:64px;font-weight:600;color:#dbe6ff;margin-top:22px;letter-spacing:3px}
+.btn{display:inline-flex;align-items:center;gap:24px;margin-top:46px;background:#F7A81B;color:#0f2f66;font-size:66px;font-weight:900;padding:26px 66px;border-radius:80px;box-shadow:0 14px 30px rgba(0,0,0,.25);letter-spacing:4px}
+</style></head><body>
+<div class="ring r1"></div><div class="ring r2"></div>
+<div class="wrap">
+  <div class="cal"><div class="ring1"></div><div class="ring2"></div>
+    <div class="top"></div>
+    <div class="grid"><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="gold"></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+  </div>
+  <div class="txt">
+    <div class="k">國際扶輪 3521 地區</div>
+    <div class="t">扶輪行事曆</div>
+    <div class="s">地區活動・本社例會・我的行程</div>
+    <div class="btn">點我開啟 ›</div>
+  </div>
+</div>
+<script>
+/* 這是 LINE 圖文選單背景圖的原始檔（固定 2500×843 像素）。在一般瀏覽器打開時自動縮小到視窗寬度方便預覽；
+   產生圖片時視窗就是 2500 寬，不會縮放。 */
+(function fit(){ var k = Math.min(1, window.innerWidth / 2500); document.body.style.zoom = k; window.onresize = fit; })();
+</script></body></html>
