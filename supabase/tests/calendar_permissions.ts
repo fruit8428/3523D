@@ -393,3 +393,59 @@ ok("登記補出席：不在社友庫、日期格式錯、類別不對都被擋"
 ok("乙社不能刪甲社的補出席", await code(deskM("cal_desk_makeup_delete", { club: "乙社", clubPassword: "b123", id: mk1.makeup.id })) === "CAL_NOT_FOUND");
 await deskM("cal_desk_makeup_delete", { ...A1, id: mk1.makeup.id });
 ok("刪除補出席後出席率跟著變", (await deskM("cal_desk_attend_report", { ...A1, periods: PER })).people.find((p: any) => p.key === "趙|Z").sum.h1.rate === 0.5);
+
+// ---------- 總監秘書代管總監的行事曆 ----------
+{
+  const G: Record<string, any[]> = { calendar_roles: [
+    { id: 1, club_name: "甲社", person_key: "總|G", full_name: "總", nickname: "G", role: "governor", managed_club: "" },
+    { id: 2, club_name: "乙社", person_key: "秘|S", full_name: "秘", nickname: "S", role: "governor_cc", managed_club: "" },
+  ], calendar_events: [
+    { id: "gd", layer: "district", club_name: "", owner_key: "", title: "地區大會", start_at: "2026-12-05T01:00:00.000Z", end_at: "2026-12-05T03:00:00.000Z", status: "confirmed" },
+    { id: "gc", layer: "club", club_name: "甲社", owner_key: "", title: "甲社例會", start_at: "2026-12-06T01:00:00.000Z", end_at: "2026-12-06T03:00:00.000Z", status: "confirmed" },
+    { id: "sc", layer: "club", club_name: "乙社", owner_key: "", title: "乙社例會", start_at: "2026-12-06T01:00:00.000Z", end_at: "2026-12-06T03:00:00.000Z", status: "confirmed" },
+    { id: "gp", layer: "private", club_name: "甲社", owner_key: "總|G", title: "總監看醫生", start_at: "2026-12-07T01:00:00.000Z", end_at: "2026-12-07T03:00:00.000Z", status: "confirmed" },
+    { id: "sp", layer: "private", club_name: "乙社", owner_key: "秘|S", title: "秘書私事", start_at: "2026-12-07T01:00:00.000Z", end_at: "2026-12-07T03:00:00.000Z", status: "confirmed" },
+    { id: "op", layer: "private", club_name: "甲社", owner_key: "王|", title: "王的私事", start_at: "2026-12-07T01:00:00.000Z", end_at: "2026-12-07T03:00:00.000Z", status: "confirmed" },
+  ], calendar_event_types: [], calendar_rsvp: [] };
+  const g = fake(G);
+  const GOV = { club: "甲社", key: "總|G", name: "總", nickname: "G" }, SEC = { club: "乙社", key: "秘|S", name: "秘", nickname: "S" }, X = { club: "甲社", key: "王|", name: "王", nickname: "" };
+  const FG = { forGov: { club: "甲社", key: "總|G" } };
+  const init = await handleMember("cal_init", {}, g, SEC);
+  ok("總監秘書：cal_init 回傳可代管的總監", init.roles.secretary === true && init.roles.govs.length === 1 && init.roles.govs[0].key === "總|G");
+  ok("一般社友與總監本人：沒有可代管的對象", !(await handleMember("cal_init", {}, g, X)).roles.govs && !(await handleMember("cal_init", {}, g, GOV)).roles.govs);
+  const own = (await handleMember("cal_list", W, g, SEC)).events.map((e: any) => e.title).sort();
+  ok("秘書看自己的行事曆：不含總監的私人行程", JSON.stringify(own) === JSON.stringify(["乙社例會", "地區大會", "秘書私事"].sort()));
+  const gv = await handleMember("cal_list", { ...W, ...FG }, g, SEC);
+  ok("秘書看總監的行事曆：地區＋總監的社＋總監私人（不含秘書自己的、不含別人的私人）", JSON.stringify(gv.events.map((e: any) => e.title).sort()) === JSON.stringify(["地區大會", "甲社例會", "總監看醫生"].sort()));
+  ok("總監的行事曆裡只有總監私人行程可以改", gv.events.every((e: any) => e.canEdit === (e.layer === "private")));
+  ok("一般社友帶 forGov 被擋", await code(handleMember("cal_list", { ...W, ...FG }, g, X)) === "CAL_FORBIDDEN" && await code(handleMember("cal_save", { event: ev({ layer: "private", title: "亂加" }), ...FG }, g, X)) === "CAL_FORBIDDEN");
+  ok("秘書不能代管不是總監的人", await code(handleMember("cal_list", { ...W, forGov: { club: "甲社", key: "王|" } }, g, SEC)) === "CAL_FORBIDDEN");
+  const add = await handleMember("cal_save", { event: ev({ layer: "district", title: "拜會市長", rsvpEnabled: true }), ...FG }, g, SEC);
+  const row = G.calendar_events.find((e) => e.id === add.event.id);
+  ok("秘書代總監新增：一律存成總監名下的私人行程，記錄是秘書代登記", row.layer === "private" && row.club_name === "甲社" && row.owner_key === "總|G" && /總監秘書 秘/.test(row.created_by) && !row.rsvp_enabled);
+  ok("總監自己看得到秘書加的行程，而且可以改", (await handleMember("cal_list", W, g, GOV)).events.some((e: any) => e.title === "拜會市長" && e.canEdit));
+  const up = await handleMember("cal_save", { event: { ...ev({ title: "總監看牙醫" }), id: "gp" } }, g, SEC);
+  ok("秘書可以修改總監自己建的私人行程", up.event.title === "總監看牙醫" && /總監秘書/.test(G.calendar_events.find((e) => e.id === "gp").updated_by));
+  ok("秘書可以取消／恢復總監的私人行程", (await handleMember("cal_cancel", { id: "gp" }, g, SEC)).event.status === "cancelled" && (await handleMember("cal_cancel", { id: "gp", cancelled: false }, g, SEC)).event.status === "confirmed");
+  ok("秘書不能動別人的私人行程、也不能動地區與社內行程", await code(handleMember("cal_delete", { id: "op" }, g, SEC)) === "CAL_FORBIDDEN" && await code(handleMember("cal_delete", { id: "gd" }, g, SEC)) === "CAL_FORBIDDEN" && await code(handleMember("cal_save", { event: { ...ev({}), id: "gc" } }, g, SEC)) === "CAL_FORBIDDEN");
+  ok("總監不能動秘書的私人行程", await code(handleMember("cal_delete", { id: "sp" }, g, GOV)) === "CAL_FORBIDDEN");
+  await handleMember("cal_delete", { id: add.event.id }, g, SEC);
+  ok("秘書可以刪除總監的私人行程", !G.calendar_events.some((e) => e.id === add.event.id));
+  // 與總監同步：秘書在自己的行事曆新增時勾選
+  const SG = { shareGov: { club: "甲社", key: "總|G" } };
+  const sh = await handleMember("cal_save", { event: ev({ layer: "private", title: "陪同出席授證" }), ...SG }, g, SEC);
+  ok("同步新增：只存一筆，在總監名下", G.calendar_events.filter((e) => e.title === "陪同出席授證").length === 1 && G.calendar_events.find((e) => e.id === sh.event.id).owner_key === "總|G" && sh.event.withGov === true);
+  const mine = (await handleMember("cal_list", W, g, SEC)).events;
+  ok("同步的行程出現在秘書自己的行事曆（標 withGov、可改），總監私事不會出現", mine.some((e: any) => e.title === "陪同出席授證" && e.withGov && e.canEdit) && !mine.some((e: any) => e.title === "總監看牙醫"));
+  ok("同步的行程也出現在總監的行事曆", (await handleMember("cal_list", W, g, GOV)).events.some((e: any) => e.title === "陪同出席授證" && e.canEdit));
+  await handleMember("cal_save", { event: { ...ev({ title: "陪同出席授證（改時間）" }), id: sh.event.id } }, g, GOV);
+  ok("總監改了，秘書那邊跟著變（仍列在秘書的行事曆）", (await handleMember("cal_list", W, g, SEC)).events.some((e: any) => e.title === "陪同出席授證（改時間）" && e.withGov));
+  await handleMember("cal_delete", { id: sh.event.id }, g, SEC);
+  ok("秘書刪除，兩邊都消失", !(await handleMember("cal_list", W, g, GOV)).events.some((e: any) => e.id === sh.event.id));
+  ok("一般社友帶 shareGov 被擋；社內行程帶 shareGov 不會同步", await code(handleMember("cal_save", { event: ev({ layer: "private", title: "亂同步" }), ...SG }, g, X)) === "CAL_FORBIDDEN" && await code(handleMember("cal_save", { event: ev({ layer: "club", club: "乙社" }), ...SG }, g, SEC)) === "CAL_FORBIDDEN");
+  const solo = await handleMember("cal_save", { event: ev({ layer: "private", title: "秘書看牙" }) }, g, SEC);
+  ok("沒勾同步：存成秘書自己的私人行程，總監看不到", G.calendar_events.find((e) => e.id === solo.event.id).owner_key === "秘|S" && !(await handleMember("cal_list", W, g, GOV)).events.some((e: any) => e.title === "秘書看牙"));
+  G.calendar_roles = G.calendar_roles.filter((r) => r.role !== "governor_cc");
+  const g2 = fake({ ...G, calendar_roles: G.calendar_roles });
+  ok("取消秘書身分後立刻不能再看或改", await code(handleMember("cal_list", { ...W, ...FG }, g2, SEC)) === "CAL_FORBIDDEN" && await code(handleMember("cal_delete", { id: "gp" }, g2, SEC)) === "CAL_FORBIDDEN");
+}

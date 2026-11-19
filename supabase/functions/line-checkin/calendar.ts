@@ -17,7 +17,9 @@ export class CalError extends Error {
 const fail = (code: string): never => { throw new CalError(code); };
 
 export interface CalMe { club: string; key: string; name: string; nickname: string }
-export interface CalRoles { district: boolean; clubs: string[]; governor: boolean }
+export interface CalGov { club: string; key: string; name: string; nickname: string }
+// secretary＝總監秘書（governor_cc）；govs＝這位秘書可以代管行事曆的總監（後台指定為 governor 的人，不含自己）
+export interface CalRoles { district: boolean; clubs: string[]; governor: boolean; secretary?: boolean; govs?: CalGov[] }
 
 export const LAYERS = ["district", "club", "private"];
 const LIMITS: Record<string, number> = { title: 100, location: 200, address: 300, dressCode: 100, contactPerson: 50, contactPhone: 50, notes: 2000 };
@@ -32,6 +34,7 @@ export function rolesOf(rows: Any[]): CalRoles {
   for (const x of rows || []) {
     if (x.role === "district_editor") r.district = true;
     else if (x.role === "governor") r.governor = true;
+    else if (x.role === "governor_cc") r.secretary = true;
     else if (x.role === "club_editor" && x.managed_club && !r.clubs.includes(x.managed_club)) r.clubs.push(x.managed_club);
   }
   return r;
@@ -41,9 +44,11 @@ export function rolesOf(rows: Any[]): CalRoles {
 export function canWrite(layer: string, row: { club_name?: string; owner_key?: string }, me: CalMe, roles: CalRoles): boolean {
   if (layer === "district") return roles.district;
   if (layer === "club") return roles.clubs.includes(String(row.club_name || ""));
-  if (layer === "private") return row.club_name === me.club && row.owner_key === me.key;
+  if (layer === "private") return (row.club_name === me.club && row.owner_key === me.key) || isGovOf(roles, String(row.club_name || ""), String(row.owner_key || ""));
   return false;
 }
+// 這筆私人行程的主人，是不是這位總監秘書代管的總監
+export const isGovOf = (roles: CalRoles, club: string, key: string) => !!roles.secretary && (roles.govs || []).some((g) => g.club === club && g.key === key);
 
 // 檢查並整理前端送來的行程欄位。回傳可直接寫入資料表的欄位（不含 layer / club_name / owner_key）
 export function normalizeEvent(input: Any): Any {
@@ -95,7 +100,23 @@ const toView = (r: Any, canEdit: boolean, joined: string | null = null) => ({
 async function loadRoles(admin: Any, me: CalMe): Promise<CalRoles> {
   const { data, error } = await admin.from("calendar_roles").select("role,managed_club").eq("club_name", me.club).eq("person_key", me.key);
   if (error) dbFail(error);
-  return rolesOf(data || []);
+  const r = rolesOf(data || []);
+  if (r.secretary) {
+    // 總監秘書：找出後台指定的總監（通常一位），秘書可以看、也可以代為新增修改他的私人行程
+    const { data: gs, error: e2 } = await admin.from("calendar_roles").select("club_name,person_key,full_name,nickname").eq("role", "governor");
+    if (e2) dbFail(e2);
+    r.govs = (gs || []).filter((g: Any) => !(g.club_name === me.club && g.person_key === me.key))
+      .map((g: Any) => ({ club: String(g.club_name), key: String(g.person_key), name: String(g.full_name || ""), nickname: String(g.nickname || "") }));
+  }
+  return r;
+}
+// 前端送來的 forGov（要代管哪位總監）→ 確認我真的是他的秘書，回傳那位總監；沒帶回 null；不是他的秘書就拒絕
+function govTarget(body: Any, roles: CalRoles, field = "forGov"): CalGov | null {
+  const f = body && body[field];
+  if (!f) return null;
+  const g = (roles.secretary ? roles.govs || [] : []).find((x) => x.club === String(f.club || "") && x.key === String(f.key || ""));
+  if (!g) fail("CAL_FORBIDDEN");
+  return g as CalGov;
 }
 async function loadTypes(admin: Any) {
   const { data, error } = await admin.from("calendar_event_types").select("id,name,sort_order").order("sort_order").order("id");
@@ -103,6 +124,10 @@ async function loadTypes(admin: Any) {
   return (data || []).map((t: Any) => ({ id: t.id, name: t.name }));
 }
 const byMe = (me: CalMe) => `${me.name}（${me.club}）`;
+const bySecretary = (me: CalMe) => `總監秘書 ${me.name}（${me.club}）代為登記`;
+// 「與總監同行」的行程：秘書在自己的行事曆新增時勾選同步，實際只存一筆在總監名下，用這個標記讓它也出現在秘書自己的行事曆
+// （只有一筆，所以誰改了兩邊都一起變）。標記寫在 created_by，之後修改不會動到它。
+export const syncMark = (me: CalMe) => `總監秘書 ${me.name}（${me.club}）同行`;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -286,18 +311,30 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
     const from = Date.parse(String(body.from || "")), to = Date.parse(String(body.to || ""));
     if (!Number.isFinite(from) || !Number.isFinite(to) || to < from || to - from > MAX_RANGE_MS) fail("CAL_BAD_TIME");
     const fromIso = new Date(from).toISOString(), toIso = new Date(to).toISOString();
+    // 總監秘書看「總監的行事曆」：地區＋總監所屬社＋總監的私人行程；只有總監的私人行程可以改
+    const gov = govTarget(body, roles);
+    const who = gov ? { club: gov.club, key: gov.key } : { club: me.club, key: me.key };
     // 地區＋本社＋自己的私人，各查一次再合併（不用 or 字串，避免社名裡的符號弄壞查詢）
     const base = () => admin.from("calendar_events").select("*").gte("end_at", fromIso).lte("start_at", toIso).order("start_at").limit(1000);
     const [d, c, p] = await Promise.all([
       base().eq("layer", "district"),
-      base().eq("layer", "club").eq("club_name", me.club),
-      base().eq("layer", "private").eq("club_name", me.club).eq("owner_key", me.key),
+      base().eq("layer", "club").eq("club_name", who.club),
+      base().eq("layer", "private").eq("club_name", who.club).eq("owner_key", who.key),
     ]);
     for (const r of [d, c, p]) if (r.error) dbFail(r.error);
     const rows = [...(d.data || []), ...(c.data || []), ...(p.data || [])]
       .sort((a: Any, b: Any) => String(a.start_at).localeCompare(String(b.start_at)));
+    if (gov) return { ok: true, forGov: gov, events: rows.map((r: Any) => ({ ...toView(r, r.layer === "private", null), withGov: r.layer === "private" && r.created_by === syncMark(me) })) };
+    // 總監秘書：我勾了「同時加入總監行事曆」的行程（存在總監名下）也列在我自己的行事曆
+    const shared = new Set<string>();
+    for (const gv of (roles.secretary ? roles.govs || [] : [])) {
+      const q = await base().eq("layer", "private").eq("club_name", gv.club).eq("owner_key", gv.key).eq("created_by", syncMark(me));
+      if (q.error) dbFail(q.error);
+      for (const r of q.data || []) { shared.add(r.id); rows.push(r); }
+    }
+    if (shared.size) rows.sort((a: Any, b: Any) => String(a.start_at).localeCompare(String(b.start_at)));
     const joined = await joinedMap(admin, rows, me, reg);
-    return { ok: true, events: rows.map((r: Any) => toView(r, canWrite(r.layer, r, me, roles), joined.get(r.id) || null)) };
+    return { ok: true, events: rows.map((r: Any) => ({ ...toView(r, canWrite(r.layer, r, me, roles), joined.get(r.id) || null), withGov: shared.has(r.id) })) };
   }
 
   if (action === "cal_save") {
@@ -311,12 +348,29 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
       if (!old) fail("CAL_NOT_FOUND");
       if (!canWrite(old.layer, old, me, roles)) fail("CAL_FORBIDDEN");
       if (old.layer === "private") { delete fields.registration_key; delete fields.rsvp_enabled; }      // 私人行程不能對應報名或開放參加
-      const { data, error: e2 } = await admin.from("calendar_events").update({ ...fields, updated_by: byMe(me), updated_at: new Date().toISOString() }).eq("id", id).select().single();
+      const proxy = old.layer === "private" && isGovOf(roles, old.club_name, old.owner_key);      // 秘書改總監的私人行程
+      const { data, error: e2 } = await admin.from("calendar_events").update({ ...fields, updated_by: proxy ? bySecretary(me) : byMe(me), updated_at: new Date().toISOString() }).eq("id", id).select().single();
       if (e2) dbFail(e2);
+      return { ok: true, event: toView(data, true) };
+    }
+    const gov = govTarget(body, roles);
+    if (gov) {
+      // 總監秘書代總監新增：只能是「總監的私人行程」，存在總監名下（總監自己看得到、每日推播也會包含）
+      delete fields.registration_key; delete fields.rsvp_enabled;
+      const { data, error } = await admin.from("calendar_events").insert({ layer: "private", club_name: gov.club, owner_key: gov.key, ...fields, created_by: bySecretary(me), updated_by: bySecretary(me) }).select().single();
+      if (error) dbFail(error);
       return { ok: true, event: toView(data, true) };
     }
     const layer = String(input.layer || "");
     if (!LAYERS.includes(layer)) fail("CAL_BAD_LAYER");
+    // 總監秘書在自己的行事曆新增私人行程並勾「同時加入總監行事曆」：只存一筆在總監名下，秘書自己的行事曆也會列出（兩邊同步）
+    const share = layer === "private" ? govTarget(body, roles, "shareGov") : null;
+    if (share) {
+      delete fields.registration_key; delete fields.rsvp_enabled;
+      const { data, error } = await admin.from("calendar_events").insert({ layer: "private", club_name: share.club, owner_key: share.key, ...fields, created_by: syncMark(me), updated_by: bySecretary(me) }).select().single();
+      if (error) dbFail(error);
+      return { ok: true, event: { ...toView(data, true), withGov: true } };
+    }
     const row: Any = { layer, club_name: "", owner_key: "" };
     if (layer === "private") { delete fields.registration_key; delete fields.rsvp_enabled; }
     if (layer === "club") row.club_name = String(input.club || (roles.clubs.length === 1 ? roles.clubs[0] : ""));
@@ -430,7 +484,8 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
     }
     // 取消：不刪除，只改狀態；body.cancelled === false 表示恢復
     const status = body.cancelled === false ? "confirmed" : "cancelled";
-    const { data, error: e3 } = await admin.from("calendar_events").update({ status, updated_by: byMe(me), updated_at: new Date().toISOString() }).eq("id", id).select().single();
+    const proxy = old.layer === "private" && isGovOf(roles, old.club_name, old.owner_key);
+    const { data, error: e3 } = await admin.from("calendar_events").update({ status, updated_by: proxy ? bySecretary(me) : byMe(me), updated_at: new Date().toISOString() }).eq("id", id).select().single();
     if (e3) dbFail(e3);
     return { ok: true, event: toView(data, true) };
   }

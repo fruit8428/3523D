@@ -33,6 +33,25 @@ let calEvents = [];                // 目前畫面範圍內的行程
 let calSelDay = '';                // 月曆格模式下被點選的日期 YYYY-MM-DD
 let calFetchSeq = 0;               // 丟棄過期的回應
 let calCurrent = null;             // 詳細頁正在看的行程
+// 總監秘書（後台指定）可以切換去看「總監的行事曆」，並代總監新增／修改私人行程。calGov＝目前正在看的總監（null＝看自己的）
+let calGov = null;
+function calGovs() { return (calRoles && calRoles.secretary && calRoles.govs) || []; }
+function calGovName(g) { return (g.nickname || g.name || '總監'); }
+// 讀寫行程時附上「我在代管哪位總監」；雲端會再確認我真的是他的秘書
+function calGovArg(o) { if (calGov) o.forGov = { club: calGov.club, key: calGov.key }; return o; }
+function calSetGov(i) {
+    calGov = i < 0 ? null : (calGovs()[i] || null);
+    calEvents = []; calCurrent = null;
+    calRenderGovBar(); calRenderTabs(); calReload();
+}
+function calRenderGovBar() {
+    const box = $('calGovBar'); if (!box) return;
+    const gs = calGovs();
+    if (!gs.length) { box.innerHTML = ''; return; }
+    box.innerHTML = calGov
+        ? `<div class="mb-2 rounded-xl border-2 border-amber-400 bg-amber-50 px-3 py-2.5 flex items-center justify-between gap-2"><div class="min-w-0"><div class="text-xs font-bold text-amber-800">您正在代管</div><div class="font-black text-base truncate">👔 總監 ${E(calGovName(calGov))} 的行事曆</div></div><button type="button" onclick="calSetGov(-1)" class="shrink-0 text-sm font-black bg-white border border-slate-300 rounded-lg px-3 py-2">回我的行事曆</button></div>`
+        : `<div class="mb-2 flex flex-wrap gap-2">${gs.map((g, i) => `<button type="button" onclick="calSetGov(${i})" class="flex-1 text-base font-black text-amber-900 bg-amber-50 border-2 border-amber-400 rounded-xl px-3 py-2.5">👔 管理總監 ${E(calGovName(g))} 的行事曆</button>`).join('')}</div>`;
+}
 
 // ---------- 台灣時間工具 ----------
 const TP = 8 * 3600e3;
@@ -127,7 +146,7 @@ async function calendarStart() {
 async function calOpenDeep(id, day) {
     if (!calEvents.some(x => x.id === id)) {
         const base = /^\d{4}-\d{2}-\d{2}$/.test(day) ? dayStartMs(day) : todayStartMs();
-        const r = await api('cal_list', { from: new Date(base - 86400e3).toISOString(), to: new Date(base + 2 * 86400e3).toISOString() });
+        const r = await api('cal_list', calGovArg({ from: new Date(base - 86400e3).toISOString(), to: new Date(base + 2 * 86400e3).toISOString() }));
         if (r.ok) (r.events || []).forEach(e => { if (!calEvents.some(x => x.id === e.id)) calEvents.push(e); });
     }
     if (calEvents.some(x => x.id === id)) calOpenDetail(id);
@@ -141,6 +160,7 @@ function calShell() {
                 <div class="min-w-0 text-sm text-slate-600 truncate">${E(binding.name)}　${E(binding.club)}</div>
                 <div class="shrink-0 flex gap-2"><button type="button" onclick="calGoToday()" class="text-sm font-bold text-blue-700 border border-blue-200 bg-white rounded-lg px-3 py-1.5">回到今天</button><button type="button" onclick="calOpenAttend('me')" class="text-sm font-bold text-emerald-800 border border-emerald-300 bg-emerald-50 rounded-lg px-3 py-1.5">📊 出席</button><button type="button" onclick="calOpenSettings()" class="text-lg border border-slate-300 bg-white rounded-lg px-2.5 py-1" aria-label="設定">⚙️</button></div>
             </div>
+            <div id="calGovBar"></div>
             <div id="calLayerTabs" class="grid grid-cols-4 gap-1.5"></div>
             <div id="calRangeTabs" class="grid grid-cols-5 gap-1.5 mt-2"></div>
             <div class="flex items-center justify-between mt-3 bg-white rounded-xl border border-slate-200">
@@ -152,10 +172,11 @@ function calShell() {
         </div>
         <div id="calSub" class="hidden"></div>
         <button type="button" id="calFab" onclick="calOpenForm()" class="fixed right-4 bottom-6 w-16 h-16 rounded-full bg-blue-700 active:bg-blue-800 text-white text-4xl font-light shadow-xl z-40" aria-label="新增行程">＋</button>`;
+    calRenderGovBar();
     calRenderTabs();
 }
 function calRenderTabs() {
-    const L = [['all', '所有行程'], ['district', '地區'], ['club', '社內'], ['private', '私人']];
+    const L = [['all', '所有行程'], ['district', '地區'], ['club', '社內'], ['private', calGov ? '總監私人' : '私人']];
     $('calLayerTabs').innerHTML = L.map(x => `<button type="button" onclick="calSetLayer('${x[0]}')" class="rounded-xl py-3 text-base font-black border ${calPrefs.layer === x[0] ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-slate-700 border-slate-300'}">${x[1]}</button>`).join('');
     const R = [['today', '今天'], ['three', '三天'], ['week', '本週'], ['two', '二週'], ['month', '本月']];
     $('calRangeTabs').innerHTML = R.map(x => `<button type="button" onclick="calSetRange('${x[0]}')" class="rounded-xl py-3 text-[15px] font-black border ${calPrefs.range === x[0] ? 'bg-amber-400 text-slate-900 border-amber-400' : 'bg-white text-slate-700 border-slate-300'}">${x[1]}</button>`).join('');
@@ -169,7 +190,7 @@ async function calReload() {
     const rg = calRange(), seq = ++calFetchSeq;
     $('calLabel').textContent = rg.label;
     $('calBody').innerHTML = '<div class="text-center text-slate-500 py-10 font-bold">讀取中…</div>';
-    const r = await api('cal_list', { from: new Date(rg.gridFrom || rg.from).toISOString(), to: new Date((rg.gridTo || rg.to) + 86400e3 - 1).toISOString() });
+    const r = await api('cal_list', calGovArg({ from: new Date(rg.gridFrom || rg.from).toISOString(), to: new Date((rg.gridTo || rg.to) + 86400e3 - 1).toISOString() }));
     if (seq !== calFetchSeq) return;      // 讀取期間又換了範圍
     if (!r.ok) {
         $('calBody').innerHTML = `<div class="bg-white rounded-2xl border border-rose-200 p-5 text-center"><div class="font-black text-rose-700">${E(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : calErrText(r.code))}</div><button type="button" onclick="calReload()" class="mt-3 border border-slate-300 rounded-xl px-5 py-2.5 font-bold">重新整理</button></div>`;
@@ -206,7 +227,7 @@ function calCard(e, day) {
     return `<button type="button" onclick="calOpenDetail('${E(e.id)}')" class="w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm active:bg-slate-50 flex overflow-hidden">
         <span class="shrink-0 w-2" style="background:${L.color}"></span>
         <span class="min-w-0 flex-1 px-3 py-3">
-            <span class="block text-sm font-bold text-slate-500">${E(calTimeText(e, day))}　<span class="font-black" style="color:${L.text}">${calPrefs.layer === 'private' && e.layer !== 'private' ? '🔗 ' : ''}${E(calLayerLabel(e))}</span>${e.joined === 'registered' ? '　<span class="text-emerald-700">✅ 已報名</span>' : e.joined === 'interested' ? '　<span class="text-amber-700">🙋 已表示參加</span>' : ''}${cancelled ? '　<span class="text-rose-600">已取消</span>' : ''}</span>
+            <span class="block text-sm font-bold text-slate-500">${E(calTimeText(e, day))}　<span class="font-black" style="color:${L.text}">${calPrefs.layer === 'private' && e.layer !== 'private' ? '🔗 ' : ''}${E(calLayerLabel(e))}</span>${e.withGov ? '　<span class="text-amber-700">🤝 與總監同步</span>' : ''}${e.joined === 'registered' ? '　<span class="text-emerald-700">✅ 已報名</span>' : e.joined === 'interested' ? '　<span class="text-amber-700">🙋 已表示參加</span>' : ''}${cancelled ? '　<span class="text-rose-600">已取消</span>' : ''}</span>
             <span class="block font-black text-lg leading-snug mt-0.5 ${cancelled ? 'line-through text-slate-400' : ''}">${E(e.title)}</span>
             ${e.location ? `<span class="block text-sm text-slate-600 mt-0.5 truncate">📍 ${E(e.location)}</span>` : ''}
         </span></button>`;
@@ -252,7 +273,7 @@ function calOpenDetail(id) {
     const s = Date.parse(e.start), en = Date.parse(e.end);
     const when = e.allDay ? (ymd(s) === ymd(en) ? fmtFull(s).replace(/\d\d:\d\d$/, '') + ' 全天' : `${fmtFull(s).replace(/\d\d:\d\d$/, '')} ～ ${fmtFull(en).replace(/\d\d:\d\d$/, '')}（全天）`) : (s === en ? fmtFull(s) : `${fmtFull(s)}<br>～ ${ymd(s) === ymd(en) ? fmtHM(en) : fmtFull(en)}`);
     const ph = calPhone(e.contactPhone);
-    const hasReg = !!((e.registrationKey || e.rsvpEnabled) && e.layer !== 'private');
+    const hasReg = !!((e.registrationKey || e.rsvpEnabled) && e.layer !== 'private') && !calGov;     // 代管總監行事曆時不顯示「我要參加」（那是我自己的報名，請回我的行事曆操作）
     const maps = e.address || e.location;
     calSubShow(`<button type="button" onclick="calBack()" class="text-base font-bold text-blue-700 py-2">‹ 返回行事曆</button>
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-1">
@@ -271,7 +292,9 @@ function calOpenDetail(id) {
                 </div>
             </div>
         </div>
-        ${(e.registrationKey || e.rsvpEnabled) && e.layer !== 'private' ? '<div id="calReg" class="mt-4"></div>' : ''}
+        ${hasReg ? '<div id="calReg" class="mt-4"></div>' : ''}
+        ${e.withGov && !calGov ? '<div class="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5">🤝 這筆行程與總監同步：總監的行事曆上也有，您或總監修改、取消、刪除，兩邊會一起變。</div>' : ''}
+        ${calGov && e.layer === 'private' ? `<div class="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5">這是總監 ${E(calGovName(calGov))} 的私人行程，只有總監本人與總監秘書看得到。</div>` : ''}
         ${e.canEdit ? `<div class="grid grid-cols-2 gap-2 mt-4">
             <button type="button" onclick="calOpenForm('edit')" class="bg-blue-700 active:bg-blue-800 text-white font-black text-base rounded-xl py-3.5">編輯</button>
             <button type="button" onclick="calOpenForm('copy')" class="bg-white border border-slate-300 font-black text-base rounded-xl py-3.5">複製</button>
@@ -379,7 +402,7 @@ async function calDelete() {
 // mode：undefined＝新增；'edit'＝編輯目前的行程；'copy'＝以目前的行程為底稿新增
 function calOpenForm(mode) {
     const src = (mode === 'edit' || mode === 'copy') ? calCurrent : null;
-    const layers = calAllowedLayers();
+    const layers = calGov ? ['private'] : calAllowedLayers();      // 代管總監時只能新增「總監的私人行程」
     let v;
     if (src) {
         const s = Date.parse(src.start), e = Date.parse(src.end);
@@ -400,8 +423,9 @@ function calOpenForm(mode) {
             ${mode === 'copy' ? '<p class="text-sm text-slate-500 mt-1">已帶入原行程的資料，請修改日期等欄位後儲存。</p>' : ''}
             ${editing ? `<div class="mt-3 text-sm font-bold" style="color:${CAL_LAYERS[v.layer].text}">${E(v.layer === 'club' ? v.club : CAL_LAYERS[v.layer].name)}行程</div>` : `
             <label class="${lab}" for="cfLayer">行程層級</label>
-            <select id="cfLayer" onchange="calFormLayerChanged()" class="${inp}">${layers.map(l => `<option value="${l}" ${v.layer === l ? 'selected' : ''}>${l === 'district' ? '地區行程（全地區社友看得到）' : l === 'club' ? '社內行程（本社社友看得到）' : '私人行程（只有我看得到）'}</option>`).join('')}</select>
+            <select id="cfLayer" onchange="calFormLayerChanged()" class="${inp}">${layers.map(l => `<option value="${l}" ${v.layer === l ? 'selected' : ''}>${l === 'district' ? '地區行程（全地區社友看得到）' : l === 'club' ? '社內行程（本社社友看得到）' : calGov ? `總監 ${E(calGovName(calGov))} 的私人行程（總監與秘書看得到）` : '私人行程（只有我看得到）'}</option>`).join('')}</select>
             <div id="cfClubBox" class="${v.layer === 'club' && calRoles.clubs.length > 1 ? '' : 'hidden'}"><label class="${lab}" for="cfClub">哪一社</label><select id="cfClub" class="${inp}">${calRoles.clubs.map(c => `<option value="${E(c)}" ${v.club === c ? 'selected' : ''}>${E(c)}</option>`).join('')}</select></div>`}
+            ${!editing && !calGov && calGovs().length ? `<div id="cfShareBox" class="${v.layer === 'private' ? '' : 'hidden'}"><label class="flex items-start gap-3 mt-4 border-2 border-amber-400 bg-amber-50 rounded-xl px-3 py-3"><input id="cfShare" type="checkbox" class="w-6 h-6 mt-0.5" checked><span><span class="font-bold text-base">🤝 同時加入總監 ${E(calGovName(calGovs()[0]))} 的行事曆</span><span class="block text-sm text-slate-600">勾選後您和總監的行事曆都會有這筆，不用再到總監行事曆重打一次。純屬您個人的私事請取消勾選。</span></span></label></div>` : ''}
             <label class="${lab}" for="cfTitle">標題 <span class="text-rose-600">*</span></label>
             <input id="cfTitle" type="text" maxlength="100" value="${E(v.title)}" class="${inp}" placeholder="例：松景社授證典禮">
             <label class="${lab}" for="cfType">活動類型</label>
@@ -430,6 +454,7 @@ function calOpenForm(mode) {
 function calFormLayerChanged() {
     const l = $('cfLayer').value; $('cfClubBox').classList.toggle('hidden', !(l === 'club' && calRoles.clubs.length > 1));
     $('cfRsvpBox').classList.toggle('hidden', l === 'private');                 // 私人行程不能開放別人參加
+    if ($('cfShareBox')) $('cfShareBox').classList.toggle('hidden', l !== 'private');
     if (l !== 'private' && !calRsvpTouched) $('cfRsvp').checked = true;         // 地區、社內行程一律預設開放參加（私人行程沒有這個選項）
 }
 let calRsvpTouched = false;
@@ -449,7 +474,10 @@ async function calSaveForm(id) {
     const ev = { title: g('cfTitle'), typeId: g('cfType') ? Number(g('cfType')) : null, allDay: allDay, start: start, end: end, rsvpEnabled: !!($('cfRsvp') && $('cfRsvp').checked && !($('cfRsvpBox') && $('cfRsvpBox').classList.contains('hidden'))), location: g('cfLoc'), address: g('cfAddr'), dressCode: g('cfDress'), contactPerson: g('cfCP'), contactPhone: g('cfPh'), notes: g('cfNotes') };
     if (id) ev.id = id; else { ev.layer = g('cfLayer'); if (ev.layer === 'club') ev.club = $('cfClub') ? g('cfClub') : calRoles.clubs[0]; }
     const btn = $('cfSave'); busy = true; btn.disabled = true; btn.textContent = '儲存中…';
-    const r = await api('cal_save', { event: ev });
+    const arg = calGovArg({ event: ev });
+    // 總監秘書在自己的行事曆新增私人行程，勾了「同時加入總監行事曆」
+    if (!id && !calGov && ev.layer === 'private' && $('cfShare') && $('cfShare').checked && calGovs()[0]) arg.shareGov = { club: calGovs()[0].club, key: calGovs()[0].key };
+    const r = await api('cal_save', arg);
     busy = false;
     if (!r.ok) { btn.disabled = false; btn.textContent = '儲存'; return err(r.code === 'NETWORK' ? '網路連線不穩，請再按一次儲存。' : calErrText(r.code)); }
     toast('已儲存');
