@@ -137,8 +137,8 @@ async function calendarStart() {
     calOffset = 0;
     calSelDay = ymd(Date.now());
     calShell();
+    await calReload();          // 先在背後讀好第一批行程再切換畫面，讀取畫面（旋轉的扶輪徽章）才不會中途換成另一個「讀取中」
     show('viewCalendar');
-    await calReload();
     // 從總監每日推播的「查看詳情」打開：網址帶 ev＝行程代碼、d＝那一天，直接打開那筆行程
     const q = new URLSearchParams(location.search), evId = q.get('ev');
     if (evId) await calOpenDeep(evId, q.get('d') || '');

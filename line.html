@@ -23,19 +23,21 @@
         .ln-pop { animation: lnPop .45s ease-out; }
     </style>
     <style>
-        /* 讀取中：扶輪徽章。徽章本身正面慢慢自轉（約 6.7 秒一圈，不做傾斜——傾斜時看起來像橢圓，使用者不喜歡），整體輕輕上下飄浮，
+        /* 讀取中：扶輪徽章。徽章本身正面慢慢自轉（約 7.4 秒一圈，不做傾斜——傾斜時看起來像橢圓，使用者不喜歡），整體輕輕上下飄浮，
            後面有金色光暈、下方有跟著縮放的影子，看起來像浮在空中的立體徽章。使用者設定「減少動態效果」時全部靜止。 */
         @keyframes rotarySpin { to { transform: rotate(360deg); } }
         @keyframes rotaryTilt { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
         @keyframes rotaryGlow { 0%, 100% { opacity: .55; transform: scale(.92); } 50% { opacity: .95; transform: scale(1.06); } }
         @keyframes rotaryShadow { 0%, 100% { transform: scaleX(1); opacity: .30; } 50% { transform: scaleX(.78); opacity: .16; } }
-        .rotary-stage { position: relative; width: 132px; height: 138px; margin: 0 auto; perspective: 520px; }
-        .rotary-glow { position: absolute; left: 50%; top: 56px; width: 132px; height: 132px; margin: -66px 0 0 -66px; border-radius: 50%; background: radial-gradient(circle, rgba(247,168,27,0) 0%, rgba(247,168,27,0) 50%, rgba(247,168,27,.30) 60%, rgba(247,168,27,.10) 74%, rgba(247,168,27,0) 86%); animation: rotaryGlow 5s ease-in-out infinite; }
-        .rotary-tilt { position: absolute; left: 50%; top: 12px; width: 88px; height: 88px; margin-left: -44px; transform-style: preserve-3d; animation: rotaryTilt 5s ease-in-out infinite; }
-        .rotary-spin { display: block; width: 88px; height: 88px; animation: rotarySpin 6.67s linear infinite; filter: drop-shadow(0 3px 2px rgba(120,72,0,.30)); }
-        .rotary-shadow { position: absolute; left: 50%; bottom: 4px; width: 74px; height: 11px; margin-left: -37px; border-radius: 50%; background: radial-gradient(ellipse, rgba(15,23,42,.55) 0%, rgba(15,23,42,0) 70%); animation: rotaryShadow 5s ease-in-out infinite; }
+        .rotary-stage { position: relative; width: 132px; height: 138px; margin: 0 auto; }
+        .rotary-glow { position: absolute; left: 50%; top: 56px; width: 132px; height: 132px; margin: -66px 0 0 -66px; border-radius: 50%; background: radial-gradient(circle, rgba(247,168,27,0) 0%, rgba(247,168,27,0) 50%, rgba(247,168,27,.30) 60%, rgba(247,168,27,.10) 74%, rgba(247,168,27,0) 86%); animation: rotaryGlow 5s ease-in-out infinite; animation-delay: var(--rf, 0s); will-change: transform, opacity; }
+        .rotary-tilt { position: absolute; left: 50%; top: 12px; width: 88px; height: 88px; margin-left: -44px; animation: rotaryTilt 5s ease-in-out infinite; animation-delay: var(--rf, 0s); will-change: transform; }
+        .rotary-spin { display: block; width: 88px; height: 88px; animation: rotarySpin 7.4s linear infinite; animation-delay: var(--rs, 0s); will-change: transform; backface-visibility: hidden; }
+        .rotary-shadow { position: absolute; left: 50%; bottom: 4px; width: 74px; height: 11px; margin-left: -37px; border-radius: 50%; background: radial-gradient(ellipse, rgba(15,23,42,.55) 0%, rgba(15,23,42,0) 70%); animation: rotaryShadow 5s ease-in-out infinite; animation-delay: var(--rf, 0s); will-change: transform, opacity; }
         @media (prefers-reduced-motion: reduce) { .rotary-spin, .rotary-tilt, .rotary-glow, .rotary-shadow { animation: none; } }
     </style>
+    <script>/* 動畫的起點依「現在時間」決定：LINE 開啟時頁面會先載入一次再轉址重新載入，這樣重新載入後徽章會接著原來的角度繼續轉，不會跳回起點 */
+        (function () { var t = Date.now(), st = document.documentElement.style; st.setProperty('--rs', -((t % 7400) / 1000) + 's'); st.setProperty('--rf', -((t % 5000) / 1000) + 's'); })();</script>
     <script>/* 從圖文選單打開行事曆時，LINE 上方標題顯示「扶輪行事曆」而不是「LINE 自助報到」 */ if (/[?&]p=calendar\b/.test(location.search) || /p%3Dcalendar/i.test(location.search)) document.title = '扶輪行事曆';</script>
 </head>
 <body class="bg-slate-100 text-slate-900 min-h-screen">
