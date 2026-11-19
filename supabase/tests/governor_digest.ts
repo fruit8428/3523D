@@ -37,9 +37,12 @@ const T: Record<string, any[]> = {
     ev({ id: "x1", layer: "club", club_name: "北區社", title: "別社的例會", start_at: "2026-12-05T11:00:00.000Z", end_at: "2026-12-05T13:00:00.000Z" }),
     ev({ id: "x2", layer: "private", club_name: "松山社", owner_key: "陳|", title: "別人的私人行程", start_at: "2026-12-05T11:00:00.000Z", end_at: "2026-12-05T12:00:00.000Z" }),
     ev({ id: "x3", layer: "district", title: "已取消的活動", status: "cancelled", start_at: "2026-12-05T11:00:00.000Z", end_at: "2026-12-05T12:00:00.000Z" }),
+    ev({ id: "n1", layer: "district", title: "總監沒表示參加的地區活動", start_at: "2026-12-05T05:00:00.000Z", end_at: "2026-12-05T06:00:00.000Z" }),
     ev({ id: "x4", layer: "district", title: "後天的活動", start_at: "2026-12-06T11:00:00.000Z", end_at: "2026-12-06T12:00:00.000Z" }),
   ],
   calendar_digest_log: [],
+  // 總監按了「我要參加」的活動（d1、c1、a1）；n1 沒按、r1 是執秘幫他正式報名的
+  calendar_rsvp: [{ event_id: "d1", club_name: "松山社", person_key: "王|Gov" }, { event_id: "c1", club_name: "松山社", person_key: "王|Gov" }, { event_id: "a1", club_name: "松山社", person_key: "王|Gov" }, { event_id: "n1", club_name: "松山社", person_key: "陳|" }],
   calendar_settings: [{ key: "cron_secret", value: "s3cret" }],
 };
 const db = fake(T);
@@ -49,7 +52,14 @@ const send = async (to: string, messages: any[]) => { sent.push({ to, messages }
 const pv = await governorDigest(db, { liffId: "123-abc", now: NOW });
 const g = pv.governors[0];
 ok("預設推「明天」（12/5）；不發送時只預覽", pv.day === "2026-12-05" && sent.length === 0 && g.recipients.every((r: any) => r.status === "PREVIEW"));
-ok("內容＝地區＋總監所屬社＋總監私人；別社、別人的私人、已取消、後天的都不列", g.events.map((e: any) => e.id).sort().join() === "a1,c1,d1,p1");
+ok("內容＝總監私人＋總監已參加的地區／社內活動；別社、別人的私人、已取消、後天的都不列", g.events.map((e: any) => e.id).sort().join() === "a1,c1,d1,p1");
+ok("總監沒按「我要參加」的地區活動不推（別人按的不算）", !g.events.some((e: any) => e.id === "n1"));
+{
+  const T2 = { ...T, calendar_events: [...T.calendar_events, ev({ id: "r1", layer: "district", registration_key: "k::高球", title: "執秘已幫總監報名的活動", start_at: "2026-12-05T07:00:00.000Z", end_at: "2026-12-05T08:00:00.000Z" }), ev({ id: "r2", layer: "district", registration_key: "k::別的", title: "有報名活動但總監沒報", start_at: "2026-12-05T07:00:00.000Z", end_at: "2026-12-05T08:00:00.000Z" })] };
+  const reg = { roster: async (k: string) => ({ ok: true, title: k, persons: k === "k::高球" ? [{ club: "松山社", key: "王|Gov", name: "王總監" }] : [{ club: "松山社", key: "陳|", name: "陳" }] }) };
+  const ids = (await governorDigest(fake(T2), { liffId: "123-abc", now: NOW, reg })).governors[0].events.map((e: any) => e.id);
+  ok("執秘已幫總監正式報名的活動會推；有報名活動但總監不在名單的不推", ids.includes("r1") && !ids.includes("r2"));
+}
 ok("排序：全天在最前面，其餘依開始時間", g.events.map((e: any) => e.id).join() === "a1,p1,d1,c1");
 ok("收件人：總監＋總監秘書（副本）", g.recipients.map((r: any) => r.as + r.name).join() === "總監王總監,總監秘書（副本）林秘書");
 ok("時間文字：18:00–21:00、全天", g.events.find((e: any) => e.id === "d1").time === "18:00–21:00" && g.events.find((e: any) => e.id === "a1").time === "全天");

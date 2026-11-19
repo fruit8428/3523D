@@ -59,7 +59,7 @@
 
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
             <h2 class="font-black text-lg">④ 總監每日推播</h2>
-            <p class="text-sm text-slate-600 mt-1 leading-relaxed">每天<b>晚上 8:00</b> 自動把總監<b>明天</b>的行程（地區＋總監所屬社＋總監的私人行程）用 LINE 卡片推給<b>總監</b>，並給<b>總監秘書</b>一份副本；明天沒有行程就不推。收件人在上面 ① 指定，而且要在 LINE 綁定過身分。每天最多約 2 則（總監＋秘書），使用官方帳號的推播額度。</p>
+            <p class="text-sm text-slate-600 mt-1 leading-relaxed">每天<b>晚上 8:00</b> 自動把總監<b>明天</b>的行程用 LINE 卡片推給<b>總監</b>，並給<b>總監秘書</b>一份副本；明天沒有行程就不推。<b>推播的內容＝總監「私人」頁的行程</b>：總監的私人行程（含秘書代為登記的），加上總監按了「我要參加」或已被執秘正式報名的地區／社內活動；總監沒有表示參加的地區、社內行程不會推。收件人在上面 ① 指定，而且要在 LINE 綁定過身分。每天最多約 2 則（總監＋秘書），使用官方帳號的推播額度。</p>
             <div class="mt-3 flex flex-wrap items-center gap-2">
                 <label class="text-sm font-bold text-slate-700">哪一天的行程</label>
                 <input id="dgDay" type="date" class="border border-slate-300 rounded-lg px-3 py-2 text-base">
@@ -198,7 +198,7 @@
     }
     async function refreshViewerSummary() { const r = await api('cal_admin_state'); if (r.ok) { state = r; renderViewerClubs(); } }
     // ---------- ④ 總監每日推播 ----------
-    const DG_STATUS = { SENT: ['✅ 已發送', 'text-emerald-700'], PREVIEW: ['會收到', 'text-emerald-700'], NOT_BOUND: ['⚠️ 還沒綁定 LINE，收不到', 'text-rose-700'], NO_EVENTS: ['這天沒有行程，不推播', 'text-slate-500'], ALREADY: ['今天已推過', 'text-slate-500'], FAILED: ['❌ 發送失敗', 'text-rose-700'] };
+    const DG_STATUS = { SENT: ['✅ 已發送', 'text-emerald-700'], PREVIEW: ['會收到', 'text-emerald-700'], NOT_BOUND: ['⚠️ 還沒綁定 LINE，收不到', 'text-rose-700'], NO_EVENTS: ['這天總監沒有私人行程或已參加的活動，不推播', 'text-slate-500'], ALREADY: ['今天已推過', 'text-slate-500'], FAILED: ['❌ 發送失敗', 'text-rose-700'] };
     function dgTomorrow() { const d = new Date(Date.now() + 8 * 3600e3 + 86400e3); return d.toISOString().slice(0, 10); }
     async function digest(send) {
         const day = $('dgDay').value || dgTomorrow();

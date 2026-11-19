@@ -929,6 +929,7 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
 
 // =====================================================================
 // 總監每日推播（規格 6.8）：每天晚上 8 點（pg_cron）把總監「明天」的行程用 LINE 卡片推給總監，並給總監秘書一份副本。
+//   內容：總監的私人行程＋總監已參加（我要參加／正式報名）的地區與社內活動；沒表示參加的地區、社內行程不推。
 //   收件人：calendar_roles 的 governor（總監本人）＋ governor_cc（總監秘書，收副本）；都要綁定過 LINE（line_bindings）。
 //   內容：總監的「所有行程」＝地區＋總監所屬社的社內＋總監本人的私人行程（已取消的不列）。明天沒有行程就不推。
 //   同一天、同一位總監、同一位收件人只推一次（calendar_digest_log），排程重複觸發也不會重發；後台「測試發送」不受此限也不記錄。
@@ -938,6 +939,7 @@ export interface DigestOpts {
   liffId: string;               // 「查看詳情」按鈕要開的 LIFF
   send?: (to: string, messages: Any[]) => Promise<void>;   // 沒給＝只預覽（不發送）
   test?: boolean;               // 後台測試發送：標「測試」、不檢查也不寫發送紀錄
+  reg?: RegDeps;                // 用來判斷總監是否已被執秘正式報名（沒給＝只看「我要參加」）
   now?: number;
 }
 const DIGEST_WD = ["日", "一", "二", "三", "四", "五", "六"];
@@ -1028,7 +1030,11 @@ export async function governorDigest(admin: Any, o: DigestOpts): Promise<Any> {
     return data ? String(data.line_user_id) : "";
   };
   for (const g of govs) {
-    const events = await eventsOfPerson(admin, g.club_name, g.person_key, from, to);
+    // 推播內容＝總監「私人」頁的行程（使用者 2026-11-19 決定）：總監的私人行程＋總監已參加的地區／社內活動
+    // （按了「我要參加」或已被執秘正式報名）。沒有表示參加的地區、社內行程不推。
+    const all = await eventsOfPerson(admin, g.club_name, g.person_key, from, to);
+    const joined = await joinedMap(admin, all, { club: g.club_name, key: g.person_key, name: g.full_name || "", nickname: g.nickname || "" }, o.reg);
+    const events = all.filter((e: Any) => e.layer === "private" || joined.has(e.id));
     const govKey = `${g.club_name}|${g.person_key}`;
     const item: Any = { name: g.full_name, nickname: g.nickname || "", club: g.club_name, events: events.map((e: Any) => ({ id: e.id, layer: e.layer, title: e.title, time: digestTimeText(e, day), location: e.location || e.address || "", dressCode: e.dress_code || "" })), recipients: [] as Any[] };
     out.governors.push(item);
@@ -1146,7 +1152,7 @@ export async function agendaReply(admin: Any, me: { club: string; key: string; n
 }
 
 // ---------- 後台動作（電腦版 admin-calendar.html，用後台密碼把關） ----------
-export interface AdminCtx { admin: Any; password: string; members: () => Promise<Record<string, Any[]>>; clubInfos: () => Promise<{ name: string; division: string; code: string }[]>; sendLine?: (to: string, messages: Any[]) => Promise<void> }
+export interface AdminCtx { admin: Any; password: string; members: () => Promise<Record<string, Any[]>>; clubInfos: () => Promise<{ name: string; division: string; code: string }[]>; sendLine?: (to: string, messages: Any[]) => Promise<void>; reg?: RegDeps }
 // 執秘代登記的「同行者」（不在社友庫：子女、外勞、朋友，或社友庫沒有資料的寶尊眷）：person_key＝guest:<帶他來的社友 key>:<序號>
 const EXT_GUEST_PREFIX = "guest:";
 export const EXT_GUEST_TYPES = ["寶(尊)眷", "子女", "外勞", "朋友", "其他"];
@@ -1227,7 +1233,7 @@ export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Pro
     const liffId = String(body.liffId || "");
     if (!/^[\w-]{5,80}$/.test(liffId)) fail("BAD_REQUEST");
     if (action === "cal_admin_digest_test" && !ctx.sendLine) fail("PUSH_DISABLED");
-    return await governorDigest(admin, { day: body.day, liffId, test: action === "cal_admin_digest_test", send: action === "cal_admin_digest_test" ? ctx.sendLine : undefined });
+    return await governorDigest(admin, { day: body.day, liffId, test: action === "cal_admin_digest_test", send: action === "cal_admin_digest_test" ? ctx.sendLine : undefined, reg: ctx.reg });
   }
 
   if (action === "cal_admin_members") {

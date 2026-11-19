@@ -332,7 +332,9 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
       if (!send) fail("PUSH_DISABLED");
       const liffId = String(body.liffId || "");
       if (!/^[\w-]{5,80}$/.test(liffId)) fail("BAD_REQUEST");
-      const r = await governorDigest(deps.admin, { liffId, send: send! });
+      let st: Any = null;      // 判斷總監是否已被正式報名：同一次推播只讀一次報名資料
+      const reg = { roster: async (eventKey: string) => { if (!st) st = await loadState(deps, false); const ro = Core.buildRoster(st, eventKey); return { ok: !!ro.ok, title: ro.title || "", persons: ro.persons || [] }; } };
+      const r = await governorDigest(deps.admin, { liffId, send: send!, reg });
       console.log("總監每日推播", JSON.stringify({ day: r.day, sent: r.sent, governors: (r.governors || []).map((g: Any) => ({ events: g.events.length, recipients: g.recipients.map((x: Any) => x.status) })) }));
       return r;
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
@@ -343,6 +345,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
         admin: deps.admin, password: deps.calendarAdminPassword || "",
         sendLine: deps.push && deps.push.token && deps.push.sendMessages ? deps.push.sendMessages : undefined,
         members: async () => (await loadState(deps, true)).members,
+        reg: { roster: async (eventKey: string) => { const ro = Core.buildRoster(await loadState(deps, false), eventKey); return { ok: !!ro.ok, title: ro.title || "", persons: ro.persons || [] }; } },
         clubInfos: async () => ((await loadState(deps, false)).divisionsData || []).flatMap((d: Any) => (d.clubs || []).map((c: Any) => ({ name: c.name, division: d.name || `第 ${d.id} 分區`, code: c.code || "" }))),
       });
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
