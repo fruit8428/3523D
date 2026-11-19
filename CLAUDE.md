@@ -169,6 +169,10 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 
 規則寫在 `checkin-core.js` 的 `CheckinCore.sortMembers`（另有 `memberRoleRank`、`compareMembers`、`isSpouseMember`），index.html 的 `sortMembersForDisplay()`／`memberRoleRank()` 只是轉呼叫：P（現任社長）→ S（現任秘書）→ 其餘依 Nick Name（**去掉開頭的扶輪職稱**，例如「PP Fred」以 Fred 排，職稱清單 `MEMBER_TITLE_RE` 與貼上接龍的 `RELAY_TITLE_RE` 相同再加 S；沒有就用姓名；`Intl.Collator` 不分大小寫、數字自然排序；同為 P 或 S 時也依 Nick Name），寶(尊)眷緊接在對應社友（`spouseOfId`）下方，找不到對應社友的放最後。**P／S 的判斷看兩處**：職務欄是 P／S／`社長`／`秘書`，或 **Nick Name 開頭是「P 」「S 」**（3523 實際名單的寫法是 Nick Name「P Robert」「S Three M」、職務欄寫「社長」「社友」，2026-11-17 使用者回報 S 沒排第二才發現）；比對前全形轉半形、轉大寫，`PP`、`PE`、`IPP`、`執秘`、沒有空格的「Sherry」都不算。**只影響畫面、不改 `clubMemberDatabase` 的存檔順序**（表格操作都用 `m.id`，所以安全）。套用在：社友庫表格（含搜尋結果）、`calendar-desk.js` 的 `cdOrderedMembers()`（代為登記、記錄實際出席、例會統計與 Excel）、LINE 綁定選名字（`line-checkin` 的 `members` 動作在雲端排好，所以改了 checkin-core.js 要複製到小程式資料夾並重新部署）。測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/member_sort.ts`、`node check_member_sort.js`（需 8000 埠）。
 
+### 社友職務選單可自行輸入（2026-11-19）
+
+「今年扶輪職務」`#mRole` 內建選項不再擴充（使用者要求：地區職務太多，選單太長不好找），最後一項 `__custom__`（`MEMBER_ROLE_CUSTOM`）＝「其他職務（自行輸入）」，顯示 `#mRoleCustom` 文字框。讀寫一律走 `setMemberRoleInput(role)`／`getMemberRoleInput()`（不在內建選項的職務自動視為自填，所以 Excel 匯入的特殊職務編輯時也不會被清空）；自填職務只存在 `member.role`，**不加入選單**，並去掉 `<>&"'` 等符號（職務在多處直接插入 innerHTML）。
+
 ### 刪除社友與已送出的報名表（2026-11-14）
 
 已送出的報名表（`registrationOrders[子活動].items`）是送出當下的快照，**不會**隨社友庫變動；報到名單讀的是它。`deleteMember()` 會用 `findSubmittedRegistrationsOf()` 找出該社友（姓名＋Nick Name）在本社哪些報名表裡，**再問一次**要不要一併移除——不自動連動，因為社友離社後過去的紀錄通常要保留，而且會動到應繳金額。一併移除時：只有該張報名表「真的收人頭費」（`participantFee > 0` 且等於各人 `fee` 加總）才從 `participantFee`、`grandTotal` 扣掉他的 `fee`；**不可以直接加總 item.fee 重算**（研討會的 item 也帶著 `fee` 但不收費，會把金額算錯）。PELS 不自動移除（牽涉出席方式與旅平險個資），只提示。

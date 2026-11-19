@@ -1685,7 +1685,7 @@
                 
                 <div>
                     <label class="block font-semibold text-slate-700 mb-1">今年扶輪職務：</label>
-                    <select id="mRole" onchange="toggleSpouseSelection(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:ring-1 focus:ring-blue-500">
+                    <select id="mRole" onchange="onMemberRoleChange()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-medium focus:ring-1 focus:ring-blue-500">
                         <option value="社友">社友</option>
                         <option value="總監">總監</option>
                         <option value="社長">社長</option>
@@ -1703,7 +1703,12 @@
                         <option value="公共形象主委">公共形象主委</option>
                         <option value="寶(尊)眷">寶(尊)眷</option>
                         <option value="貴賓">貴賓</option>
+                        <option value="__custom__">✏️ 其他職務（自行輸入）</option>
                     </select>
+                    <div id="mRoleCustomBox" class="hidden mt-2">
+                        <input type="text" id="mRoleCustom" maxlength="20" placeholder="請輸入職務名稱，例如：地區秘書長、助理總監" class="w-full bg-white border border-blue-300 rounded-lg p-2 font-medium focus:ring-1 focus:ring-blue-500">
+                        <p class="text-[11px] text-slate-500 mt-1">選單裡沒有的職務可以在這裡自己輸入（最多 20 個字）。只會記在這位社友身上，不會加進上面的選單。</p>
+                    </div>
                 </div>
 
                 <div id="mSpouseContainer" class="hidden mb-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
@@ -4728,8 +4733,7 @@
                 if (target) {
                     title.innerHTML = `✏️ 編輯社友資料與差點：<span class="text-blue-600">${target.name}</span>`;
                     editIdInput.value = target.id;
-                    document.getElementById('mRole').value = target.role || '社友';
-                    toggleSpouseSelection(target.role || '社友');
+                    setMemberRoleInput(target.role || '社友');
                     if (target.role === '寶(尊)眷' && target.spouseOfId) {
                         document.getElementById('mSpouseOf').value = target.spouseOfId;
                     }
@@ -4745,8 +4749,7 @@
             } else {
                 title.innerHTML = `➕ 新增社友至 <span class="text-blue-600">${selectedClubName}</span> 名冊`;
                 editIdInput.value = '';
-                document.getElementById('mRole').value = '社友';
-                toggleSpouseSelection('社友');
+                setMemberRoleInput('社友');
                 document.getElementById('mNickname').value = '';
                 document.getElementById('mChineseName').value = '';
                 document.getElementById('mHandicap').value = '';
@@ -4761,6 +4764,29 @@
 
         function closeAddMemberModal() {
             document.getElementById('addMemberModal').classList.add('hidden');
+        }
+
+        // 職務選單：內建選項之外，可選「其他職務（自行輸入）」手動填寫（只存在該社友身上，不加入選單）
+        const MEMBER_ROLE_CUSTOM = '__custom__';
+        function setMemberRoleInput(role) {
+            const sel = document.getElementById('mRole'), box = document.getElementById('mRoleCustomBox'), inp = document.getElementById('mRoleCustom');
+            const builtIn = Array.from(sel.options).some(o => o.value === role && o.value !== MEMBER_ROLE_CUSTOM);
+            sel.value = builtIn ? role : MEMBER_ROLE_CUSTOM;
+            inp.value = builtIn ? '' : role;
+            box.classList.toggle('hidden', builtIn);
+            toggleSpouseSelection(builtIn ? role : '');
+        }
+        function onMemberRoleChange() {
+            const sel = document.getElementById('mRole'), isCustom = sel.value === MEMBER_ROLE_CUSTOM;
+            document.getElementById('mRoleCustomBox').classList.toggle('hidden', !isCustom);
+            toggleSpouseSelection(isCustom ? '' : sel.value);
+            if (isCustom) document.getElementById('mRoleCustom').focus();
+        }
+        // 回傳目前選的職務；選「其他」但沒填時回傳空字串
+        function getMemberRoleInput() {
+            const sel = document.getElementById('mRole');
+            if (sel.value !== MEMBER_ROLE_CUSTOM) return sel.value;
+            return document.getElementById('mRoleCustom').value.replace(/[<>&"'`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
         }
 
         function toggleSpouseSelection(roleVal) {
@@ -4800,7 +4826,8 @@
         async function handleSaveNewMember(e) {
             e.preventDefault();
             const editId = document.getElementById('mEditId').value;
-            const role = document.getElementById('mRole').value;
+            const role = getMemberRoleInput();
+            if (!role) { alert('請輸入職務名稱，或從選單選擇一個職務。'); document.getElementById('mRoleCustom').focus(); return; }
             const nickname = document.getElementById('mNickname').value.trim();
             const name = document.getElementById('mChineseName').value.trim();
             const isGolf = isCurrentEventGolf();
@@ -4816,14 +4843,17 @@
                 // Update existing member
                 const targetIdx = clubMemberDatabase[selectedClubName].findIndex(m => m.id === parseInt(editId));
                 if (targetIdx > -1) {
+                    // 保留原本的其他欄位；寶(尊)眷要把「對應哪位社友」一起存回去（以前編輯後會遺失這個連結）
                     clubMemberDatabase[selectedClubName][targetIdx] = {
+                        ...clubMemberDatabase[selectedClubName][targetIdx],
                         id: parseInt(editId),
                         role,
                         nickname,
                         name,
                         diet,
                         veganNote,
-                        handicap
+                        handicap,
+                        spouseOfId
                     };
                 }
                 showToast(isGolf ? `✅ 已更新社友【${name}】的資料與高爾夫差點！` : `✅ 已更新社友【${name}】的資料！`);
