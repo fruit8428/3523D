@@ -22,6 +22,13 @@
         @keyframes lnPop { 0% { transform: scale(.6); opacity: 0; } 70% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
         .ln-pop { animation: lnPop .45s ease-out; }
     </style>
+    <style>
+        /* 讀取中：扶輪徽章緩慢旋轉（使用者設定「減少動態效果」時不轉） */
+        @keyframes rotarySpin { to { transform: rotate(360deg); } }
+        .rotary-spin { animation: rotarySpin 2.4s linear infinite; }
+        @media (prefers-reduced-motion: reduce) { .rotary-spin { animation: none; } }
+    </style>
+    <script>/* 從圖文選單打開行事曆時，LINE 上方標題顯示「扶輪行事曆」而不是「LINE 自助報到」 */ if (/[?&]p=calendar\b/.test(location.search) || /p%3Dcalendar/i.test(location.search)) document.title = '扶輪行事曆';</script>
 </head>
 <body class="bg-slate-100 text-slate-900 min-h-screen">
     <header class="bg-slate-900 text-white">
@@ -34,8 +41,8 @@
     <main class="max-w-md mx-auto px-4 py-5 space-y-4">
         <!-- 讀取中 -->
         <div id="viewLoading" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center text-slate-500">
-            <div class="text-3xl">⏳</div>
-            <div class="mt-2 font-bold" id="loadingText">讀取中…</div>
+            <img src="./rotary-wheel.png" alt="" width="72" height="72" class="rotary-spin mx-auto" style="width:72px;height:72px">
+            <div class="mt-3 font-bold text-lg" id="loadingText">請稍候…</div>
         </div>
 
         <!-- 無法使用時的說明 -->
