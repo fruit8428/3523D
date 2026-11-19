@@ -203,6 +203,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - **資料表**（`supabase/sql/line_bindings.sql`，要先跑過 `event_checkins.sql`）：`line_bindings`（`line_user_id` 主鍵、`unique(club_name, person_key)`；RLS 無 policy，anon 完全讀不到，比照旅平險個資）；函式 `line_checkin_mark` 只開放 `service_role`，寫入 `event_checkins` 時 `method='line'`、`checked_by='LINE 自助'`（代家人報到為 `LINE（某某 代）`）。
 - **規則**：只能綁社友庫裡的人；一個 LINE 只能綁一個名字、一個名字只能被一個 LINE 綁；報到要活動在「報到中」；本人要在 `buildRoster` 的名單內，或櫃台已幫他現場加報（pending）；同行者只限社友庫裡互為寶(尊)眷（`spouseOfId`）且也在名單上的人，前端送來的其他 key 會被忽略；報到後小程式用 Realtime REST 廣播 `rotary-checkin` 通知櫃台。
 - 不做防代點（不做動態 QR Code、GPS），使用者已決定。
+- **加好友提醒（2026-11-19）**：地區設定檔 `lineOfficialId`（官方帳號 ID，3521＝`@007eapij`、3523＝`@628ouczd`）。`line.html` 的 `checkFriend()` 用 `liff.getFriendship()` 問 LINE 這個人加好友了沒，沒加就顯示 `#friendBar`（「加入好友」連到 `https://line.me/R/ti/p/@id`），切回頁面時重查。**前提**：LINE Developers 的 LINE Login 頻道要設定「Linked LINE Official Account」（另可把 LIFF 的 Add friend option 設為 On (Aggressive)，第一次同意時順便加好友）；沒連結時 `getFriendship` 會丟錯，程式靜默略過、不顯示提醒。
 
 ### LINE 推播提醒（2026-11-14）
 

@@ -49,6 +49,12 @@
     </header>
 
     <main class="max-w-md mx-auto px-4 py-5 space-y-4">
+        <!-- 還沒把官方帳號加為好友的提醒（沒加好友收不到推播與提醒）。由 checkFriend() 顯示 -->
+        <div id="friendBar" class="hidden bg-emerald-50 border-2 border-emerald-400 rounded-2xl px-4 py-3">
+            <div class="font-black text-base text-emerald-900">📢 請把官方帳號加為好友</div>
+            <div class="text-sm text-slate-700 mt-0.5">加好友後才收得到行程提醒與活動通知。</div>
+            <a id="friendLink" href="#" class="mt-2 block text-center bg-emerald-600 active:bg-emerald-700 text-white font-black text-base rounded-xl py-3">加入好友</a>
+        </div>
         <!-- 讀取中 -->
         <div id="viewLoading" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center text-slate-500">
             <div class="rotary-stage" aria-hidden="true"><div class="rotary-glow"></div><div class="rotary-tilt"><img src="./rotary-wheel.png" alt="" width="88" height="88" class="rotary-spin"></div><div class="rotary-shadow"></div></div>
@@ -323,6 +329,20 @@
             window.scrollTo({ top: 0 });
         }
 
+        // ================= 官方帳號好友檢查 =================
+        // LINE Login 頻道有連結官方帳號（Linked LINE Official Account）時，可以問 LINE「這個人加好友了沒」。
+        // 沒加就在最上方提醒並給「加入好友」按鈕；查不到（沒連結、舊版 LINE、網路問題）就什麼都不顯示，不影響其他功能。
+        async function checkFriend() {
+            const oid = String(D.lineOfficialId || '').trim();
+            if (!oid || !window.liff || !liff.getFriendship) return;
+            try {
+                const f = await liff.getFriendship();
+                $('friendLink').href = 'https://line.me/R/ti/p/' + encodeURIComponent(oid.charAt(0) === '@' ? oid : '@' + oid);
+                $('friendBar').classList.toggle('hidden', !!(f && f.friendFlag));
+            } catch (e) { $('friendBar').classList.add('hidden'); }
+        }
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && idToken) checkFriend(); });   // 加完好友切回來就收起提醒
+
         // ================= 啟動 =================
         async function start() {
             const r = await api('init', eventKey ? { eventKey: eventKey } : {});
@@ -361,6 +381,7 @@
             }
             idToken = liff.getIDToken() || '';
             if (!idToken) return showMessage('⚠️', 'LINE 身分驗證失敗', '無法取得 LINE 登入資訊，請關閉這個頁面後，從 LINE 重新開啟。', true);
+            checkFriend();      // 不等結果，不擋住主要流程
             await start();
         })();
     </script>

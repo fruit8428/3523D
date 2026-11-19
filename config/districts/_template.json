@@ -12,6 +12,7 @@
   "ragAssistantUrl": "https://rotary-3481-ai.vercel.app",
   "defaultClubPassword": "",
   "lineLiffId": "",
+  "lineOfficialId": "",
   "linePushEnabled": false,
   "calendarEnabled": false,
   "emailDomain": "rotary3481.org",
