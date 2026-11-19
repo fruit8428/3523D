@@ -207,6 +207,19 @@ window.confirm=()=>true; const FN_URL='https://x.supabase.co/functions/v1/line-c
   await p.evaluate(() => { calSetGov(0); }); await new Promise(r => setTimeout(r, 200)); await p.evaluate(() => calOpenForm());
   ok('代管總監時的新增畫面沒有同步勾選', await p.evaluate(() => !document.getElementById('cfShare')));
   await p.evaluate(() => { calCancelForm(); calSetGov(-1); }); await new Promise(r => setTimeout(r, 200));
+  // 秘書按「我要參加」時同時加入總監行事曆
+  await p.evaluate(() => { calSetLayer('all'); calSetRange('week'); }); await new Promise(r => setTimeout(r, 300));
+  await p.evaluate(() => { __rs.mine = null; __rs.guests = []; window.__gov = { name: 'DG Gov', joined: false, byMe: false }; const o = api; api = async (a, x) => { const r = await o(a, x); if (a === 'cal_rsvp_set') window.__gov = { name: 'DG Gov', joined: x.join && x.withGov === true, byMe: x.join && x.withGov === true }; if (a === 'cal_rsvp_status' || a === 'cal_rsvp_set') r.gov = window.__gov; return r; }; });
+  await p.evaluate(() => calOpenDetail('meet')); await new Promise(r => setTimeout(r, 300));
+  ok('秘書看活動：出現「同時加入總監行事曆」且預設勾選', await p.evaluate(() => { const c = document.getElementById('calGovSync'); return !!c && c.checked && !c.disabled && document.getElementById('calReg').innerText.includes('同時加入總監 DG Gov 的行事曆'); }));
+  await p.evaluate(() => { window.__calls.length = 0; return calRsvp(true); }); await new Promise(r => setTimeout(r, 300));
+  ok('按我要參加：送出時帶 withGov＝true', await p.evaluate(() => { const c = window.__calls.find(c => c[0] === 'cal_rsvp_set'); return !!c && c[1].join === true && c[1].withGov === true; }));
+  ok('參加後：勾選仍在（已同步），並有「更新總監同步」按鈕', await p.evaluate(() => document.getElementById('calGovSync').checked && document.getElementById('calReg').innerText.includes('更新總監同步')));
+  await p.evaluate(() => { const c = document.getElementById('calGovSync'); c.checked = false; c.onchange(); window.__calls.length = 0; return calRsvp(true); }); await new Promise(r => setTimeout(r, 300));
+  ok('取消勾選後按更新：帶 withGov＝false', await p.evaluate(() => { const c = window.__calls.find(c => c[0] === 'cal_rsvp_set'); return !!c && c[1].withGov === false && !document.getElementById('calGovSync').checked; }));
+  await p.evaluate(() => { window.__gov = { name: 'DG Gov', joined: true, byMe: false }; return calLoadReg('meet'); }); await new Promise(r => setTimeout(r, 300));
+  ok('總監自己已登記：勾選鎖住並說明', await p.evaluate(() => { const c = document.getElementById('calGovSync'); return c.checked && c.disabled && document.getElementById('calReg').innerText.includes('總監已經登記參加'); }));
+  await p.evaluate(() => { calBack(); calSetGov(0); }); await new Promise(r => setTimeout(r, 200));
   ok('無 JS 錯誤', errs.length === 0); if (errs.length) console.log(errs);
   await b.close();
 })();

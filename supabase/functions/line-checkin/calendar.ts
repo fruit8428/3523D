@@ -105,7 +105,7 @@ async function loadRoles(admin: Any, me: CalMe): Promise<CalRoles> {
     // 總監秘書：找出後台指定的總監（通常一位），秘書可以看、也可以代為新增修改他的私人行程
     const { data: gs, error: e2 } = await admin.from("calendar_roles").select("club_name,person_key,full_name,nickname").eq("role", "governor");
     if (e2) dbFail(e2);
-    r.govs = (gs || []).filter((g: Any) => !(g.club_name === me.club && g.person_key === me.key))
+    r.govs = (gs || []).filter((g: Any) => g.club_name === me.club && g.person_key !== me.key)      // 總監秘書與總監必須同社（使用者規定）
       .map((g: Any) => ({ club: String(g.club_name), key: String(g.person_key), name: String(g.full_name || ""), nickname: String(g.nickname || "") }));
   }
   return r;
@@ -279,6 +279,31 @@ async function rsvpStatus(admin: Any, ev: Any, me: CalMe, reg: RegDeps | undefin
   return out;
 }
 
+// ---------- 總監秘書按「我要參加」時，同時幫總監登記（總監的「私人」頁與每日推播就會有這筆） ----------
+// 總監秘書與總監一定同社（後台指定時會檢查），所以秘書看得到的地區／社內行程總監也都看得到：
+// 直接幫總監寫一筆參加紀錄（proxy_by＝秘書；秘書取消時只收回自己代登記的，總監自己登記的不動）。
+const secProxy = (me: CalMe) => `總監秘書 ${me.name}（${me.club}）`;
+async function govSyncState(admin: Any, ev: Any, me: CalMe, roles: CalRoles): Promise<Any | null> {
+  const g = roles.secretary ? (roles.govs || [])[0] : null;
+  if (!g) return null;
+  const { data, error } = await admin.from("calendar_rsvp").select("proxy_by").eq("event_id", ev.id).eq("club_name", g.club).eq("person_key", g.key).maybeSingle();
+  if (error) dbFail(error);
+  return { name: g.nickname || g.name, joined: !!data, byMe: !!data && data.proxy_by === secProxy(me) };
+}
+async function govSyncSet(admin: Any, ev: Any, me: CalMe, roles: CalRoles, on: boolean) {
+  for (const g of (roles.secretary ? roles.govs || [] : [])) {
+    if (on) {
+      const { error } = await admin.from("calendar_rsvp").upsert(
+        { event_id: ev.id, club_name: g.club, person_key: g.key, full_name: g.name, nickname: g.nickname || "", proxy_by: secProxy(me) },
+        { onConflict: "event_id,club_name,person_key", ignoreDuplicates: true });      // 總監自己已經登記過就不動
+      if (error) dbFail(error);
+    } else {
+      const { error } = await admin.from("calendar_rsvp").delete().eq("event_id", ev.id).eq("club_name", g.club).eq("person_key", g.key).eq("proxy_by", secProxy(me));   // 只收回我代登記的
+      if (error) dbFail(error);
+    }
+  }
+}
+
 // 這批行程裡「我參加的」：地區／社內行程中，我已被執秘正式報名（名單算法與報到、推播相同），或我按了「我要參加」。
 // 結果用來讓這些活動也出現在「私人」行事曆。報名名單每個對應活動只算一次。
 async function joinedMap(admin: Any, rows: Any[], me: CalMe, reg: RegDeps | undefined): Promise<Map<string, string>> {
@@ -389,7 +414,7 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
     if (!ev || ev.layer === "private" || (ev.layer === "club" && ev.club_name !== me.club)) fail("CAL_NOT_FOUND");
     if (action === "cal_rsvp_status") {
       // 自動更新（poll）時不需要家人名單，省掉讀取整包社友庫
-      return { ok: true, ...(await rsvpStatus(admin, ev, me, reg, body.poll !== true)) };
+      return { ok: true, ...(await rsvpStatus(admin, ev, me, reg, body.poll !== true)), gov: await govSyncState(admin, ev, me, roles) };
     }
     const st0: Any = await rsvpStatus(admin, ev, me, reg, true);
     if (!st0.linked) fail("CAL_REG_UNAVAILABLE");
@@ -419,14 +444,18 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
           { onConflict: "event_id,club_name,person_key", ignoreDuplicates: true });
         if (e3) dbFail(e3);
       }
+      // 總監秘書：withGov＝true 同時幫總監登記；false 收回我代總監登記的；沒帶＝不動
+      if (body.withGov === true) await govSyncSet(admin, ev, me, roles, true);
+      else if (body.withGov === false) await govSyncSet(admin, ev, me, roles, false);
     } else {
       if (st0.mine === "registered") fail("CAL_RSVP_LOCKED");       // 已由執秘送出正式報名，要取消請洽執秘
       const { error: e4 } = await rsvpTable().delete().eq("event_id", ev.id).eq("club_name", me.club).eq("person_key", me.key);
       if (e4) dbFail(e4);
       const { error: e5 } = await rsvpTable().delete().eq("event_id", ev.id).eq("club_name", me.club).eq("guest_of", me.key);   // 我帶的寶尊眷一併取消
       if (e5) dbFail(e5);
+      await govSyncSet(admin, ev, me, roles, false);      // 我代總監登記的一併收回（總監自己登記的不動）
     }
-    return { ok: true, ...(await rsvpStatus(admin, ev, me, reg, true)) };
+    return { ok: true, ...(await rsvpStatus(admin, ev, me, reg, true)), gov: await govSyncState(admin, ev, me, roles) };
   }
 
   // ---------- 出席率：本人；可看全社的人＝後台設定的名單，沒設定時是社長（P）、秘書（S） ----------
@@ -1259,6 +1288,12 @@ export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Pro
     if (!m) fail("MEMBER_NOT_FOUND");
     const managedClub = role === "club_editor" ? String(body.managedClub || club) : "";
     if (role === "club_editor" && !(await ctx.clubInfos()).some((c) => c.name === managedClub)) fail("BAD_REQUEST");
+    // 總監秘書與總監必須是同一社（秘書才能代管總監的行事曆、同步參加活動）
+    if (role === "governor" || role === "governor_cc") {
+      const { data: pair, error: e0 } = await admin.from("calendar_roles").select("club_name").eq("role", role === "governor" ? "governor_cc" : "governor");
+      if (e0) dbFail(e0);
+      if ((pair || []).some((x: Any) => x.club_name !== club)) fail("CAL_GOV_CLUB_MISMATCH");
+    }
     const { error } = await admin.from("calendar_roles").upsert(
       { club_name: club, person_key: key, full_name: m.name, nickname: m.nickname || "", role, managed_club: managedClub },
       { onConflict: "club_name,person_key,role,managed_club", ignoreDuplicates: true });

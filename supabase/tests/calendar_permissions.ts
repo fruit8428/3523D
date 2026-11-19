@@ -398,23 +398,24 @@ ok("刪除補出席後出席率跟著變", (await deskM("cal_desk_attend_report"
 {
   const G: Record<string, any[]> = { calendar_roles: [
     { id: 1, club_name: "甲社", person_key: "總|G", full_name: "總", nickname: "G", role: "governor", managed_club: "" },
-    { id: 2, club_name: "乙社", person_key: "秘|S", full_name: "秘", nickname: "S", role: "governor_cc", managed_club: "" },
+    { id: 2, club_name: "甲社", person_key: "秘|S", full_name: "秘", nickname: "S", role: "governor_cc", managed_club: "" },
+    { id: 3, club_name: "乙社", person_key: "外|O", full_name: "外", nickname: "O", role: "governor_cc", managed_club: "" },
   ], calendar_events: [
     { id: "gd", layer: "district", club_name: "", owner_key: "", title: "地區大會", start_at: "2026-12-05T01:00:00.000Z", end_at: "2026-12-05T03:00:00.000Z", status: "confirmed" },
     { id: "gc", layer: "club", club_name: "甲社", owner_key: "", title: "甲社例會", start_at: "2026-12-06T01:00:00.000Z", end_at: "2026-12-06T03:00:00.000Z", status: "confirmed" },
     { id: "sc", layer: "club", club_name: "乙社", owner_key: "", title: "乙社例會", start_at: "2026-12-06T01:00:00.000Z", end_at: "2026-12-06T03:00:00.000Z", status: "confirmed" },
     { id: "gp", layer: "private", club_name: "甲社", owner_key: "總|G", title: "總監看醫生", start_at: "2026-12-07T01:00:00.000Z", end_at: "2026-12-07T03:00:00.000Z", status: "confirmed" },
-    { id: "sp", layer: "private", club_name: "乙社", owner_key: "秘|S", title: "秘書私事", start_at: "2026-12-07T01:00:00.000Z", end_at: "2026-12-07T03:00:00.000Z", status: "confirmed" },
+    { id: "sp", layer: "private", club_name: "甲社", owner_key: "秘|S", title: "秘書私事", start_at: "2026-12-07T01:00:00.000Z", end_at: "2026-12-07T03:00:00.000Z", status: "confirmed" },
     { id: "op", layer: "private", club_name: "甲社", owner_key: "王|", title: "王的私事", start_at: "2026-12-07T01:00:00.000Z", end_at: "2026-12-07T03:00:00.000Z", status: "confirmed" },
   ], calendar_event_types: [], calendar_rsvp: [] };
   const g = fake(G);
-  const GOV = { club: "甲社", key: "總|G", name: "總", nickname: "G" }, SEC = { club: "乙社", key: "秘|S", name: "秘", nickname: "S" }, X = { club: "甲社", key: "王|", name: "王", nickname: "" };
+  const GOV = { club: "甲社", key: "總|G", name: "總", nickname: "G" }, SEC = { club: "甲社", key: "秘|S", name: "秘", nickname: "S" }, X = { club: "甲社", key: "王|", name: "王", nickname: "" };
   const FG = { forGov: { club: "甲社", key: "總|G" } };
   const init = await handleMember("cal_init", {}, g, SEC);
   ok("總監秘書：cal_init 回傳可代管的總監", init.roles.secretary === true && init.roles.govs.length === 1 && init.roles.govs[0].key === "總|G");
   ok("一般社友與總監本人：沒有可代管的對象", !(await handleMember("cal_init", {}, g, X)).roles.govs && !(await handleMember("cal_init", {}, g, GOV)).roles.govs);
   const own = (await handleMember("cal_list", W, g, SEC)).events.map((e: any) => e.title).sort();
-  ok("秘書看自己的行事曆：不含總監的私人行程", JSON.stringify(own) === JSON.stringify(["乙社例會", "地區大會", "秘書私事"].sort()));
+  ok("秘書看自己的行事曆：不含總監的私人行程", JSON.stringify(own) === JSON.stringify(["甲社例會", "地區大會", "秘書私事"].sort()));
   const gv = await handleMember("cal_list", { ...W, ...FG }, g, SEC);
   ok("秘書看總監的行事曆：地區＋總監的社＋總監私人（不含秘書自己的、不含別人的私人）", JSON.stringify(gv.events.map((e: any) => e.title).sort()) === JSON.stringify(["地區大會", "甲社例會", "總監看醫生"].sort()));
   ok("總監的行事曆裡只有總監私人行程可以改", gv.events.every((e: any) => e.canEdit === (e.layer === "private")));
@@ -445,6 +446,37 @@ ok("刪除補出席後出席率跟著變", (await deskM("cal_desk_attend_report"
   ok("一般社友帶 shareGov 被擋；社內行程帶 shareGov 不會同步", await code(handleMember("cal_save", { event: ev({ layer: "private", title: "亂同步" }), ...SG }, g, X)) === "CAL_FORBIDDEN" && await code(handleMember("cal_save", { event: ev({ layer: "club", club: "乙社" }), ...SG }, g, SEC)) === "CAL_FORBIDDEN");
   const solo = await handleMember("cal_save", { event: ev({ layer: "private", title: "秘書看牙" }) }, g, SEC);
   ok("沒勾同步：存成秘書自己的私人行程，總監看不到", G.calendar_events.find((e) => e.id === solo.event.id).owner_key === "秘|S" && !(await handleMember("cal_list", W, g, GOV)).events.some((e: any) => e.title === "秘書看牙"));
+  // 秘書按「我要參加」時同時幫總監登記
+  G.calendar_events.find((e) => e.id === "gd").rsvp_enabled = true; G.calendar_events.find((e) => e.id === "gc").rsvp_enabled = true;
+  const govJoined = async (id: string) => (await handleMember("cal_list", W, g, GOV)).events.find((e: any) => e.id === id)?.joined || null;
+  const st1 = await handleMember("cal_rsvp_status", { id: "gd" }, g, SEC);
+  ok("秘書看地區活動：回傳總監的同步狀態（還沒加入）；一般社友沒有這個欄位", st1.gov && st1.gov.joined === false && (await handleMember("cal_rsvp_status", { id: "gd" }, g, X)).gov === null);
+  const j1 = await handleMember("cal_rsvp_set", { id: "gd", join: true, withGov: true }, g, SEC);
+  ok("秘書參加地區活動並同步：總監也被登記，總監的私人頁（joined）有這筆", j1.mine === "interested" && j1.gov.joined && j1.gov.byMe && (await govJoined("gd")) === "interested");
+  await handleMember("cal_rsvp_set", { id: "gd", join: true, withGov: false }, g, SEC);
+  ok("取消勾選後更新：收回總監的登記，秘書自己仍參加", (await govJoined("gd")) === null && (await handleMember("cal_rsvp_status", { id: "gd" }, g, SEC)).mine === "interested");
+  await handleMember("cal_rsvp_set", { id: "gd", join: true, withGov: true }, g, SEC);
+  await handleMember("cal_rsvp_set", { id: "gd", join: false }, g, SEC);
+  ok("秘書取消參加：代總監登記的一併取消", (await govJoined("gd")) === null);
+  await handleMember("cal_rsvp_set", { id: "gd", join: true }, g, GOV);
+  await handleMember("cal_rsvp_set", { id: "gd", join: true, withGov: true }, g, SEC);
+  await handleMember("cal_rsvp_set", { id: "gd", join: false }, g, SEC);
+  ok("總監自己登記的，秘書取消時不會被收回", (await govJoined("gd")) === "interested");
+  await handleMember("cal_rsvp_set", { id: "gd", join: true }, g, X);
+  ok("一般社友帶 withGov 沒有作用", G.calendar_rsvp.filter((r) => r.event_id === "gd" && r.person_key === "總|G").length === 1 && !G.calendar_rsvp.some((r) => r.event_id === "gd" && r.person_key === "總|G" && r.proxy_by));
+  const j2 = await handleMember("cal_rsvp_set", { id: "gc", join: true, withGov: true }, g, SEC);
+  ok("社內活動同步：秘書與總監同社，總監也被登記", j2.gov.joined && j2.gov.byMe && (await govJoined("gc")) === "interested" && !G.calendar_events.some((e) => e.layer === "private" && e.title === "甲社例會"));
+  await handleMember("cal_rsvp_set", { id: "gc", join: false }, g, SEC);
+  ok("秘書取消社內活動：總監的登記一併取消", (await govJoined("gc")) === null);
+  const OUT = { club: "乙社", key: "外|O", name: "外", nickname: "O" };
+  ok("不同社的總監秘書：沒有可代管的總監，也不能代管", (await handleMember("cal_init", {}, g, OUT)).roles.govs.length === 0 && await code(handleMember("cal_list", { ...W, ...FG }, g, OUT)) === "CAL_FORBIDDEN");
+  {
+    const R: Record<string, any[]> = { calendar_roles: [{ id: 1, club_name: "甲社", person_key: "王|", full_name: "王", nickname: "", role: "governor", managed_club: "" }] };
+    const ctx = { admin: fake(R), password: "pw", members: async () => ({ 甲社: [{ name: "王", nickname: "" }, { name: "趙", nickname: "" }], 乙社: [{ name: "李", nickname: "" }] }), clubInfos: async () => [] };
+    ok("後台：總監秘書與總監不同社不能指定", await code(handleAdmin("cal_admin_grant", { adminPassword: "pw", club: "乙社", personKey: "李|", role: "governor_cc" }, ctx)) === "CAL_GOV_CLUB_MISMATCH");
+    ok("後台：同社可以指定為總監秘書", (await handleAdmin("cal_admin_grant", { adminPassword: "pw", club: "甲社", personKey: "趙|", role: "governor_cc" }, ctx)).ok && R.calendar_roles.some((r) => r.role === "governor_cc" && r.club_name === "甲社"));
+    ok("後台：已有甲社的秘書時，不能把別社的人指定為總監", await code(handleAdmin("cal_admin_grant", { adminPassword: "pw", club: "乙社", personKey: "李|", role: "governor" }, ctx)) === "CAL_GOV_CLUB_MISMATCH");
+  }
   G.calendar_roles = G.calendar_roles.filter((r) => r.role !== "governor_cc");
   const g2 = fake({ ...G, calendar_roles: G.calendar_roles });
   ok("取消秘書身分後立刻不能再看或改", await code(handleMember("cal_list", { ...W, ...FG }, g2, SEC)) === "CAL_FORBIDDEN" && await code(handleMember("cal_delete", { id: "gp" }, g2, SEC)) === "CAL_FORBIDDEN");
