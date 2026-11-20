@@ -180,6 +180,30 @@ create table if not exists public.calendar_digest_log (
 );
 alter table public.calendar_digest_log enable row level security;
 
+-- 各社活動提醒推播：哪些社開放（沒有這一列＝關閉）、前一天幾點推。排程在 calendar_club_remind.sql。
+create table if not exists public.calendar_club_push (
+    club_name  text primary key,
+    enabled    boolean not null default true,
+    hour       int not null default 20 check (hour between 8 and 21),   -- 活動前一天的幾點推（台灣時間，整點）
+    updated_at timestamptz not null default now()
+);
+alter table public.calendar_club_push enable row level security;    -- 不建立 policy＝前端讀不到，只有雲端小程式能讀寫
+revoke all on public.calendar_club_push from anon, authenticated;
+
+-- 「今天這個活動已經推給誰」：各社活動提醒與活動主委的推播都會寫，用來避免同一天重複提醒同一個活動。
+-- event_ref＝對應的報名活動 key（大類id::子活動名稱）；沒有對應報名活動的行程＝cal:<行程 id>。
+create table if not exists public.calendar_push_sent (
+    sent_day   date not null,               -- 發送當天（台灣日期）
+    event_ref  text not null,
+    club_name  text not null,
+    person_key text not null,               -- 姓名|Nick Name
+    source     text not null default '',    -- club＝各社活動提醒；chair＝活動主委推播
+    sent_at    timestamptz not null default now(),
+    primary key (sent_day, event_ref, club_name, person_key)
+);
+alter table public.calendar_push_sent enable row level security;
+revoke all on public.calendar_push_sent from anon, authenticated;
+
 alter table public.calendar_rsvp        enable row level security;
 alter table public.calendar_ics         enable row level security;
 alter table public.calendar_event_types enable row level security;

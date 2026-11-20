@@ -71,6 +71,22 @@
         </section>
 
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h2 class="font-black text-lg">④-2 各社活動提醒推播（允許推播的社）</h2>
+            <p class="text-sm text-slate-600 mt-1 leading-relaxed"><b>預設全部關閉</b>，在這裡開放的社才會推播。開放後，系統在活動<b>前一天</b>的指定時間（預設<b>晚上 8:00</b>）用 LINE 提醒該社<b>明天有活動</b>的社友。對象＝已按「我要參加」（含執秘代為登記）或已被執秘正式報名的社友；範圍＝地區活動與該社的社內活動，私人行程不提醒。一位社友一則卡片，列出他明天參加的全部活動；要在 LINE 綁定過身分才收得到。<b>不重複</b>：活動主委當天已經推播過的活動，同一位社友不會再收到這個活動的提醒；總監與總監秘書已有上面 ④ 的每日推播，這裡不再提醒。每則都使用官方帳號的推播額度。</p>
+            <div class="mt-3 text-sm font-bold text-slate-700">已開放的社</div>
+            <div id="cpList" class="mt-2"><span class="text-sm text-slate-500">讀取中…</span></div>
+            <div class="mt-4 text-sm font-bold text-slate-700">開放新的社</div>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+                <select id="cpClub" class="min-w-0 flex-1 border border-slate-300 rounded-lg px-3 py-2.5 text-base"></select>
+                <label class="text-sm text-slate-600">前一天</label>
+                <select id="cpHour" class="border border-slate-300 rounded-lg px-3 py-2.5 text-base"></select>
+                <button type="button" id="cpAdd" onclick="cpAdd()" class="bg-blue-700 text-white font-bold rounded-lg px-4 py-2.5">開放</button>
+            </div>
+            <div id="cpMsg" class="mt-2 text-sm font-bold"></div>
+            <div id="cpBox" class="mt-3"></div>
+        </section>
+
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
             <h2 class="font-black text-lg">⑤ 誰可以在 LINE 看「報名／繳費狀況」</h2>
             <p class="text-sm text-slate-600 mt-1 leading-relaxed"><b>總監、總監秘書</b>不用設定，在 LINE 行事曆的「💰 報名」就看得到<b>全部活動</b>。其他人（例如活動主委、地區辦公室人員）要在這裡<b>逐活動指定個人</b>，可多選、可跨社；選「全部活動」的人每個活動都看得到。被指定的人要在 LINE 綁定過身分，重新打開行事曆後生效。一般社友看不到這些數字。</p>
             <div class="mt-3"><select id="svEvent" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-base" onchange="svPick()"></select></div>
@@ -150,6 +166,7 @@
     function render() {
         if (!svLoaded) svLoad();
         if (!bnLoaded) bnLoad();
+        if (!cpLoaded) cpLoad(); else cpRender();
         $('roleList').innerHTML = state.roles.length ? `<table class="w-full text-sm"><thead><tr class="text-left text-slate-500 border-b"><th class="py-2">姓名</th><th>所屬社</th><th>角色</th><th>管理範圍</th><th></th></tr></thead><tbody>${state.roles.map(r => `<tr class="border-b border-slate-100"><td class="py-2 font-bold">${E(r.name)}${r.nickname ? `<span class="ml-1 font-normal text-slate-500">${E(r.nickname)}</span>` : ''}</td><td>${E(clubLabel(r.club))}</td><td>${E(ROLE_NAME[r.role] || r.role)}</td><td>${E(r.role === 'club_editor' ? clubLabel(r.managedClub) : r.role === 'district_editor' ? '全地區' : '')}</td><td class="text-right"><button type="button" onclick="revoke(${Number(r.id)})" class="text-rose-700 font-bold">移除</button></td></tr>`).join('')}</tbody></table>` : '<div class="text-slate-500 text-sm">還沒有指定任何管理者。</div>';
         $('noEditorCount').textContent = state.clubsWithoutEditor.length;
         // 依分區分組，社名前面加社代號，方便對照找人
@@ -376,6 +393,70 @@
         const m = $('bnMsg'); m.className = 'self-center text-sm font-bold text-emerald-700'; m.textContent = `已發送 ${r.sent} 人`;
     }
 
+    // ---------- ④-2 各社活動提醒推播：逐社開放（預設關閉）、前一天幾點推 ----------
+    let cp = { clubs: [], hours: [], defaultHour: 20 }, cpLoaded = false;
+    const CP_STATUS = { SENT: ['✅ 已發送', 'text-emerald-700'], PREVIEW: ['會收到', 'text-emerald-700'], NOT_BOUND: ['⚠️ 還沒綁定 LINE，收不到', 'text-rose-700'], ALREADY: ['今天已推播過（主委或本提醒），不重複', 'text-slate-500'], GOV_DIGEST: ['總監／總監秘書，已有 ④ 的每日推播', 'text-slate-500'], FAILED: ['❌ 發送失敗', 'text-rose-700'] };
+    const cpHourText = h => (h < 12 ? '上午 ' + h : h === 12 ? '中午 12' : (h < 18 ? '下午 ' : '晚上 ') + (h - 12)) + ':00';
+    const cpHourOptions = sel => (cp.hours || []).map(h => `<option value="${h}"${h === sel ? ' selected' : ''}>${cpHourText(h)}</option>`).join('');
+    function cpErr(code) { return code === 'CAL_TABLE_MISSING' ? '資料表還沒建立：請先在 Supabase 執行 supabase/sql/calendar_club_remind.sql。' : code === 'PUSH_DISABLED' ? '這個地區還沒開放 LINE 推播（雲端沒有設定官方帳號的 token）。' : code === 'CAL_CLUB_PUSH_OFF' ? '這個社還沒開放。' : code === 'BAD_REQUEST' && !D.lineLiffId ? '地區設定檔沒有 LINE LIFF ID，無法產生「查看詳情」連結。' : errText(code); }
+    function cpSay(text, bad) { const m = $('cpMsg'); m.className = 'mt-2 text-sm font-bold ' + (bad ? 'text-rose-700' : 'text-emerald-700'); m.textContent = text || ''; }
+    function cpApply(r) { cp = { clubs: r.clubs || [], hours: r.hours || [], defaultHour: r.defaultHour || 20 }; cpRender(); }
+    function cpRender() {
+        const on = new Set(cp.clubs.map(c => c.club));
+        const order = (state.clubInfos || []).map(c => c.name);
+        const list = cp.clubs.slice().sort((a, b) => order.indexOf(a.club) - order.indexOf(b.club));
+        window.__cpClubs = list.map(c => c.club);
+        $('cpList').innerHTML = list.length ? `<div class="border border-slate-200 rounded-lg divide-y divide-slate-100">${list.map((c, i) => `<div class="flex flex-wrap items-center gap-2 px-3 py-2">
+            <div class="min-w-0 flex-1 font-bold">${E(clubLabel(c.club))}</div>
+            <label class="text-sm text-slate-600">前一天</label>
+            <select onchange="cpSetHour(${i}, this.value)" class="cpHourSel border border-slate-300 rounded-lg px-2 py-1.5 text-sm">${cpHourOptions(c.hour)}</select>
+            <button type="button" onclick="cpRun(${i}, false)" class="bg-slate-800 text-white font-bold rounded-lg px-3 py-1.5 text-sm">預覽</button>
+            <button type="button" onclick="cpRun(${i}, true)" class="border border-blue-700 text-blue-800 font-bold rounded-lg px-3 py-1.5 text-sm">📤 現在發送</button>
+            <button type="button" onclick="cpOff(${i})" class="text-rose-700 font-bold text-sm px-2">關閉</button>
+        </div>`).join('')}</div>` : '<div class="text-sm text-slate-500">目前沒有任何社開放，所以不會有任何社友收到活動提醒。</div>';
+        const groups = [];
+        (state.clubInfos || []).filter(c => !on.has(c.name)).forEach(c => { let g = groups.find(x => x.division === c.division); if (!g) { g = { division: c.division, clubs: [] }; groups.push(g); } g.clubs.push(c); });
+        $('cpClub').innerHTML = '<option value="">— 請選擇社 —</option>' + groups.map(g => `<optgroup label="${E(g.division)}">${g.clubs.map(c => `<option value="${E(c.name)}">${E(c.code ? c.code + ' ' : '')}${E(c.name)}</option>`).join('')}</optgroup>`).join('');
+        $('cpHour').innerHTML = cpHourOptions(cp.defaultHour);
+    }
+    async function cpLoad() {
+        const r = await api('cal_admin_clubpush_get');
+        if (!r.ok) { $('cpList').innerHTML = `<div class="text-sm font-bold text-rose-700">${E(cpErr(r.code))}</div>`; return; }
+        cpLoaded = true; cpApply(r);
+    }
+    async function cpSave(club, enabled, hour, okText) {
+        const r = await api('cal_admin_clubpush_save', { club: club, enabled: enabled, hour: hour });
+        if (!r.ok) { cpSay(cpErr(r.code), true); return false; }
+        cpApply(r); cpSay(okText); return true;
+    }
+    async function cpAdd() {
+        const club = $('cpClub').value, hour = Number($('cpHour').value);
+        if (!club) { cpSay('請先選擇要開放的社。', true); return; }
+        if (!confirm(`要開放「${club}」的活動提醒推播嗎？\n\n開放後，系統會在每個活動的前一天 ${cpHourText(hour)}，自動用 LINE 提醒該社已表示參加或已報名的社友。會使用官方帳號的推播額度。`)) return;
+        await cpSave(club, true, hour, `已開放：${club}（前一天 ${cpHourText(hour)}）`);
+    }
+    async function cpSetHour(i, v) { const club = (window.__cpClubs || [])[i]; if (club) await cpSave(club, true, Number(v), `已更新：${club} 改為前一天 ${cpHourText(Number(v))}`); }
+    async function cpOff(i) {
+        const club = (window.__cpClubs || [])[i]; if (!club) return;
+        if (!confirm(`要關閉「${club}」的活動提醒推播嗎？關閉後該社社友不會再收到自動提醒。`)) return;
+        if (await cpSave(club, false, 0, `已關閉：${club}`)) $('cpBox').innerHTML = '';
+    }
+    // 預覽（不發送）或現在就發送這個社「明天」的提醒（真的會發，並記錄，今晚排程不會再重複）
+    async function cpRun(i, send) {
+        const club = (window.__cpClubs || [])[i]; if (!club) return;
+        if (send && !confirm(`要現在就把「明天的活動提醒」發給「${club}」的社友嗎？\n\n這是正式發送（不是測試）：收到的人今天不會再收到同一個活動的提醒。`)) return;
+        $('cpBox').innerHTML = '<div class="text-sm text-slate-500">處理中…</div>';
+        const r = await api(send ? 'cal_admin_clubpush_send' : 'cal_admin_clubpush_preview', { club: club, liffId: D.lineLiffId || '' });
+        if (!r.ok) { $('cpBox').innerHTML = `<div class="text-sm font-bold text-rose-700">${E(cpErr(r.code))}</div>`; return; }
+        const c = (r.clubs || [])[0] || { events: [], recipients: [] };
+        const will = c.recipients.filter(x => x.status === 'PREVIEW' || x.status === 'SENT').length;
+        $('cpBox').innerHTML = `<div class="border border-slate-200 rounded-xl p-3">
+            <div class="font-black">${E(clubLabel(club))} <span class="font-normal text-sm text-slate-500">明天 ${E(r.day)}</span></div>
+            ${send ? `<div class="text-sm font-bold text-emerald-700 mt-1">已發送 ${r.sent} 則。</div>` : ''}
+            ${c.events.length ? `<div class="text-sm mt-1 text-slate-600">明天開始的活動 <b>${c.events.length}</b> 個：</div><ul class="mt-1 text-sm space-y-1">${c.events.map(e => `<li class="border-l-4 pl-2 ${e.layer === 'district' ? 'border-blue-600' : 'border-amber-600'}"><b>${E(e.time)}</b>　${E(e.title)}</li>`).join('')}</ul>` : '<div class="text-sm mt-1 text-slate-500">明天沒有地區或社內活動，不會推播。</div>'}
+            ${c.events.length ? (c.recipients.length ? `<div class="mt-2 text-sm font-bold text-slate-700">參加的社友（${c.recipients.length} 人${send ? '' : `，其中 ${will} 人會收到`}）</div><ul class="text-sm">${c.recipients.map(x => `<li>${E(x.nickname ? x.nickname + ' ' : '')}${E(x.name)}　<span class="text-slate-500">${x.events + x.already} 個活動</span>　<span class="font-bold ${(CP_STATUS[x.status] || ['', ''])[1]}">${E((CP_STATUS[x.status] || [x.status])[0])}</span></li>`).join('')}</ul>` : '<div class="text-sm mt-2 text-slate-500">這個社還沒有人表示參加或報名明天的活動，不會推播。</div>') : ''}
+        </div>`;
+    }
     // ---------- ④ 總監每日推播 ----------
     const DG_STATUS = { SENT: ['✅ 已發送', 'text-emerald-700'], PREVIEW: ['會收到', 'text-emerald-700'], NOT_BOUND: ['⚠️ 還沒綁定 LINE，收不到', 'text-rose-700'], NO_EVENTS: ['這天總監沒有私人行程或已參加的活動，不推播', 'text-slate-500'], ALREADY: ['今天已推過', 'text-slate-500'], FAILED: ['❌ 發送失敗', 'text-rose-700'] };
     function dgTomorrow() { const d = new Date(Date.now() + 8 * 3600e3 + 86400e3); return d.toISOString().slice(0, 10); }

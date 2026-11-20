@@ -9,7 +9,7 @@
 //    這個資料夾裡的 checkin-core.js 是專案根目錄那一份的複本，根目錄的改了要一起複製過來。
 // =====================================================================
 import "./checkin-core.js";
-import { agendaReply, backupReminder, CalError, governorDigest, parseAgendaKeyword, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
+import { agendaReply, backupReminder, CalError, governorDigest, clubReminder, parseAgendaKeyword, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
 // deno-lint-ignore no-explicit-any
 type Any = any;
 const Core = (globalThis as Any).CheckinCore;
@@ -195,7 +195,7 @@ async function selectPushTargets(deps: Deps, eventKey: string, filter: Any) {
   });
   const targets = entries.map((e: Any) => {
     const same = byName.get(e.club + "\u0001" + e.name) || [];
-    return { club: e.club, divName: e.divName, name: e.name || e.nickname, nickname: e.nickname || "", uid: byKey.get(e.club + "\u0001" + e.key) || (same.length === 1 ? same[0] : null) };
+    return { club: e.club, key: e.key, divName: e.divName, name: e.name || e.nickname, nickname: e.nickname || "", uid: byKey.get(e.club + "\u0001" + e.key) || (same.length === 1 ? same[0] : null) };
   });
   return { title: roster.title || "", targets };
 }
@@ -306,21 +306,31 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
     const seen = new Set<string>();
     const list = bound.filter((t: Any) => (seen.has(t.uid) ? false : (seen.add(t.uid), true)));
     let sent = 0, failed = 0;
+    const got: Any[] = [];      // 真的送出去的人（記進 calendar_push_sent，讓「各社活動提醒」同一天不再重複提醒同一個活動）
     if (personal) {
       // 內容含個人化變數：一人一則，分批同時送出
       for (let i = 0; i < list.length; i += 8) {
         await Promise.all(list.slice(i, i + 8).map(async (t: Any) => {
-          try { await push.send([t.uid], base.split("{姓名}").join(t.name).split("{社名}").join(t.club)); sent++; } catch (_e) { failed++; }
+          try { await push.send([t.uid], base.split("{姓名}").join(t.name).split("{社名}").join(t.club)); sent++; got.push(t); } catch (_e) { failed++; }
         }));
       }
     } else {
       for (let i = 0; i < list.length; i += 500) {
         const chunk = list.slice(i, i + 500);
-        try { await push.send(chunk.map((t: Any) => t.uid), base); sent += chunk.length; } catch (_e) { failed += chunk.length; }
+        try { await push.send(chunk.map((t: Any) => t.uid), base); sent += chunk.length; got.push(...chunk); } catch (_e) { failed += chunk.length; }
       }
     }
     const log = await deps.admin.from("line_push_log").insert({ event_key: eventKey, sender: String(body.sender || "").slice(0, 60) || null, filter: body.filter || {}, message, target_count: sel.targets.length, sent_count: sent, failed_count: failed, unbound_count: unbound.length });
     if (log.error) console.error("推播紀錄寫入失敗", log.error.message);
+    // 記下「今天（台灣日期）這個活動推給了誰」。資料表還沒建立或寫入失敗都不影響這次推播
+    try {
+      const day = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+      const rows = got.filter((t: Any) => t.club && t.key).map((t: Any) => ({ sent_day: day, event_ref: eventKey, club_name: t.club, person_key: t.key, source: "chair" }));
+      for (let i = 0; i < rows.length; i += 500) {
+        const r2 = await deps.admin.from("calendar_push_sent").upsert(rows.slice(i, i + 500), { onConflict: "sent_day,event_ref,club_name,person_key", ignoreDuplicates: true });
+        if (r2.error) { console.error("推播對象紀錄寫入失敗", r2.error.message); break; }
+      }
+    } catch (e) { console.error("推播對象紀錄寫入失敗", (e as Error).message); }
     return { ok: true, total: sel.targets.length, sent, failed, unbound: unbound.length };
   }
 
@@ -381,6 +391,24 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
       catch (e) { console.error("備份提醒失敗", (e as Error).message); }
       console.log("總監每日推播", JSON.stringify({ day: r.day, sent: r.sent, governors: (r.governors || []).map((g: Any) => ({ events: g.events.length, recipients: g.recipients.map((x: Any) => x.status) })) }));
       return r;
+    } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
+  }
+  // 各社活動提醒：排程每個整點呼叫一次，只處理「已開放、而且設定的時間＝現在這個整點」的社（同樣用排程密碼把關）
+  if (action === "cal_cron_club_remind") {
+    try {
+      const { data, error } = await deps.admin.from("calendar_settings").select("value").eq("key", "cron_secret").maybeSingle();
+      if (error) fail("CAL_TABLE_MISSING");
+      const secret = data ? String(data.value || "") : "";
+      if (!secret || String(body.secret || "") !== secret) { await sleep(1000); fail("CAL_CRON_AUTH_FAILED"); }
+      const send = deps.push && deps.push.token && deps.push.sendMessages ? deps.push.sendMessages : null;
+      if (!send) fail("PUSH_DISABLED");
+      const liffId = String(body.liffId || "");
+      if (!/^[\w-]{5,80}$/.test(liffId)) fail("BAD_REQUEST");
+      let st: Any = null;
+      const reg = { roster: async (eventKey: string) => { if (!st) st = await loadState(deps, false); const ro = Core.buildRoster(st, eventKey); return { ok: !!ro.ok, title: ro.title || "", persons: ro.persons || [] }; } };
+      const r = await clubReminder(deps.admin, { liffId, send: send!, reg });
+      if (r.clubs.length) console.log("各社活動提醒", JSON.stringify({ day: r.day, hour: r.hour, sent: r.sent, clubs: r.clubs.map((c: Any) => ({ club: c.club, events: c.events.length, status: c.recipients.map((x: Any) => x.status) })) }));
+      return { ok: true, day: r.day, hour: r.hour, sent: r.sent, clubs: r.clubs.length };
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
   }
   if (action.startsWith("cal_admin_")) {

@@ -4,7 +4,7 @@ const puppeteer = require('puppeteer');
   const browser = await puppeteer.launch({ headless: 'new' });
   const page = await browser.newPage();
   let fail = 0; const ok = (n, c) => { console.log((c ? '✅ ' : '❌ ') + n); if (!c) fail++; };
-  const saved = {}; const sent = []; let bnPeople = []; let svRows = [{ eventKey: 's::高爾夫', club: '乙社', key: '林|Lin', name: '林', nickname: 'Lin' }];
+  const saved = {}; const sent = []; let cpClubs = []; let bnPeople = []; let svRows = [{ eventKey: 's::高爾夫', club: '乙社', key: '林|Lin', name: '林', nickname: 'Lin' }];
   const members = [{ key: '王|P Robert', name: '王', nickname: 'P Robert', role: '社長', spouse: false, isDefault: true },
                    { key: '李|S Ken', name: '李', nickname: 'S Ken', role: '社友', spouse: false, isDefault: true },
                    { key: '陳|PP Fred', name: '陳', nickname: 'PP Fred', role: '社友', spouse: false, isDefault: false }];
@@ -25,6 +25,9 @@ const puppeteer = require('puppeteer');
     if (b.action === 'cal_admin_statviewers_save') svRows = svRows.filter(v => v.eventKey !== b.eventKey).concat(b.people.map(x => ({ eventKey: b.eventKey, club: x.club, key: x.key, name: x.key.split('|')[0], nickname: x.key.split('|')[1] })));
     if (b.action === 'cal_admin_statviewers_get' || b.action === 'cal_admin_statviewers_save') r = { ok: true, events: [{ key: 'app::分攤金', catName: '地辦分攤金', subName: '上半年分攤金' }, { key: 's::高爾夫', catName: '運動賽事', subName: '高爾夫' }], viewers: svRows };
     if (b.action === 'cal_admin_digest_preview' || b.action === 'cal_admin_digest_test') r = { ok: true, day: b.day, sent: b.action === 'cal_admin_digest_test' ? 2 : 0, governors: [{ name: '王總監', nickname: 'Gov', club: '甲社', events: [{ id: 'd1', layer: 'district', title: '授證典禮', time: '18:00–21:00', location: '君悅', dressCode: '正式' }], recipients: [{ as: '總監', name: '王總監', status: b.action === 'cal_admin_digest_test' ? 'SENT' : 'PREVIEW' }, { as: '總監秘書（副本）', name: '林秘書', status: 'NOT_BOUND' }] }] };
+    if (b.action === 'cal_admin_clubpush_save') { cpClubs = cpClubs.filter(c => c.club !== b.club); if (b.enabled !== false) cpClubs.push({ club: b.club, enabled: true, hour: b.hour }); }
+    if (b.action === 'cal_admin_clubpush_get' || b.action === 'cal_admin_clubpush_save') r = { ok: true, hours: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21], defaultHour: 20, clubs: cpClubs };
+    if (b.action === 'cal_admin_clubpush_preview' || b.action === 'cal_admin_clubpush_send') { const send = b.action.endsWith('_send'); r = { ok: true, day: '2026-11-21', sent: send ? 1 : 0, clubs: [{ club: b.club, sent: send ? 1 : 0, events: [{ id: 'e1', layer: 'club', title: '例會', time: '18:00–20:00' }], recipients: [{ name: '王', nickname: 'P Robert', events: 1, already: 0, status: send ? 'SENT' : 'PREVIEW' }, { name: '陳', nickname: 'PP Fred', events: 1, already: 0, status: 'NOT_BOUND' }, { name: '李', nickname: 'S Ken', events: 0, already: 1, status: 'ALREADY' }] }] }; }
     if (b.action === 'cal_admin_viewers_save') { if (b.reset) delete saved[b.club]; else saved[b.club] = b.keys; r = view(b.club); }
     req.respond({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(r) });
   });
@@ -86,6 +89,32 @@ const puppeteer = require('puppeteer');
   await page.click('#bnTest'); await wait(400);
   ok('⑥ 測試發送：顯示每個人的結果', sent.some(x => x.action === 'cal_admin_backupnotify_test') && await page.evaluate(() => document.getElementById('bnChips').innerText.includes('已發送') && document.getElementById('bnMsg').textContent === '已發送 1 人'));
   ok('⑤ 無 JS 錯誤', jsErr.length === 0); if (jsErr.length) console.log(jsErr);
+  // ④-2 各社活動提醒推播
+  await page.waitForFunction(() => document.getElementById('cpList').textContent.includes('目前沒有任何社開放'));
+  ok('④-2：預設沒有任何社開放；時間選單預設晚上 8:00、共 14 個整點', await page.$eval('#cpHour', s => s.value === '20' && s.options.length === 14 && s.selectedOptions[0].textContent === '晚上 8:00'));
+  await page.click('#cpAdd');
+  ok('④-2：沒選社就按開放 → 提示先選社，不送出', (await page.$eval('#cpMsg', e => e.textContent)).includes('請先選擇') && !sent.some(b => b.action === 'cal_admin_clubpush_save'));
+  await page.select('#cpClub', '乙社'); await page.select('#cpHour', '18'); await page.click('#cpAdd');
+  await page.waitForFunction(() => document.getElementById('cpList').textContent.includes('乙社'));
+  let cps = sent.filter(b => b.action === 'cal_admin_clubpush_save').pop();
+  ok('④-2：開放乙社、前一天下午 6 點', cps.club === '乙社' && cps.enabled === true && cps.hour === 18 && (await page.$eval('#cpMsg', e => e.textContent)).includes('已開放：乙社'));
+  ok('④-2：開放後，該社從「開放新的社」選單消失、列表的時間是 18', await page.$eval('#cpClub', s => !Array.from(s.options).some(o => o.value === '乙社')) && await page.$eval('.cpHourSel', s => s.value === '18'));
+  await page.select('.cpHourSel', '20');
+  await page.waitForFunction(() => document.getElementById('cpMsg').textContent.includes('已更新'));
+  cps = sent.filter(b => b.action === 'cal_admin_clubpush_save').pop();
+  ok('④-2：直接改時間就儲存', cps.club === '乙社' && cps.hour === 20);
+  await page.click('button[onclick="cpRun(0, false)"]');
+  await page.waitForFunction(() => document.getElementById('cpBox').textContent.includes('參加的社友'));
+  const cpT = await page.$eval('#cpBox', e => e.textContent);
+  ok('④-2 預覽：列出明天的活動與每個人的狀態（會收到／沒綁定／今天已推播過）', cpT.includes('例會') && cpT.includes('其中 1 人會收到') && cpT.includes('還沒綁定 LINE') && cpT.includes('不重複') && !sent.some(b => b.action === 'cal_admin_clubpush_send'));
+  await page.click('button[onclick="cpRun(0, true)"]');
+  await page.waitForFunction(() => document.getElementById('cpBox').textContent.includes('已發送 1 則'));
+  ok('④-2 現在發送：送出該社與 LIFF ID', (() => { const x = sent.filter(b => b.action === 'cal_admin_clubpush_send').pop(); return x.club === '乙社' && !!x.liffId; })());
+  await page.click('button[onclick="cpOff(0)"]');
+  await page.waitForFunction(() => document.getElementById('cpList').textContent.includes('目前沒有任何社開放'));
+  cps = sent.filter(b => b.action === 'cal_admin_clubpush_save').pop();
+  ok('④-2 關閉：送出 enabled=false，列表清空、該社回到可開放的選單', cps.enabled === false && await page.$eval('#cpClub', s => Array.from(s.options).some(o => o.value === '乙社')));
+  ok('沒有 JavaScript 錯誤（含 ④-2）', jsErr.length === 0); if (jsErr.length) console.log(jsErr);
   await browser.close();
   console.log(fail ? `❌ ${fail} 項失敗` : '全部通過'); process.exit(fail ? 1 : 0);
 })();

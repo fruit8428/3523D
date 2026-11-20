@@ -1156,7 +1156,7 @@ export async function eventsOfPerson(admin: Any, club: string, key: string, from
     .sort((a: Any, b: Any) => Number(!!b.all_day) - Number(!!a.all_day) || Date.parse(a.start_at) - Date.parse(b.start_at));
 }
 // 一位總監明天的卡片（Flex Message）。events 已依開始時間排序
-export function buildDigestMessage(gov: { name: string; nickname?: string }, day: string, events: Any[], liffId: string, test = false, tomorrow = true): Any {
+export function buildDigestMessage(gov: { name: string; nickname?: string }, day: string, events: Any[], liffId: string, test = false, tomorrow = true, alt2?: { title: string; sub: string }): Any {
   const [y, m, d] = day.split("-").map(Number);
   const wd = DIGEST_WD[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
   const dayText = `${m}/${d}（${wd}）`;
@@ -1171,14 +1171,14 @@ export function buildDigestMessage(gov: { name: string; nickname?: string }, day
   const who = gov.nickname ? `${gov.name} ${gov.nickname}` : gov.name;
   const first = events[0];
   const when = tomorrow ? "明天 " : "";
-  const alt = `${test ? "【測試】" : ""}📅 ${when}${dayText}有 ${events.length} 個行程：${digestTimeText(first, day)} ${first.title}${events.length > 1 ? " 等" : ""}`.slice(0, 390);
+  const alt = `${test ? "【測試】" : ""}${alt2 ? "🔔" : "📅"} ${when}${dayText}有 ${events.length} 個${alt2 ? "活動" : "行程"}：${digestTimeText(first, day)} ${first.title}${events.length > 1 ? " 等" : ""}`.slice(0, 390);
   return {
     type: "flex", altText: alt,
     contents: {
       type: "bubble", size: "mega",
       header: { type: "box", layout: "vertical", backgroundColor: "#1E3A8A", paddingAll: "16px", contents: [
-        { type: "text", text: `${test ? "【測試】" : ""}📅 ${tomorrow ? "明天的行程" : "行程"}（${events.length}）`, color: "#FFFFFF", weight: "bold", size: "lg", wrap: true },
-        { type: "text", text: `${dayText}・總監 ${who}`, color: "#BFDBFE", size: "sm", margin: "sm", wrap: true },
+        { type: "text", text: `${test ? "【測試】" : ""}${alt2 ? `🔔 ${alt2.title}` : `📅 ${tomorrow ? "明天的行程" : "行程"}`}（${events.length}）`, color: "#FFFFFF", weight: "bold", size: "lg", wrap: true },
+        { type: "text", text: alt2 ? `${dayText}・${alt2.sub}` : `${dayText}・總監 ${who}`, color: "#BFDBFE", size: "sm", margin: "sm", wrap: true },
       ] },
       body: { type: "box", layout: "vertical", paddingAll: "16px", contents: items },
       footer: { type: "box", layout: "vertical", contents: [
@@ -1239,6 +1239,110 @@ export async function governorDigest(admin: Any, o: DigestOpts): Promise<Any> {
           if (e2) console.error("總監推播紀錄寫入失敗", e2.message || e2);
         }
       } catch (e: Any) { rec.status = "FAILED"; console.error("總監推播失敗", (e && e.message) || e); }
+    }
+  }
+  return out;
+}
+
+// =====================================================================
+// 各社活動提醒推播：管理者在行事曆後台逐社開放（預設關閉）。開放的社，系統在「活動前一天」的指定整點（預設晚上 8 點）
+// 提醒該社「明天有活動、而且已經表示參加或已正式報名」的社友（地區＋社內活動；私人行程不提醒）。
+//   - 一位社友一則卡片，列出他明天參加的所有活動。要綁定過 LINE 才收得到。
+//   - 不重複：同一個活動×同一位社友×同一天只推一次（表 calendar_push_sent）。活動主委在報名系統發的推播也會寫進這張表，
+//     所以主委當天已經推過的人，這裡就不再提醒那個活動（event_ref＝對應的報名活動 key；沒有對應報名活動的行程＝cal:<行程id>）。
+//   - 總監、總監秘書已經有「總監每日推播」，這裡不再提醒他們。
+// =====================================================================
+export const CLUB_PUSH_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
+export const CLUB_PUSH_DEFAULT_HOUR = 20;
+export const pushRef = (e: Any) => (e.registration_key ? String(e.registration_key) : `cal:${e.id}`);
+export async function loadClubPush(admin: Any): Promise<{ club: string; enabled: boolean; hour: number }[]> {
+  const { data, error } = await admin.from("calendar_club_push").select("club_name,enabled,hour");
+  if (error) dbFail(error);
+  return (data || []).map((r: Any) => ({ club: String(r.club_name), enabled: !!r.enabled, hour: Number(r.hour) }));
+}
+export interface ClubRemindOpts {
+  liffId: string;
+  send?: (to: string, messages: Any[]) => Promise<void>;   // 沒給＝只預覽
+  reg?: RegDeps;
+  now?: number;
+  club?: string;        // 只處理這一社（後台預覽／立即發送，不看設定的時間）；沒給＝排程：處理「開放、而且時間＝現在這個整點」的社
+}
+export async function clubReminder(admin: Any, o: ClubRemindOpts): Promise<Any> {
+  const now = o.now || Date.now();
+  const today = tpYmd(now), day = tpYmd(now + 86400_000), hour = Number(tpHm(now).slice(0, 2));
+  const from = Date.parse(`${day}T00:00:00+08:00`), to = Date.parse(`${day}T23:59:59+08:00`);
+  const clubs = o.club ? [o.club] : (await loadClubPush(admin)).filter((c) => c.enabled && c.hour === hour).map((c) => c.club);
+  const out: Any = { ok: true, day, today, hour, sent: 0, clubs: [] as Any[] };
+  if (!clubs.length) return out;
+  // 地區活動每個社都一樣，只查一次
+  const base = () => admin.from("calendar_events").select("*").gte("end_at", new Date(from).toISOString()).lte("start_at", new Date(to).toISOString()).neq("status", "cancelled").order("start_at").limit(200);
+  const dq = await base().eq("layer", "district");
+  if (dq.error) dbFail(dq.error);
+  const rosterCache = new Map<string, Any[]>();
+  const rosterOf = async (key: string) => {
+    if (!rosterCache.has(key)) { let ps: Any[] = []; try { const ro = o.reg ? await o.reg.roster(key) : null; if (ro && ro.ok) ps = ro.persons || []; } catch (_e) { ps = []; } rosterCache.set(key, ps); }
+    return rosterCache.get(key)!;
+  };
+  for (const club of clubs) {
+    const item: Any = { club, events: [] as Any[], recipients: [] as Any[], sent: 0 };
+    out.clubs.push(item);
+    const cq = await base().eq("layer", "club").eq("club_name", club);
+    if (cq.error) dbFail(cq.error);
+    // 只提醒「明天開始」的活動（多天活動只在開始的前一天提醒），全天在前、其餘依開始時間
+    const events: Any[] = [...(dq.data || []), ...(cq.data || [])].filter((e: Any) => e.status !== "cancelled" && tpYmd(Date.parse(e.start_at)) === day)
+      .sort((a: Any, b: Any) => Number(!!b.all_day) - Number(!!a.all_day) || Date.parse(a.start_at) - Date.parse(b.start_at));
+    item.events = events.map((e: Any) => ({ id: e.id, layer: e.layer, title: e.title, time: digestTimeText(e, day) }));
+    if (!events.length) continue;
+    // 誰參加：按了「我要參加」（含執秘代登記；非社友同行者不算）＋已被執秘正式報名
+    const people = new Map<string, { key: string; name: string; nickname: string; evs: Set<string> }>();
+    const join = (key: string, name: string, nickname: string, evId: string) => {
+      if (!key || isExtGuestKey(key)) return;
+      let p = people.get(key); if (!p) { p = { key, name: name || key.split("|")[0], nickname: nickname || "", evs: new Set() }; people.set(key, p); }
+      p.evs.add(evId);
+    };
+    const rq = await admin.from("calendar_rsvp").select("event_id,person_key,full_name,nickname").eq("club_name", club).in("event_id", events.map((e: Any) => e.id));
+    if (rq.error) dbFail(rq.error);
+    (rq.data || []).forEach((r: Any) => join(String(r.person_key), r.full_name, r.nickname, String(r.event_id)));
+    for (const e of events) {
+      if (!e.registration_key) continue;
+      (await rosterOf(String(e.registration_key))).filter((p: Any) => p.club === club).forEach((p: Any) => join(String(p.key), p.name, p.nickname, String(e.id)));
+    }
+    if (!people.size) continue;
+    const [bq, gq, sq] = await Promise.all([
+      admin.from("line_bindings").select("line_user_id,person_key,full_name").eq("club_name", club),
+      admin.from("calendar_roles").select("person_key,role").eq("club_name", club).in("role", ["governor", "governor_cc"]),
+      admin.from("calendar_push_sent").select("event_ref,person_key").eq("sent_day", today).eq("club_name", club),
+    ]);
+    for (const q of [bq, gq, sq]) if (q.error) dbFail(q.error);
+    const uidByKey = new Map<string, string>(), uidsByName = new Map<string, string[]>();
+    (bq.data || []).forEach((b: Any) => { uidByKey.set(String(b.person_key), String(b.line_user_id)); uidsByName.set(b.full_name, (uidsByName.get(b.full_name) || []).concat(String(b.line_user_id))); });
+    const govKeys = new Set((gq.data || []).map((r: Any) => String(r.person_key)));
+    const done = new Set((sq.data || []).map((r: Any) => `${r.event_ref}\u0001${r.person_key}`));
+    const jobs: Any[] = [];
+    for (const p of people.values()) {
+      const mine = events.filter((e: Any) => p.evs.has(String(e.id)));
+      const todo = mine.filter((e: Any) => !done.has(`${pushRef(e)}\u0001${p.key}`));
+      const rec: Any = { name: p.name, nickname: p.nickname, events: todo.length, already: mine.length - todo.length, status: "" };
+      item.recipients.push(rec);
+      if (govKeys.has(p.key)) { rec.status = "GOV_DIGEST"; continue; }
+      const same = uidsByName.get(p.name) || [];
+      const uid = uidByKey.get(p.key) || (same.length === 1 ? same[0] : "");
+      if (!uid) { rec.status = "NOT_BOUND"; continue; }
+      if (!todo.length) { rec.status = "ALREADY"; continue; }
+      if (!o.send) { rec.status = "PREVIEW"; continue; }
+      jobs.push({ p, rec, uid, todo });
+    }
+    for (let i = 0; i < jobs.length; i += 8) {
+      await Promise.all(jobs.slice(i, i + 8).map(async (j: Any) => {
+        const who = j.p.nickname ? `${j.p.nickname} ${j.p.name}` : j.p.name;
+        try {
+          await o.send!(j.uid, [buildDigestMessage({ name: j.p.name, nickname: j.p.nickname }, day, j.todo, o.liffId, false, true, { title: "明天的活動提醒", sub: `${club}・${who}` })]);
+          j.rec.status = "SENT"; item.sent++; out.sent++;
+          const refs = Array.from(new Set(j.todo.map(pushRef)));
+          const { error: e2 } = await admin.from("calendar_push_sent").upsert(refs.map((ref) => ({ sent_day: today, event_ref: ref, club_name: club, person_key: j.p.key, source: "club" })), { onConflict: "sent_day,event_ref,club_name,person_key", ignoreDuplicates: true });
+          if (e2) console.error("活動提醒紀錄寫入失敗", e2.message || e2);
+        } catch (e: Any) { j.rec.status = "FAILED"; console.error("活動提醒發送失敗", (e && e.message) || e); }
+      }));
     }
   }
   return out;
@@ -1450,6 +1554,33 @@ export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Pro
       return await backupReminder(admin, { stats: ctx.reg!.stats!, send: ctx.sendLine, test: true });
     }
     return { ...(await backupReminder(admin, { stats: ctx.reg!.stats! })), afterDays: BACKUP_REMIND_AFTER_DAYS };
+  }
+
+  // ---------- 各社活動提醒推播：逐社開放（預設關閉）、設定前一天幾點推、預覽、立即發送 ----------
+  if (action === "cal_admin_clubpush_get" || action === "cal_admin_clubpush_save" || action === "cal_admin_clubpush_preview" || action === "cal_admin_clubpush_send") {
+    if (action !== "cal_admin_clubpush_get") {
+      const club = String(body.club || "");
+      if (!(await ctx.clubInfos()).some((c) => c.name === club)) fail("BAD_REQUEST");
+      if (action === "cal_admin_clubpush_save") {
+        if (body.enabled === false) {
+          const { error } = await admin.from("calendar_club_push").delete().eq("club_name", club);
+          if (error) dbFail(error);
+        } else {
+          const hour = Number(body.hour);
+          if (!CLUB_PUSH_HOURS.includes(hour)) fail("BAD_REQUEST");
+          const { error } = await admin.from("calendar_club_push").upsert({ club_name: club, enabled: true, hour, updated_at: new Date().toISOString() }, { onConflict: "club_name" });
+          if (error) dbFail(error);
+        }
+      } else {
+        const liffId = String(body.liffId || "");
+        if (!/^[\w-]{5,80}$/.test(liffId)) fail("BAD_REQUEST");
+        const send = action === "cal_admin_clubpush_send";
+        if (send && !ctx.sendLine) fail("PUSH_DISABLED");
+        if (send && !(await loadClubPush(admin)).some((c) => c.club === club && c.enabled)) fail("CAL_CLUB_PUSH_OFF");
+        return await clubReminder(admin, { club, liffId, send: send ? ctx.sendLine : undefined, reg: ctx.reg });
+      }
+    }
+    return { ok: true, hours: CLUB_PUSH_HOURS, defaultHour: CLUB_PUSH_DEFAULT_HOUR, clubs: (await loadClubPush(admin)).filter((c) => c.enabled) };
   }
 
   // ---------- 總監每日推播：預覽（不發送）、測試發送（立刻發、標「測試」、不記錄） ----------
