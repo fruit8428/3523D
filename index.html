@@ -863,15 +863,15 @@
                 </div><!-- /panelBody -->
             </div>
 
-            <!-- 正式上線前資料歸零（僅最高管理員） -->
+            <!-- 示範資料（僅最高管理員）。整批清空的按鈕已於 2026-11-20 移除，改用主委後台「歷屆備份與清空本活動」逐活動處理 -->
             <div data-panel="adminReset" class="bg-white rounded-xl shadow-sm border-2 border-rose-200 p-4 sm:p-5 mt-5">
                 <!-- 面板標題列（永遠顯示）：白話說明點開能做什麼，方便每年換屆的新主委 -->
                 <button type="button" onclick="togglePanel('adminReset')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_adminReset">
                     <div class="flex items-start gap-3 min-w-0">
-                        <div class="w-9 h-9 rounded-lg bg-rose-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">🧹</div>
+                        <div class="w-9 h-9 rounded-lg bg-slate-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">🧪</div>
                         <div class="min-w-0">
-                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">正式上線前資料歸零</div>
-                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>清空示範用的繳費紀錄、全部報名單或全部社友庫，或重新載入示範資料做展示。每顆按鈕都會再次確認，清空後所有裝置同步生效且無法復原。</p>
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">示範資料（展示用）</div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>載入示範資料做展示。要清空某個活動的報名與繳費資料，請到主委後台的「📦 歷屆備份與清空本活動」，一個活動一個活動先備份再清空。</p>
                         </div>
                     </div>
                     <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
@@ -880,23 +880,11 @@
                 </button>
                 <div id="panelBody_adminReset" class="hidden mt-4 pt-4 border-t border-slate-100">
                 <div class="pb-4 border-b border-rose-100 mb-4">
-                    <span class="text-xs font-bold text-rose-600 uppercase tracking-wider">Go-Live Data Reset</span>
-                    <h3 class="text-base sm:text-lg font-bold text-slate-900">🧹 正式上線前資料歸零</h3>
-                    <p class="text-xs text-slate-500 mt-1">系統內建的示範資料（模擬繳費狀況、示範報名單、示範社友）請在正式啟用前清空。每顆按鈕都會再次確認，清空後所有裝置同步生效，<b class="text-rose-600">無法復原</b>，建議先到「跨裝置同步與備份」匯出 JSON 備份。</p>
+                    <span class="text-xs font-bold text-rose-600 uppercase tracking-wider">Demo Data</span>
+                    <h3 class="text-base sm:text-lg font-bold text-slate-900">🧪 示範資料（展示用）</h3>
+                    <p class="text-xs text-slate-500 mt-1">這裡不再提供「一次清空全部」的按鈕。上線前或換主委後要清空資料，請切到該活動，在主委後台的「📦 歷屆備份與清空本活動」按「備份並清空本活動」：會先備份、確認成功後才清空，其他活動與各社社友庫都不受影響。</p>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <button onclick="adminClearPaymentData()" class="text-left p-3 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 transition active:scale-[0.99]">
-                        <div class="font-bold text-sm text-rose-700">🧹 清空繳費紀錄</div>
-                        <div class="text-[11px] text-slate-600 mt-1">所有研討會、地區年會的「各分區各社繳費狀況即時總表」歸零為 0 社已繳。</div>
-                    </button>
-                    <button onclick="adminClearRegistrationOrders()" class="text-left p-3 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 transition active:scale-[0.99]">
-                        <div class="font-bold text-sm text-rose-700">🧹 清空全部報名單</div>
-                        <div class="text-[11px] text-slate-600 mt-1">刪除所有活動已送出的報名表、贊助選項與贊助獎。各社社友庫保留。</div>
-                    </button>
-                    <button onclick="adminClearMemberDatabase()" class="text-left p-3 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 transition active:scale-[0.99]">
-                        <div class="font-bold text-sm text-rose-700">🧹 清空全部社友庫</div>
-                        <div class="text-[11px] text-slate-600 mt-1">刪除 <span data-district-text="{clubCount}">80</span> 社全部社友名冊（含示範社友）。需輸入確認文字才會執行。</div>
-                    </button>
                     <button onclick="adminLoadDemoData()" class="text-left p-3 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 transition active:scale-[0.99]">
                         <div class="font-bold text-sm text-slate-700">🧪 載入示範資料（展示用）</div>
                         <div class="text-[11px] text-slate-600 mt-1">補上示範社友、示範報名單，並為每個研討會/年會子活動生成模擬繳費狀況。已有資料不會被覆蓋。</div>
@@ -7414,10 +7402,10 @@
             return `${cat.id}::${sub}`;
         }
 
-        // ================= 最高管理員：正式上線前資料歸零 / 載入示範資料 =================
+        // ================= 最高管理員：載入示範資料（整批清空的功能已移除，改用「歷屆備份與清空本活動」） =================
         function adminResetGuard() {
             if (currentRole !== 'super_admin') {
-                alert('⚠️ 權限限制：只有最高管理員可以執行資料歸零或載入示範資料！');
+                alert('⚠️ 權限限制：只有最高管理員可以載入示範資料！');
                 return false;
             }
             return true;
@@ -7429,49 +7417,6 @@
             if (typeof renderSelectedMembersTable === 'function') renderSelectedMembersTable();
             if (typeof updateChairDashboard === 'function') updateChairDashboard();
             if (typeof renderDivisionPaymentSection === 'function') renderDivisionPaymentSection();
-        }
-
-        // 清空「各分區各社繳費狀況」全部紀錄與對帳信件（所有研討會/年會子活動一起歸零）
-        async function adminClearPaymentData() {
-            if (!adminResetGuard()) return;
-            const recCount = Object.values(chairPaymentRecords || {}).reduce((a, r) => a + Object.keys(r || {}).length, 0);
-            if (!confirm(`⚠️ 確定清空「各分區各社繳費狀況即時總表」的全部紀錄（${recCount} 筆）？\n\n所有研討會與地區年會的繳費表都會歸零為「0 社已繳」，此動作無法復原。`)) return;
-            chairPaymentRecords = {};
-            emailInboxLogs = [];
-            await savePaymentRecords();
-            await saveEmailInboxLogs();
-            await saveToStorage();
-            refreshAllViewsAfterReset();
-            showToast('🧹 繳費紀錄已全部清空歸零');
-        }
-
-        // 清空所有活動的報名單（社友庫不受影響）
-        async function adminClearRegistrationOrders() {
-            if (!adminResetGuard()) return;
-            const orderCount = Object.values(registrationOrders || {}).reduce((a, arr) => a + (arr || []).length, 0);
-            if (!confirm(`⚠️ 確定清空所有活動的報名單（共 ${orderCount} 筆）？\n\n各社執秘的社友庫不受影響，但所有已送出的報名表、贊助選項、贊助獎與出席名冊都會消失，此動作無法復原。`)) return;
-            if (!confirm('再次確認：真的要刪除「全部活動」的報名單嗎？')) return;
-            registrationOrders = {};
-            currentFormSelectedMembers = [];
-            currentFormPrizeSponsors = [];
-            await saveToStorage();
-            refreshAllViewsAfterReset();
-            showToast('🧹 全部報名單已清空');
-        }
-
-        // 清空全部社友庫（80 社的社友名冊全部刪除）
-        async function adminClearMemberDatabase() {
-            if (!adminResetGuard()) return;
-            const clubs = Object.keys(clubMemberDatabase || {}).filter(k => (clubMemberDatabase[k] || []).length > 0);
-            const memberCount = clubs.reduce((a, k) => a + clubMemberDatabase[k].length, 0);
-            if (!confirm(`⚠️ 確定清空全部社友庫（${clubs.length} 社、共 ${memberCount} 位社友）？\n\n各社執秘之後需重新建立或匯入 Excel 名冊，此動作無法復原。`)) return;
-            const typed = prompt('最後確認：請輸入「清空社友庫」五個字以繼續');
-            if (typed !== '清空社友庫') { showToast('已取消，社友庫未變動'); return; }
-            clubMemberDatabase = {};
-            currentFormSelectedMembers = [];
-            await saveToStorage();
-            refreshAllViewsAfterReset();
-            showToast('🧹 全部社友庫已清空');
         }
 
         // 載入示範資料（展示用）：只補空缺，不覆蓋已存在的真實資料
