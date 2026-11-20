@@ -141,6 +141,20 @@ create table if not exists public.calendar_report_viewers (
 );
 alter table public.calendar_report_viewers enable row level security;
 
+-- 誰可以在 LINE 行事曆看活動的「報名／繳費狀況」（2026-11-20）
+-- 由行事曆後台逐活動指定個人（可多選、可跨社）。event_key＝大類id::子活動名稱；* 代表全部活動。
+-- 總監、總監秘書不用指定就看得到全部。anon 讀不到。
+create table if not exists public.calendar_stat_viewers (
+    event_key  text not null,
+    club_name  text not null,
+    person_key text not null,
+    full_name  text not null default '',
+    nickname   text not null default '',
+    granted_at timestamptz not null default now(),
+    primary key (event_key, club_name, person_key)
+);
+alter table public.calendar_stat_viewers enable row level security;
+
 -- 總監每日推播（2026-11-17）
 -- 角色多一種 governor_cc＝總監秘書（收總監每日推播的副本）。舊資料庫的檢查條件要換掉。
 alter table public.calendar_roles drop constraint if exists calendar_roles_role_check;
@@ -171,6 +185,6 @@ alter table public.calendar_ics         enable row level security;
 alter table public.calendar_event_types enable row level security;
 alter table public.calendar_roles       enable row level security;
 alter table public.calendar_events      enable row level security;
-revoke all on public.calendar_event_types, public.calendar_roles, public.calendar_events, public.calendar_ics, public.calendar_rsvp, public.calendar_attendance, public.calendar_makeups, public.calendar_report_viewers, public.calendar_settings, public.calendar_digest_log from anon, authenticated;
+revoke all on public.calendar_event_types, public.calendar_roles, public.calendar_events, public.calendar_ics, public.calendar_rsvp, public.calendar_attendance, public.calendar_makeups, public.calendar_report_viewers, public.calendar_stat_viewers, public.calendar_settings, public.calendar_digest_log from anon, authenticated;
 revoke all on sequence public.calendar_event_types_id_seq, public.calendar_roles_id_seq, public.calendar_makeups_id_seq from anon, authenticated;
 notify pgrst, 'reload schema';

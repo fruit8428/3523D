@@ -237,7 +237,99 @@
         return out;
     }
 
+    // =====================================================================
+    // 報名／繳費統計（主委後台的分攤金圖表、LINE 行事曆的「📊 報名狀況」共用同一套算法）
+    //   state：{ categoriesData, divisionsData, registrationOrders, chairConfig }；payments＝繳費紀錄（key＝大類id::子活動名稱 → 社名 → {status, amount}）
+    // =====================================================================
+    function isPaidStatus(s) { return s === 'PAID_EMAIL' || s === 'PAID_MANUAL' || s === 'EXEMPT'; }
+    // 「地區辦公室」只為了能被指派為活動主委而存在，永遠不需繳費
+    function isDistrictOfficeDivision(div) {
+        if (!div) return false;
+        const clubs = div.clubs || [];
+        return div.name === '地區團隊' || (clubs.length > 0 && clubs.every(c => c.name === '地區辦公室'));
+    }
+    function paymentDivisions(divisions) { return (divisions || []).filter(d => !isDistrictOfficeDivision(d)); }
+    // 各分區的繳款情形。isDue(社名)＝這一社要不要繳（沒給＝每一社都要繳）
+    function divisionPayRows(divisions, records, isDue) {
+        const recs = records || {};
+        let tClubs = 0, tPaid = 0, tAmt = 0;
+        const rows = paymentDivisions(divisions).map(div => {
+            const paid = [], notified = [], unpaid = []; let amt = 0, total = 0;
+            (div.clubs || []).forEach(club => {
+                const rec = recs[club.name] || { status: 'UNPAID' };
+                const done = isPaidStatus(rec.status);
+                if (isDue && !isDue(club.name) && !done) return;
+                total++;
+                if (done) { paid.push(club.name); amt += Number(rec.amount) || 0; }
+                else unpaid.push(club.name);
+            });
+            tClubs += total; tPaid += paid.length; tAmt += amt;
+            return { div, total, paid, notified, unpaid, amt, rate: total ? paid.length / total : 0 };
+        }).filter(r => r.total > 0);
+        return { rows, tClubs, tPaid, tAmt };
+    }
+    function isPaymentTrackingCat(cat) {
+        if (!cat) return false;
+        const n = cat.name || '';
+        return cat.id === 'seminars' || cat.id === 'conference' || n.includes('研討會') || n.includes('講習會') || n.includes('年會');
+    }
+    // 主委設定的「每社應繳金額」（與 index.html 的 getApportionmentFee 相同：該子活動 → 舊的全域值 → 3000）
+    function configuredClubFee(chairConfig, eventKey) {
+        const cfg = chairConfig || {};
+        const e = (cfg.subEventFees || {})[eventKey];
+        const num = v => v !== undefined && v !== null && v !== '' && !isNaN(Number(v));
+        if (e && num(e.feeApportionment)) return Number(e.feeApportionment);
+        if (num(cfg.feeApportionment)) return Number(cfg.feeApportionment);
+        return 3000;
+    }
+    // 可以看統計的活動清單（依主選單順序）
+    function listStatEvents(state) {
+        const out = [];
+        ((state || {}).categoriesData || []).forEach(cat => (cat.subEvents || []).forEach(sub => {
+            if (typeof sub === 'string' && sub) out.push({ key: makeEventKey(cat.id, sub), catId: cat.id, catName: cat.name || '', subName: sub });
+        }));
+        return out;
+    }
+    /**
+     * 某個活動的報名／繳費統計。
+     * mode：'apportion'＝分攤金／配合款（每社都要繳，不算人數）｜'fixed'＝研討會、年會（每社繳固定金額）｜'order'＝依各社報名表金額（運動賽事、社慶、PELS…，有報名的社才要繳）
+     */
+    function eventStats(state, payments, eventKey) {
+        const st = state || {};
+        const { catId, subName } = parseEventKey(eventKey);
+        const cat = (st.categoriesData || []).find(c => c.id === catId);
+        if (!cat || !subName || !(cat.subEvents || []).includes(subName)) return { ok: false, key: eventKey };
+        const mode = isApportionEvent(cat.name, subName) ? 'apportion' : (isPelsEvent(subName) || !isPaymentTrackingCat(cat)) ? 'order' : 'fixed';
+        const orders = ((st.registrationOrders || {})[subName] || []).filter(o => o && o.clubName);
+        const orderOf = {}; orders.forEach(o => { orderOf[o.clubName] = o; });
+        const fee = configuredClubFee(st.chairConfig, eventKey);
+        const fe = ((st.chairConfig || {}).subEventFees || {})[eventKey];
+        const feeSet = !!(fe && fe.feeApportionment !== undefined && fe.feeApportionment !== null && fe.feeApportionment !== '' && !isNaN(Number(fe.feeApportionment)));   // 主委有沒有替這個活動設定過每社應繳金額
+        const requiredOf = club => mode === 'order' ? (orderOf[club] ? (Number(orderOf[club].grandTotal) || 0) : 0) : fee;
+        const records = (payments || {})[eventKey] || {};
+        const pay = divisionPayRows(st.divisionsData, records, mode === 'order' ? (club => requiredOf(club) > 0) : null);
+        let expected = 0;
+        pay.rows.forEach(r => r.paid.concat(r.unpaid).forEach(c => { expected += requiredOf(c); }));
+        // 報名人數：與報到的應到名單同一套（PELS 攜眷多算一位）
+        let people = null, regClubs = null; const peopleOf = {};
+        if (mode !== 'apportion') {
+            const roster = buildRoster(st, eventKey);
+            people = 0;
+            roster.persons.forEach(p => { const n = 1 + (p.companions || 0); people += n; peopleOf[p.club] = (peopleOf[p.club] || 0) + n; });
+            regClubs = Object.keys(peopleOf).length;
+        }
+        const allClubs = paymentDivisions(st.divisionsData).reduce((n, d) => n + (d.clubs || []).length, 0);
+        return {
+            ok: true, key: eventKey, catName: cat.name || '', subName, mode, fee: mode === 'order' ? null : fee, feeSet: mode === 'order' ? null : feeSet,
+            allClubs, regClubs, people,
+            dueClubs: pay.tClubs, paidClubs: pay.tPaid, paidAmt: pay.tAmt, expected, rate: pay.tClubs ? pay.tPaid / pay.tClubs : 0,
+            rows: pay.rows.map(r => ({ name: r.div.name || ('第 ' + r.div.id + ' 分區'), total: r.total, paid: r.paid, unpaid: r.unpaid, amt: r.amt, rate: r.rate,
+                people: mode === 'apportion' ? null : (r.div.clubs || []).reduce((n, c) => n + (peopleOf[c.name] || 0), 0) }))
+        };
+    }
+
     root.CheckinCore = {
+        isPaidStatus, isDistrictOfficeDivision, paymentDivisions, divisionPayRows, isPaymentTrackingCat, configuredClubFee, listStatEvents, eventStats,
         norm, personKey, makeEventKey, parseEventKey, isApportionEvent, isPelsEvent, PELS_SHORT,
         buildClubIndex, prizeMealGuests, buildRoster, mergeCheckins, computeStats, matchEntry,
         memberRoleRank, compareMembers, isSpouseMember, sortMembers, nickParts

@@ -46,6 +46,26 @@ const fail = (code: string, message?: string): never => { throw new AppError(cod
 
 const personKey = (p: Any) => `${(p && p.name) || ""}|${(p && p.nickname) || ""}`;
 
+// 報名／繳費統計要的資料：主選單、分區、報名表、主委設定的費用＋繳費紀錄（同一次請求只讀一次）
+const PAYMENT_KEY = "rotary_3523_payment_records_v1";
+function statDeps(deps: Deps) {
+  let cache: Promise<{ state: Any; payments: Any }> | null = null;
+  const load = () => cache ||= (async () => {
+    const [a, b] = await Promise.all([
+      deps.admin.from("app_storage").select("cats:value->categoriesData,divs:value->divisionsData,orders:value->registrationOrders,cfg:value->chairConfig").eq("key", MAIN_KEY).maybeSingle(),
+      deps.admin.from("app_storage").select("value").eq("key", PAYMENT_KEY).maybeSingle(),
+    ]);
+    if (a.error) fail("SERVER_ERROR", a.error.message);
+    if (b.error) fail("SERVER_ERROR", b.error.message);
+    const d = a.data || {};
+    return { state: { categoriesData: d.cats || [], divisionsData: d.divs || [], registrationOrders: d.orders || {}, chairConfig: d.cfg || {} }, payments: (b.data && b.data.value) || {} };
+  })();
+  return {
+    events: async () => Core.listStatEvents((await load()).state).map((e: Any) => ({ key: e.key, catName: e.catName, subName: e.subName })),
+    of: async (eventKey: string) => { const x = await load(); return Core.eventStats(x.state, x.payments, eventKey); },
+  };
+}
+
 async function loadState(deps: Deps, withMembers: boolean) {
   const cols = "cats:value->categoriesData,divs:value->divisionsData,orders:value->registrationOrders" +
     (withMembers ? ",members:value->clubMemberDatabase,auth:value->appAuthData" : "");
@@ -346,6 +366,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
         sendLine: deps.push && deps.push.token && deps.push.sendMessages ? deps.push.sendMessages : undefined,
         members: async () => (await loadState(deps, true)).members,
         reg: { roster: async (eventKey: string) => { const ro = Core.buildRoster(await loadState(deps, false), eventKey); return { ok: !!ro.ok, title: ro.title || "", persons: ro.persons || [] }; } },
+        statEvents: () => statDeps(deps).events(),
         clubInfos: async () => ((await loadState(deps, false)).divisionsData || []).flatMap((d: Any) => (d.clubs || []).map((c: Any) => ({ name: c.name, division: d.name || `第 ${d.id} 分區`, code: c.code || "" }))),
       });
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
@@ -396,6 +417,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
           if (!cachedFull) cachedFull = await loadState(deps, true);
           return Array.isArray(cachedFull.members[club]) ? cachedFull.members[club] : [];
         },
+        stats: statDeps(deps),
       };
       return await calMember(action, body, deps.admin, b ? { club: b.club, key: b.key, name: b.name, nickname: b.nickname } : null, reg);
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }

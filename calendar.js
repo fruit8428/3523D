@@ -132,6 +132,7 @@ async function calendarStart() {
         return showMessage('⚠️', r.code === 'NETWORK' ? '網路連線不穩' : '暫時無法使用行事曆', r.code === 'NETWORK' ? '請確認網路後重新整理。' : calErrText(r.code), true);
     }
     calRoles = r.roles || calRoles;
+    calStatAll = !!r.statAll; calStatKeys = r.statKeys || []; calCanStats = !!r.canStats;
     calTypes = r.types || [];
     calLoadPrefs();
     calOffset = 0;
@@ -173,7 +174,7 @@ function calShell() {
         <div id="calMain">
             <div class="flex items-center justify-between gap-2 mb-2">
                 <div class="min-w-0 text-sm text-slate-600 truncate">${E(binding.name)}　${E(binding.club)}</div>
-                <div class="shrink-0 flex gap-2"><button type="button" onclick="calGoToday()" class="text-sm font-bold text-blue-700 border border-blue-200 bg-white rounded-lg px-3 py-1.5">回到今天</button><button type="button" onclick="calOpenAttend('me')" class="text-sm font-bold text-emerald-800 border border-emerald-300 bg-emerald-50 rounded-lg px-3 py-1.5">📊 出席</button><button type="button" onclick="calOpenSettings()" class="text-lg border border-slate-300 bg-white rounded-lg px-2.5 py-1" aria-label="設定">⚙️</button></div>
+                <div class="shrink-0 flex gap-2"><button type="button" onclick="calGoToday()" class="text-sm font-bold text-blue-700 border border-blue-200 bg-white rounded-lg px-3 py-1.5">回到今天</button><button type="button" onclick="calOpenAttend('me')" class="text-sm font-bold text-emerald-800 border border-emerald-300 bg-emerald-50 rounded-lg px-3 py-1.5">📊 出席</button>${calCanStats ? `<button type="button" onclick="calOpenStats()" class="text-sm font-bold text-amber-900 border border-amber-400 bg-amber-50 rounded-lg px-3 py-1.5">💰 報名</button>` : ''}<button type="button" onclick="calOpenSettings()" class="text-lg border border-slate-300 bg-white rounded-lg px-2.5 py-1" aria-label="設定">⚙️</button></div>
             </div>
             <div id="calGovBar"></div>
             <div id="calLayerTabs" class="grid grid-cols-4 gap-1.5"></div>
@@ -308,6 +309,7 @@ function calOpenDetail(id) {
             </div>
         </div>
         ${hasReg ? '<div id="calReg" class="mt-4"></div>' : ''}
+        ${calStatCan(e.registrationKey) && e.layer !== 'private' ? '<div id="calStatOne" class="mt-4"></div>' : ''}
         ${e.withGov && !calGov ? '<div class="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5">🤝 這筆行程與總監同步：總監的行事曆上也有，您或總監修改、取消、刪除，兩邊會一起變。</div>' : ''}
         ${calGov && e.layer !== 'private' && (e.registrationKey || e.rsvpEnabled) ? `<div id="calGovReg" class="mt-4 bg-white rounded-2xl border-2 border-amber-400 shadow-sm p-4"><div class="font-black text-lg">👔 總監 ${E(calGovName(calGov))} 的參加狀況</div>${
             cancelled ? '<div class="mt-2 text-slate-500 font-bold">行程已取消。</div>'
@@ -322,6 +324,7 @@ function calOpenDetail(id) {
             <button type="button" onclick="calDelete()" class="bg-white border border-rose-300 text-rose-700 font-black text-base rounded-xl py-3.5">刪除</button>
         </div>` : ''}`);
     if (hasReg) calLoadReg(e.id);
+    if ($('calStatOne')) calLoadStatOne(e);
 }
 // ---------- 社內報名狀況、我要參加 ----------
 // 行程有對應報名活動時，顯示「本社」誰已報名（執秘送出的正式報名）或表示要參加（社友在這裡按的），
@@ -681,3 +684,78 @@ async function calArCopy() {
     try { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); if (ok) return toast('已複製，可以貼到 LINE'); } catch (e) { /* 忽略 */ }
     toast('無法自動複製，請改用電腦版匯出 Excel');
 }
+
+
+// =====================================================================
+// 💰 報名／繳費狀況（即時）：總監、總監秘書看全部活動；其他人只看行事曆後台指定給他的活動。一般社友沒有這個按鈕。
+// 數字在雲端算（cal_stats → checkin-core.js 的 eventStats，與主委後台的分攤金圖表同一份算法），打開、按重新整理、切回 LINE 時重抓。
+// =====================================================================
+let calCanStats = false, calStatAll = false, calStatKeys = [];
+let calStats = null, calStatsOpen = false, calStatsExp = '', calStatsSeq = 0;
+const calStatCan = key => !!key && (calStatAll || calStatKeys.includes(key));
+const calMoney = n => 'NT$ ' + (Number(n) || 0).toLocaleString();
+const calShortClub = n => String(n).replace(/扶輪社$/, '');
+function calStatBar(rate, cls) { return `<div class="h-2.5 bg-slate-200 rounded-full overflow-hidden"><div class="h-full ${cls || 'bg-blue-700'} rounded-full" style="width:${Math.max(0, Math.min(1, rate || 0)) * 100}%"></div></div>`; }
+// 一個活動的摘要（列表卡片與行程詳細頁共用）
+function calStatSummary(s) {
+    const pct = Math.round((s.rate || 0) * 100), done = s.dueClubs > 0 && s.paidClubs === s.dueClubs;
+    const reg = s.mode === 'apportion' ? '' : `<div class="flex justify-between text-base"><span class="text-slate-600">報名</span><span class="font-black">${s.regClubs} 社・${s.people} 人<span class="ml-1 text-xs font-bold text-slate-400">共 ${s.allClubs} 社</span></span></div>`;
+    const due = s.mode === 'order' && !s.dueClubs ? '<div class="text-sm text-slate-500 mt-1">還沒有需要繳費的報名。</div>'
+        : `<div class="flex justify-between text-base mt-1"><span class="text-slate-600">${s.mode === 'order' ? '已繳（已報名的社）' : '已繳'}</span><span class="font-black ${done ? 'text-emerald-700' : ''}">${s.paidClubs} / ${s.dueClubs} 社・${pct}%</span></div>
+           <div class="mt-1">${calStatBar(s.rate, done ? 'bg-emerald-600' : 'bg-blue-700')}</div>
+           <div class="flex justify-between text-sm mt-1.5"><span class="text-slate-600">已收／應收</span><span class="font-bold">${calMoney(s.paidAmt)} ／ ${calMoney(s.expected)}</span></div>${s.feeSet === false ? `<div class="text-xs text-amber-700 mt-1">主委還沒設定這個活動的每社應繳金額，應收暫以每社 ${calMoney(s.fee)} 計算。</div>` : ''}`;
+    return reg + due;
+}
+function calStatRows(s) {
+    if (!s.rows.length) return '<div class="text-sm text-slate-500 mt-2">沒有分區資料。</div>';
+    return `<div class="mt-3 border-t border-slate-200 pt-2">${s.rows.map(r => `<div class="py-2 border-b border-slate-100">
+        <div class="flex items-center gap-2"><span class="w-20 shrink-0 text-sm font-black">${E(r.name)}</span><span class="flex-1">${calStatBar(r.rate, r.unpaid.length ? 'bg-blue-700' : 'bg-emerald-600')}</span><span class="w-16 shrink-0 text-right text-sm font-bold">${r.paid.length}/${r.total} 社</span></div>
+        <div class="text-xs mt-1 leading-relaxed ${r.unpaid.length ? 'text-rose-700' : 'text-emerald-700 font-bold'}">${r.unpaid.length ? `未繳：${r.unpaid.map(c => E(calShortClub(c))).join('、')}` : '✓ 全數繳清'}${r.people !== null && r.people !== undefined ? `<span class="ml-2 text-slate-500 font-normal">報名 ${r.people} 人</span>` : ''}</div></div>`).join('')}</div>`;
+}
+function calStatTime(iso) { const t = tpParts(Date.parse(iso)); return `${t.m}/${t.d} ${fmtHM(Date.parse(iso))}`; }
+async function calOpenStats(quiet) {
+    const seq = ++calStatsSeq;
+    calStatsOpen = true;
+    if (!quiet) calSubShow(`<button type="button" onclick="calStatsClose()" class="text-base font-bold text-blue-700 py-2">‹ 返回行事曆</button><div class="text-center text-slate-500 py-10 font-bold">讀取中…</div>`);
+    const r = await api('cal_stats');
+    if (seq !== calStatsSeq || !calStatsOpen) return;
+    if (!r.ok) { if (quiet) return; calStatsClose(); return toast(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : calErrText(r.code)); }
+    calStats = r;
+    calStatsRender();
+}
+function calStatsClose() { calStatsOpen = false; calStatsSeq++; calBack(); }
+function calStatsToggle(i) { const k = calStats.events[i].key; calStatsExp = calStatsExp === k ? '' : k; const y = window.scrollY; calStatsRender(); window.scrollTo({ top: y }); }
+function calStatsRender() {
+    if (!calStats) return;
+    let lastCat = null;
+    const cards = calStats.events.map((s, i) => {
+        const open = calStatsExp === s.key;
+        const headCat = s.catName !== lastCat ? `<div class="text-sm font-black text-slate-500 mt-4 mb-1">${E(s.catName)}</div>` : '';
+        lastCat = s.catName;
+        return `${headCat}<div class="bg-white rounded-2xl border ${open ? 'border-blue-400' : 'border-slate-200'} shadow-sm p-4 mb-2">
+            <button type="button" onclick="calStatsToggle(${i})" class="w-full text-left">
+                <div class="flex items-start justify-between gap-2"><div class="font-black text-lg leading-snug">${E(s.subName)}</div><div class="shrink-0 text-sm font-bold text-blue-700">${open ? '收合 ▲' : '各分區 ▼'}</div></div>
+                <div class="mt-2">${calStatSummary(s)}</div>
+            </button>${open ? calStatRows(s) : ''}</div>`;
+    }).join('');
+    const y = window.scrollY, first = $('calStatsTop') === null;
+    $('calSub').innerHTML = `<div id="calStatsTop"></div><button type="button" onclick="calStatsClose()" class="text-base font-bold text-blue-700 py-2">‹ 返回行事曆</button>
+        <div class="flex items-center justify-between gap-2 mt-1"><h2 class="font-black text-xl">💰 報名／繳費狀況</h2><button type="button" onclick="calOpenStats(true)" class="shrink-0 text-sm font-bold text-blue-700 border border-blue-200 bg-white rounded-lg px-3 py-1.5">🔄 重新整理</button></div>
+        <div class="text-xs text-slate-500 mt-1">更新時間 ${calStatTime(calStats.at)}・${calStats.all ? '全部活動' : '後台開放給您的活動'}・點卡片看各分區與未繳社名</div>
+        ${cards || '<div class="bg-white rounded-2xl border border-slate-200 p-5 mt-3 text-center text-slate-500">目前沒有可以查看的活動。</div>'}
+        <p class="text-xs text-slate-500 mt-3 leading-relaxed">已繳＝主委核訖、銀行入帳自動對帳成功或免繳的社。分攤金、研討會、年會＝每一社都要繳；運動賽事、社慶等＝有報名的社才要繳。這些數字只有總監、總監秘書與後台指定的人看得到。</p>`;
+    if (!first) window.scrollTo({ top: y });
+}
+// 行程詳細頁：這個活動的報名／繳費摘要
+async function calLoadStatOne(e) {
+    const r = await api('cal_stats', { key: e.registrationKey });
+    const box = $('calStatOne');
+    if (!box || !calCurrent || calCurrent.id !== e.id) return;
+    const s = r.ok && r.events[0];
+    if (!s) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="bg-white rounded-2xl border-2 border-amber-300 shadow-sm p-4"><div class="flex items-center justify-between"><div class="font-black text-lg">💰 報名／繳費狀況</div><div class="text-xs text-slate-500">${calStatTime(r.at)}</div></div>
+        <div class="mt-2">${calStatSummary(s)}</div>
+        <details class="mt-2"><summary class="text-sm font-bold text-blue-700 cursor-pointer">各分區與未繳社名</summary>${calStatRows(s)}</details>
+        <div class="text-xs text-slate-500 mt-2">只有總監、總監秘書與後台指定的人看得到這一塊。</div></div>`;
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && calStatsOpen) calOpenStats(true); });

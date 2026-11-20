@@ -17,7 +17,7 @@
     <!-- 地區設定：由 scripts/build-config.js 從 config/districts/<代號>.json 產生，所有地區專屬內容都從這裡來 -->
     <script src="./district-config.js"></script>
     <!-- 報到系統共用邏輯（應到名單與統計的算法，與櫃台報到頁 checkin.html 共用） -->
-    <script src="./checkin-core.js"></script>
+    <script src="./checkin-core.js?v=20261120"></script>
     <script src="./calendar-desk.js"></script>
     <script>
         if (!window.DISTRICT) {
@@ -7675,18 +7675,8 @@
             const subName = (cat.subEvents && cat.subEvents[currentSubEventIndex]) || cat.name || '';
             const records = chairPaymentRecords[getActivePaymentKey()] || {};
             const required = getApportionmentFee() || 0;
-            let tClubs = 0, tPaid = 0, tAmt = 0;
-            const rows = getPaymentDivisions().map(div => {
-                const paid = [], notified = [], unpaid = []; let amt = 0;
-                div.clubs.forEach(club => {
-                    const rec = records[club.name] || { status: 'UNPAID' };
-                    if (rec.status === 'PAID_EMAIL' || rec.status === 'PAID_MANUAL' || rec.status === 'EXEMPT') { paid.push(club.name); amt += Number(rec.amount) || 0; }
-                    else unpaid.push(club.name);
-                });
-                const total = div.clubs.length;
-                tClubs += total; tPaid += paid.length; tAmt += amt;
-                return { div, total, paid, notified, unpaid, amt, rate: total ? paid.length / total : 0 };
-            }).filter(r => r.total > 0);
+            // 各分區已繳／未繳的算法在 checkin-core.js（LINE 行事曆的「報名狀況」用同一份）
+            const { rows, tClubs, tPaid, tAmt } = CheckinCore.divisionPayRows(divisionsData, records);
             const ordered = apportionChartSort === 'rate' ? rows.slice().sort((a, b) => a.rate - b.rate || a.div.id - b.div.id) : rows;
             return { catName: cat.name || '', subName, required, rows, ordered, tClubs, tPaid, tAmt, overall: tClubs ? tPaid / tClubs : 0,
                 doneDivs: rows.filter(r => r.paid.length === r.total).length, expected: required * tClubs };

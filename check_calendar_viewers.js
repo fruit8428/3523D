@@ -4,7 +4,7 @@ const puppeteer = require('puppeteer');
   const browser = await puppeteer.launch({ headless: 'new' });
   const page = await browser.newPage();
   let fail = 0; const ok = (n, c) => { console.log((c ? '✅ ' : '❌ ') + n); if (!c) fail++; };
-  const saved = {}; const sent = [];
+  const saved = {}; const sent = []; let svRows = [{ eventKey: 's::高爾夫', club: '乙社', key: '林|Lin', name: '林', nickname: 'Lin' }];
   const members = [{ key: '王|P Robert', name: '王', nickname: 'P Robert', role: '社長', spouse: false, isDefault: true },
                    { key: '李|S Ken', name: '李', nickname: 'S Ken', role: '社友', spouse: false, isDefault: true },
                    { key: '陳|PP Fred', name: '陳', nickname: 'PP Fred', role: '社友', spouse: false, isDefault: false }];
@@ -20,6 +20,8 @@ const puppeteer = require('puppeteer');
     let r = { ok: false, code: 'BAD_REQUEST' };
     if (b.action === 'cal_admin_state') r = { ok: true, types: [], roles: [], clubs: ['甲社', '乙社'], clubsWithoutEditor: [], clubInfos: [{ name: '甲社', division: '第一分區', code: '01-1' }, { name: '乙社', division: '第二分區', code: '02-1' }], reportCustomClubs: Object.keys(saved).map(c => ({ club: c, count: saved[c].length })) };
     if (b.action === 'cal_admin_viewers_get') r = view(b.club);
+    if (b.action === 'cal_admin_statviewers_save') svRows = svRows.filter(v => v.eventKey !== b.eventKey).concat(b.people.map(x => ({ eventKey: b.eventKey, club: x.club, key: x.key, name: x.key.split('|')[0], nickname: x.key.split('|')[1] })));
+    if (b.action === 'cal_admin_statviewers_get' || b.action === 'cal_admin_statviewers_save') r = { ok: true, events: [{ key: 'app::分攤金', catName: '地辦分攤金', subName: '上半年分攤金' }, { key: 's::高爾夫', catName: '運動賽事', subName: '高爾夫' }], viewers: svRows };
     if (b.action === 'cal_admin_digest_preview' || b.action === 'cal_admin_digest_test') r = { ok: true, day: b.day, sent: b.action === 'cal_admin_digest_test' ? 2 : 0, governors: [{ name: '王總監', nickname: 'Gov', club: '甲社', events: [{ id: 'd1', layer: 'district', title: '授證典禮', time: '18:00–21:00', location: '君悅', dressCode: '正式' }], recipients: [{ as: '總監', name: '王總監', status: b.action === 'cal_admin_digest_test' ? 'SENT' : 'PREVIEW' }, { as: '總監秘書（副本）', name: '林秘書', status: 'NOT_BOUND' }] }] };
     if (b.action === 'cal_admin_viewers_save') { if (b.reset) delete saved[b.club]; else saved[b.club] = b.keys; r = view(b.club); }
     req.respond({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(r) });
@@ -57,6 +59,21 @@ const puppeteer = require('puppeteer');
   await page.setViewport({ width: 390, height: 800 });
   ok('手機寬度沒有橫向捲動', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   ok('無 JS 錯誤', jsErr.length === 0);
+  // ---------- ⑤ 誰可以看報名／繳費狀況 ----------
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  await wait(300);
+  ok('⑤ 活動選單：全部活動＋依主選單分組，標示已指定人數', await page.$eval('#svEvent', s => s.querySelectorAll('optgroup').length === 2 && s.textContent.includes('★ 全部活動') && s.textContent.includes('高爾夫（已指定 1 人）')));
+  await page.select('#svEvent', 's::高爾夫'); await wait(100);
+  ok('⑤ 選活動後列出已指定的人（別社的人）', (await page.$eval('#svChips', e => e.innerText)).includes('Lin') );
+  await page.select('#svClub', '甲社'); await wait(400);
+  await page.evaluate(() => { const c = document.querySelectorAll('#svMembers input[type=checkbox]'); c[0].click(); c[2].click(); }); await wait(100);
+  ok('⑤ 勾選社友後加入名單（可跨社多選）並提示尚未儲存', await page.evaluate(() => document.querySelectorAll('#svChips > span').length === 3 && document.getElementById('svMsg').textContent === '尚未儲存'));
+  await page.evaluate(() => svRemove(0)); await wait(100);
+  await page.click('#svSave'); await wait(400);
+  const sv1 = sent.filter(x => x.action === 'cal_admin_statviewers_save').pop();
+  ok('⑤ 儲存：送出活動與勾選的人（只送社名與 key）', !!sv1 && sv1.eventKey === 's::高爾夫' && sv1.people.length === 2 && sv1.people.every(x => x.club === '甲社' && Object.keys(x).length === 2));
+  ok('⑤ 儲存後顯示成功、選單人數更新', await page.evaluate(() => document.getElementById('svMsg').textContent.includes('已儲存（2 人）') && document.getElementById('svEvent').textContent.includes('高爾夫（已指定 2 人）') && document.getElementById('svEvent').value === 's::高爾夫'));
+  ok('⑤ 無 JS 錯誤', jsErr.length === 0); if (jsErr.length) console.log(jsErr);
   await browser.close();
   console.log(fail ? `❌ ${fail} 項失敗` : '全部通過'); process.exit(fail ? 1 : 0);
 })();

@@ -138,6 +138,20 @@ export interface RegDeps {
   // 這位社友的「家人」（社友庫裡互為寶尊眷的人）。每個社的社友庫都在同一包資料裡，比較大，所以只有需要時才讀（自動更新時不讀）
   family?: (club: string, personKey: string, name: string) => Promise<{ key: string; name: string; nickname: string; role: string }[]>;
   members?: (club: string) => Promise<Any[]>;          // 該社的社友庫（出席率報表用）
+  stats?: StatDeps;                                     // 報名／繳費統計（LINE「📊 報名狀況」）
+}
+// 報名／繳費統計：算法在 checkin-core.js 的 eventStats（主委後台圖表用同一份），由 lib.ts 讀資料後提供
+export interface StatDeps {
+  events: () => Promise<{ key: string; catName: string; subName: string }[]>;
+  of: (eventKey: string) => Promise<Any>;
+}
+export const STAT_ALL = "*";      // calendar_stat_viewers.event_key＝* 代表「全部活動」
+// 這個人可以看哪些活動的報名狀況：總監、總監秘書＝全部；其餘看後台指定（calendar_stat_viewers）。資料表還沒建立＝沒有人被指定
+export async function statAccess(admin: Any, me: CalMe, roles: CalRoles): Promise<{ all: boolean; keys: Set<string> }> {
+  if (roles.governor || roles.secretary) return { all: true, keys: new Set() };
+  const { data, error } = await admin.from("calendar_stat_viewers").select("event_key").eq("club_name", me.club).eq("person_key", me.key);
+  const keys = new Set<string>(error ? [] : (data || []).map((r: Any) => String(r.event_key)));
+  return { all: keys.has(STAT_ALL), keys };
 }
 
 // =====================================================================
@@ -329,7 +343,29 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
   const roles = await loadRoles(admin, me);
 
   if (action === "cal_init") {
-    return { ok: true, me, roles, types: await loadTypes(admin) };
+    const sa = await statAccess(admin, me, roles);
+    return { ok: true, me, roles, types: await loadTypes(admin), canStats: sa.all || sa.keys.size > 0, statAll: sa.all, statKeys: sa.all ? [] : [...sa.keys] };
+  }
+
+  // ---------- 📊 報名／繳費狀況（總監、總監秘書，以及後台指定的人） ----------
+  // 帶 key＝只看那一個活動（行程詳細頁用）；不帶＝我可以看的所有活動
+  if (action === "cal_stats") {
+    const sa = await statAccess(admin, me, roles);
+    if (!sa.all && !sa.keys.size) fail("CAL_FORBIDDEN");
+    if (!reg || !reg.stats) fail("CAL_REG_UNAVAILABLE");
+    const one = String(body.key || "");
+    if (one) {
+      if (!sa.all && !sa.keys.has(one)) fail("CAL_FORBIDDEN");
+      const st = await reg!.stats!.of(one);
+      return { ok: true, at: new Date().toISOString(), events: st && st.ok ? [st] : [] };
+    }
+    const out: Any[] = [];
+    for (const ev of await reg!.stats!.events()) {
+      if (!sa.all && !sa.keys.has(ev.key)) continue;
+      const st = await reg!.stats!.of(ev.key);
+      if (st && st.ok) out.push(st);
+    }
+    return { ok: true, at: new Date().toISOString(), all: sa.all, events: out };
   }
 
   if (action === "cal_list") {
@@ -1209,7 +1245,7 @@ export async function agendaReply(admin: Any, me: { club: string; key: string; n
 }
 
 // ---------- 後台動作（電腦版 admin-calendar.html，用後台密碼把關） ----------
-export interface AdminCtx { admin: Any; password: string; members: () => Promise<Record<string, Any[]>>; clubInfos: () => Promise<{ name: string; division: string; code: string }[]>; sendLine?: (to: string, messages: Any[]) => Promise<void>; reg?: RegDeps }
+export interface AdminCtx { admin: Any; password: string; members: () => Promise<Record<string, Any[]>>; clubInfos: () => Promise<{ name: string; division: string; code: string }[]>; sendLine?: (to: string, messages: Any[]) => Promise<void>; reg?: RegDeps; statEvents?: () => Promise<{ key: string; catName: string; subName: string }[]> }
 // 執秘代登記的「同行者」（不在社友庫：子女、外勞、朋友，或社友庫沒有資料的寶尊眷）：person_key＝guest:<帶他來的社友 key>:<序號>
 const EXT_GUEST_PREFIX = "guest:";
 export const EXT_GUEST_TYPES = ["寶(尊)眷", "子女", "外勞", "朋友", "其他"];
@@ -1283,6 +1319,33 @@ export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Pro
     if (!(await ctx.clubInfos()).some((c) => c.name === club)) fail("BAD_REQUEST");
     const raw = (await ctx.members())[club];
     return await reportViewersAction(admin, club, Array.isArray(raw) ? raw : [], body, action === "cal_admin_viewers_save", "行事曆後台");
+  }
+
+  // ---------- 誰可以在 LINE 看活動的報名／繳費狀況（逐活動指定個人，可多選、可跨社；event_key＝* 是全部活動） ----------
+  if (action === "cal_admin_statviewers_get" || action === "cal_admin_statviewers_save") {
+    const events = ctx.statEvents ? await ctx.statEvents() : [];
+    if (action === "cal_admin_statviewers_save") {
+      const eventKey = String(body.eventKey || "");
+      if (eventKey !== STAT_ALL && !events.some((e) => e.key === eventKey)) fail("BAD_REQUEST");
+      const all = await ctx.members();
+      const seen = new Set<string>(), rows: Any[] = [];
+      for (const p of Array.isArray(body.people) ? body.people.slice(0, 200) : []) {      // 只收社友庫裡的人
+        const club = String((p && p.club) || ""), key = String((p && p.key) || "");
+        const m = (Array.isArray(all[club]) ? all[club] : []).find((x: Any) => x && personKey(x) === key);
+        if (!m || seen.has(club + "\u0001" + key)) continue;
+        seen.add(club + "\u0001" + key);
+        rows.push({ event_key: eventKey, club_name: club, person_key: key, full_name: m.name || "", nickname: m.nickname || "" });
+      }
+      const del = await admin.from("calendar_stat_viewers").delete().eq("event_key", eventKey);
+      if (del.error) dbFail(del.error);
+      if (rows.length) { const ins = await admin.from("calendar_stat_viewers").insert(rows); if (ins.error) dbFail(ins.error); }
+    }
+    const { data, error } = await admin.from("calendar_stat_viewers").select("*");
+    if (error) dbFail(error);
+    return {
+      ok: true, events,
+      viewers: (data || []).map((r: Any) => ({ eventKey: r.event_key, club: r.club_name, key: r.person_key, name: r.full_name, nickname: r.nickname })),
+    };
   }
 
   // ---------- 總監每日推播：預覽（不發送）、測試發送（立刻發、標「測試」、不記錄） ----------

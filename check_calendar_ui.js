@@ -36,6 +36,9 @@ async function api(a,x){window.__calls.push([a,x]);
    return {ok:true,club:'甲社',scope:x.scope,canClub:__arCan,me:binding.key,periods:[{id:'h1',held:2},{id:'year',held:3}],
      meetings:[{id:'a',title:'一月例會',start:'2027-01-06T11:00:00.000Z',recorded:true},{id:'b',title:'二月例會',start:'2027-02-03T11:00:00.000Z',recorded:true},{id:'c',title:'三月例會',start:'2027-03-03T11:00:00.000Z',recorded:false}],
      district:[{key:'s::地區高球',title:'地區高球',date:'2027-02-10T01:00:00.000Z'}], manual:[{id:5,key:binding.key,name:'王小明',date:'2027-03-10',kind:'友社例會',note:'台北東區扶輪社例會'}], people:x.scope==='club'?[me].concat(others):[me]}; }
+ if(a==='cal_stats'){ const all=[{ok:true,key:'app::分攤金',catName:'地辦分攤金',subName:'上半年分攤金',mode:'apportion',fee:20000,allClubs:3,regClubs:null,people:null,dueClubs:3,paidClubs:2,paidAmt:40000,expected:60000,rate:2/3,rows:[{name:'第一分區',total:2,paid:['甲社'],unpaid:['乙扶輪社'],amt:20000,rate:.5,people:null},{name:'第二分區',total:1,paid:['丙社'],unpaid:[],amt:20000,rate:1,people:null}]},
+   {ok:true,key:'k::高球賽',catName:'運動賽事',subName:'高球賽',mode:'order',fee:null,allClubs:3,regClubs:2,people:7,dueClubs:2,paidClubs:2,paidAmt:8400,expected:8400,rate:1,rows:[{name:'第一分區',total:2,paid:['甲社','乙社'],unpaid:[],amt:8400,rate:1,people:7}]}];
+   return {ok:true,at:new Date().toISOString(),all:true,events:x&&x.key?all.filter(e=>e.key===x.key):all}; }
  if(a==='cal_ics_status')return Object.assign({ok:true},__ics);
  if(a==='cal_ics_set'){__ics=x.enabled?{enabled:true,token:__ics.token||'tok1_'+'a'.repeat(30)}:{enabled:false,token:null};return Object.assign({ok:true},__ics);}
  if(a==='cal_ics_rotate'){__ics={enabled:true,token:'tok2_'+'b'.repeat(30)};return Object.assign({ok:true},__ics);}
@@ -229,6 +232,25 @@ window.confirm=()=>true; const FN_URL='https://x.supabase.co/functions/v1/line-c
   await p.evaluate(() => { calBack(); calSetLayer('private'); }); await new Promise(r => setTimeout(r, 200));
   ok('「總監私人」頁列出總監參加的活動', (await p.evaluate(() => document.getElementById('calBody').innerText)).includes('甲社例會'));
   await p.evaluate(() => { calSetLayer('all'); calSetGov(-1); }); await new Promise(r => setTimeout(r, 200));
+  // ---------- 💰 報名／繳費狀況 ----------
+  ok('一般社友沒有「💰 報名」按鈕', !(await p.evaluate(() => document.getElementById('calMain').innerHTML)).includes('calOpenStats'));
+  await p.evaluate(async () => { calCanStats = true; calStatAll = true; calShell(); await calReload(); }); await new Promise(r => setTimeout(r, 300));
+  ok('有權限的人出現「💰 報名」按鈕', (await p.evaluate(() => document.getElementById('calMain').innerHTML)).includes('calOpenStats'));
+  await p.evaluate(() => calOpenStats()); await new Promise(r => setTimeout(r, 300));
+  const stx = await p.evaluate(() => document.getElementById('calSub').innerText);
+  ok('報名狀況：分攤金顯示已繳社數、比例與金額', stx.includes('上半年分攤金') && stx.includes('2 / 3 社・67%') && stx.includes('NT$ 40,000 ／ NT$ 60,000'));
+  ok('報名狀況：一般活動顯示報名社數與人數', stx.includes('2 社・7 人') && stx.includes('2 / 2 社・100%'));
+  ok('報名狀況：還沒展開時不列未繳社名', !stx.includes('未繳：'));
+  await p.evaluate(() => calStatsToggle(0)); await new Promise(r => setTimeout(r, 100));
+  const stx2 = await p.evaluate(() => document.getElementById('calSub').innerText);
+  ok('報名狀況：展開後列出各分區與未繳社名（去掉「扶輪社」）', stx2.includes('第一分區') && stx2.includes('未繳：乙') && !stx2.includes('乙扶輪社') && stx2.includes('全數繳清'));
+  await p.evaluate(() => calStatsClose()); await new Promise(r => setTimeout(r, 100));
+  ok('報名狀況：返回後回到行事曆', await p.evaluate(() => !document.getElementById('calMain').classList.contains('hidden') && calStatsOpen === false));
+  await p.evaluate(() => calOpenDetail('1')); await new Promise(r => setTimeout(r, 400));
+  ok('行程詳細頁：有對應報名活動時顯示報名／繳費摘要', await p.evaluate(() => { const b = document.getElementById('calStatOne'); return !!b && b.innerText.includes('2 社・7 人') && window.__calls.some(c => c[0] === 'cal_stats' && c[1] && c[1].key === 'k::高球賽'); }));
+  await p.evaluate(() => { calBack(); calStatAll = false; calStatKeys = ['other::x']; calOpenDetail('1'); }); await new Promise(r => setTimeout(r, 200));
+  ok('行程詳細頁：沒被指定這個活動的人看不到摘要', await p.evaluate(() => !document.getElementById('calStatOne')));
+  await p.evaluate(() => calBack());
   ok('無 JS 錯誤', errs.length === 0); if (errs.length) console.log(errs);
   await b.close();
 })();
