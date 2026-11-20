@@ -173,6 +173,14 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 
 「今年扶輪職務」`#mRole` 內建選項不再擴充（使用者要求：地區職務太多，選單太長不好找），最後一項 `__custom__`（`MEMBER_ROLE_CUSTOM`）＝「其他職務（自行輸入）」，顯示 `#mRoleCustom` 文字框。讀寫一律走 `setMemberRoleInput(role)`／`getMemberRoleInput()`（不在內建選項的職務自動視為自填，所以 Excel 匯入的特殊職務編輯時也不會被清空）；自填職務只存在 `member.role`，**不加入選單**，並去掉 `<>&"'` 等符號（職務在多處直接插入 innerHTML）。
 
+### 社友改名後自動搬移紀錄（2026-11-20）
+
+整個系統認人用「社名＋`姓名|Nick Name`」，社友每年換職稱（PE→P→PP、DGE→DG）Nick Name 就會變，舊名字底下的 LINE 綁定、行事曆身分、私人行程、出席紀錄會全部對不上（使用者把自己從 PP Fruit 改成 DG Fruit 後收不到推播才發現）。
+- **自動**：`handleSaveNewMember()` 編輯社友時若姓名或 Nick Name 有變 → `renameMemberInSubmittedOrders()` 把**本社**已送出的報名表與贊助獎裡的名字改掉（只改名字、不動金額；報到名單與「已報名」才認得出同一人）→ 存檔 → `moveMemberRecordsAfterRename()` 呼叫雲端 `club_member_rename`（不等它，失敗只 alert 提醒補做，不影響名冊存檔）。社裡還有另一位同名同 Nick Name 的人就不搬。
+- **手動補救**：「📱 LINE 綁定名單」裡，綁定的名字已不在社友庫的那一列會顯示警告與下拉選單（只列尚未綁定的社友，同姓名排最前）→ `remapLineMember()`。自動搬移失敗、或 Excel 整批匯入改名（匯入不會自動搬）都靠這個。
+- **雲端** `club_member_rename`（`lib.ts`，社密碼把關，與綁定名單同一做法）：新名字要在社友庫、舊名字要**已不在**社友庫（所以不能把另一位現有社友的紀錄搬給自己），再呼叫資料庫函式 `member_rename_move`（`supabase/sql/member_rename.sql`，只開放 service_role、一筆交易）。兩個名字各自都綁了 LINE＝`MEMBER_RENAME_CONFLICT`。搬移範圍：`line_bindings`、`event_checkins`、`calendar_roles`、私人行程 `owner_key`、`calendar_ics`、`calendar_rsvp`（含 `guest_of` 與 `guest:<key>:n` 同行者）、`calendar_attendance`、`calendar_makeups`、`calendar_report_viewers`、`calendar_stat_viewers`、`calendar_settings.backup_notify`、`calendar_digest_log`；姓名有改時連同總監秘書的 `syncMark`／`secProxy` 標記。**新增以 person_key 認人的資料表時，要把它加進這個函式。** `event_archives`（歷屆備份）是歷史快照，不改。
+- 測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/member_rename.ts`（把關 7 項）、`node check_member_rename.js`（需 8000 埠，13 項）；資料庫函式在 3521 用「交易＋rollback」實測過。
+
 ### 刪除社友與已送出的報名表（2026-11-14）
 
 已送出的報名表（`registrationOrders[子活動].items`）是送出當下的快照，**不會**隨社友庫變動；報到名單讀的是它。`deleteMember()` 會用 `findSubmittedRegistrationsOf()` 找出該社友（姓名＋Nick Name）在本社哪些報名表裡，**再問一次**要不要一併移除——不自動連動，因為社友離社後過去的紀錄通常要保留，而且會動到應繳金額。一併移除時：只有該張報名表「真的收人頭費」（`participantFee > 0` 且等於各人 `fee` 加總）才從 `participantFee`、`grandTotal` 扣掉他的 `fee`；**不可以直接加總 item.fee 重算**（研討會的 item 也帶著 `fee` 但不收費，會把金額算錯）。PELS 不自動移除（牽涉出席方式與旅平險個資），只提示。

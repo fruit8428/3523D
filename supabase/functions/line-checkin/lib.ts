@@ -339,6 +339,26 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
     return { ok: true, bindings: (data || []).map((r: Any) => ({ key: r.person_key, name: r.full_name, nickname: r.nickname, displayName: r.display_name || "", boundAt: r.bound_at })) };
   }
 
+  // ---------- 執秘：社友改名後，把他名下的紀錄（LINE 綁定、行事曆身分、私人行程、出席…）搬到新名字 ----------
+  // 用社的登入密碼確認（與上面的綁定名單同一做法）。把關：新名字要真的在社友庫、舊名字要已經不在社友庫、
+  // 兩個名字不能各自都綁了 LINE（那是兩個不同的人）。真正的搬移在資料庫函式 member_rename_move（一筆交易）。
+  if (action === "club_member_rename") {
+    const club = String(body.club || "");
+    const state = await loadState(deps, true);
+    checkClubPassword(deps, state, club, body.clubPassword);
+    const oldKey = String(body.oldKey || ""), newKey = String(body.newKey || "");
+    const list: Any[] = Array.isArray((state.members || {})[club]) ? state.members[club] : [];
+    const target = list.find((m: Any) => personKey(m) === newKey);
+    if (!oldKey || !newKey || oldKey === newKey || !target || !target.name || list.some((m: Any) => personKey(m) === oldKey)) fail("MEMBER_RENAME_INVALID");
+    const { data, error } = await deps.admin.rpc("member_rename_move", { p_club: club, p_old: oldKey, p_new: newKey, p_name: target.name, p_nick: target.nickname || "" });
+    if (error) {
+      if (/MEMBER_RENAME_CONFLICT/.test(error.message || "")) fail("MEMBER_RENAME_CONFLICT");
+      if (/MEMBER_RENAME_BAD_INPUT/.test(error.message || "")) fail("MEMBER_RENAME_INVALID");
+      dbFail(error);
+    }
+    return { ok: true, moved: data || {} };
+  }
+
   // ---------- 以下都要先向 LINE 驗證身分 ----------
   // 行事曆（階段 1）：後台動作用後台密碼；社友動作要先向 LINE 驗證並查出綁定的社友
   // 總監每日推播：由資料庫排程（pg_cron）每天晚上 8 點呼叫。用存在資料庫裡的排程密碼（calendar_settings.cron_secret）把關。

@@ -4844,10 +4844,13 @@
 
             if (!clubMemberDatabase[selectedClubName]) clubMemberDatabase[selectedClubName] = [];
 
+            let renameFrom = null;   // 姓名或 Nick Name 有改時＝舊的「姓名|Nick Name」，存檔後要把他名下的紀錄搬到新名字
             if (editId) {
                 // Update existing member
                 const targetIdx = clubMemberDatabase[selectedClubName].findIndex(m => m.id === parseInt(editId));
                 if (targetIdx > -1) {
+                    const before = clubMemberDatabase[selectedClubName][targetIdx];
+                    if (before.name && ((before.name || '') !== name || (before.nickname || '') !== nickname)) renameFrom = { name: before.name || '', nickname: before.nickname || '' };
                     // 保留原本的其他欄位；寶(尊)眷要把「對應哪位社友」一起存回去（以前編輯後會遺失這個連結）
                     clubMemberDatabase[selectedClubName][targetIdx] = {
                         ...clubMemberDatabase[selectedClubName][targetIdx],
@@ -4878,14 +4881,62 @@
                 showToast(`✅ 成功新增社友【${name}】至 ${selectedClubName}！`);
             }
 
+            // 改名：本社已送出的報名表（送出當下的快照）也跟著改成新名字，報到名單與「已報名」才認得出同一個人
+            const renameClub = selectedClubName;
+            if (renameFrom && memberKeyStillUsed(renameClub, renameFrom)) renameFrom = null;   // 社裡還有另一位同名同 Nick Name 的人＝不搬
+            if (renameFrom) renameMemberInSubmittedOrders(renameClub, renameFrom, { name, nickname });
+
             await saveToStorage();
             closeAddMemberModal();
+            if (renameFrom) moveMemberRecordsAfterRename(renameClub, renameFrom, { name, nickname });   // 不等它，畫面先更新
             
             // Clear search box so the newly added/edited member is visible
             const searchInput = document.getElementById('memberSearchInput');
             if (searchInput) searchInput.value = '';
             
             renderMemberMasterTable();
+        }
+
+        // ---------- 社友改名（姓名或 Nick Name）後，把他名下的紀錄搬到新名字 ----------
+        // 整個系統認人用「社名＋姓名|Nick Name」。社友每年換職稱（PE→P→PP、DGE→DG）Nick Name 就會變，
+        // 不搬的話 LINE 綁定、行事曆身分、私人行程、出席紀錄都會留在舊名字底下。
+        function memberKeyOf(m) { return `${(m && m.name) || ''}|${(m && m.nickname) || ''}`; }
+        function memberKeyStillUsed(clubName, who) {
+            const k = memberKeyOf(who);
+            return (clubMemberDatabase[clubName] || []).some(m => memberKeyOf(m) === k);
+        }
+        // 本社已送出的報名表與贊助獎裡的名字一起改（只改姓名與 Nick Name，不動金額與其他欄位）
+        function renameMemberInSubmittedOrders(clubName, from, to) {
+            let n = 0;
+            const same = x => x && x.name === from.name && (x.nickname || '') === (from.nickname || '');
+            Object.keys(registrationOrders || {}).forEach(sub => (registrationOrders[sub] || []).forEach(o => {
+                if (!o || o.clubName !== clubName) return;
+                (o.items || []).concat(o.prizeSponsors || []).forEach(it => { if (same(it)) { it.name = to.name; it.nickname = to.nickname; n++; } });
+            }));
+            return n;
+        }
+        const MEMBER_RENAME_LABELS = { binding: 'LINE 綁定', roles: '行事曆身分', privateEvents: '私人行程', rsvp: '我要參加', attendance: '例會出席', makeups: '補出席', checkins: '活動報到', statViewers: '報名狀況檢視權限' };
+        function memberRenameSummary(moved) {
+            return Object.keys(MEMBER_RENAME_LABELS).filter(k => moved && moved[k] > 0).map(k => `${MEMBER_RENAME_LABELS[k]} ${moved[k]} 筆`).join('、');
+        }
+        const MEMBER_RENAME_ERR = {
+            MEMBER_RENAME_CONFLICT: '新名字和舊名字各自都綁定了 LINE，系統無法判斷是不是同一個人。請到「📱 LINE 綁定名單」先解除其中一個綁定，再按「對應到現在的名字」。',
+            MEMBER_RENAME_INVALID: '雲端還沒讀到新的名字，或舊名字仍在社友庫裡。請到「📱 LINE 綁定名單」確認。',
+            TABLE_MISSING: '雲端尚未安裝「改名搬移」功能（請最高管理員執行 supabase/sql/member_rename.sql）。',
+            CLUB_AUTH_FAILED: '無法確認貴社身分。',
+            NETWORK: '網路連線不穩。'
+        };
+        // 存檔後呼叫雲端搬移。失敗不影響名冊存檔，只提醒可以到「LINE 綁定名單」補做。
+        async function moveMemberRecordsAfterRename(clubName, from, to) {
+            if (clubName !== selectedClubName) return;
+            const r = await lineBindingsApi('club_member_rename', { oldKey: memberKeyOf(from), newKey: memberKeyOf(to) });
+            if (r.ok) {
+                const sum = memberRenameSummary(r.moved);
+                if (sum) showToast(`已把【${to.name}】的紀錄搬到新名字：${sum}`, '🔁');
+                return;
+            }
+            if (r.code === 'LINE_NOT_CONFIGURED') return;   // 這個地區沒有雲端小程式＝沒有需要搬的紀錄
+            alert(`社友資料已更新，但他在 LINE／行事曆的紀錄還沒有搬到新名字。\n\n原因：${MEMBER_RENAME_ERR[r.code] || '雲端暫時無法處理。'}\n\n補救方式：開啟社友庫右上角的「📱 LINE 綁定名單」，在舊名字那一列按「🔁 對應到現在的名字」。`);
         }
 
         // 找出某位社友在本社「已送出的報名表」裡出現的地方（以 姓名＋Nick Name 認人，與報到名單相同）
@@ -10231,14 +10282,55 @@
             const total = (clubMemberDatabase[selectedClubName] || []).length;
             if (!list.length) { box.innerHTML = `<div class="text-sm text-slate-500 border border-dashed border-slate-300 rounded-lg px-3 py-6 text-center">本社目前還沒有社友綁定 LINE（社友庫共 ${total} 人）。</div>`; return; }
             window.__lineBindingKeys = list.map(b => b.key);
-            box.innerHTML = `<div class="text-xs text-slate-500 mb-2">已綁定 <b class="text-slate-800">${list.length}</b> 人（社友庫共 ${total} 人）</div>` + list.map((b, i) => `
-                <div class="flex items-center justify-between gap-3 border border-slate-200 rounded-lg px-3 py-2 mb-1.5">
+            // 綁定的名字已經不在社友庫＝社友改過姓名或 Nick Name（或已離社）。可以手動對應到現在的名字。
+            const members = clubMemberDatabase[selectedClubName] || [];
+            const inDb = new Set(members.map(memberKeyOf));
+            const bound = new Set(list.map(b => b.key));
+            const free = sortMembersForDisplay(members.filter(m => m.name && !bound.has(memberKeyOf(m))));
+            window.__lineRemapFree = free.map(memberKeyOf);
+            box.innerHTML = `<div class="text-xs text-slate-500 mb-2">已綁定 <b class="text-slate-800">${list.length}</b> 人（社友庫共 ${total} 人）</div>` + list.map((b, i) => {
+                const lost = !inDb.has(b.key);
+                // 同姓名的排最前面（最可能是同一個人改了 Nick Name）
+                const opts = lost ? free.map((m, j) => ({ m, j })).sort((x, y) => (y.m.name === b.name) - (x.m.name === b.name)) : [];
+                return `
+                <div class="border ${lost ? 'border-amber-300 bg-amber-50' : 'border-slate-200'} rounded-lg px-3 py-2 mb-1.5">
+                  <div class="flex items-center justify-between gap-3">
                     <div class="min-w-0">
                         <div class="font-bold text-sm text-slate-900">${escapeHtmlText(b.name)}${b.nickname ? `<span class="ml-1.5 font-semibold text-slate-600">${escapeHtmlText(b.nickname)}</span>` : ''}</div>
                         <div class="text-[11px] text-slate-500 truncate">LINE 名稱：${escapeHtmlText(b.displayName || '（未提供）')}　綁定於 ${escapeHtmlText(checkinFmtTime(b.boundAt))}</div>
                     </div>
                     <button type="button" onclick="unbindLineMember(${i})" class="shrink-0 px-2.5 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 rounded-md text-xs font-bold">解除綁定</button>
-                </div>`).join('');
+                  </div>
+                  ${lost ? `<div class="mt-2 pt-2 border-t border-amber-200">
+                    <div class="text-xs font-bold text-amber-800">⚠️ 社友庫裡已經沒有這個名字（可能改過姓名或 Nick Name），他現在用 LINE 會對不上身分。</div>
+                    ${opts.length ? `<div class="mt-1.5 flex flex-wrap items-center gap-2">
+                        <select id="lineRemapSel_${i}" class="lineRemapSel min-w-0 flex-1 border border-amber-300 rounded-md px-2 py-1.5 text-sm bg-white">
+                            <option value="">他現在的名字是…</option>
+                            ${opts.map(o => `<option value="${o.j}">${escapeHtmlText(o.m.nickname || '')} ${escapeHtmlText(o.m.name)}${o.m.name === b.name ? '（同姓名）' : ''}</option>`).join('')}
+                        </select>
+                        <button type="button" onclick="remapLineMember(${i})" class="shrink-0 px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-xs font-bold">🔁 對應到現在的名字</button>
+                    </div>` : `<div class="mt-1 text-xs text-amber-800">社友庫裡沒有尚未綁定的名字可以對應。若他已離社，可按「解除綁定」。</div>`}
+                  </div>` : ''}
+                </div>`; }).join('');
+        }
+        // 把舊名字底下的 LINE 綁定與行事曆紀錄，搬到社友庫裡現在的名字（社友改名後的補救；平常編輯社友時會自動搬）
+        async function remapLineMember(i) {
+            const oldKey = (window.__lineBindingKeys || [])[i];
+            const sel = document.getElementById('lineRemapSel_' + i);
+            const newKey = sel && sel.value !== '' ? (window.__lineRemapFree || [])[parseInt(sel.value)] : undefined;
+            if (oldKey === undefined) return;
+            if (newKey === undefined) { alert('請先在下拉選單選擇他現在的名字。'); return; }
+            const show = k => { const p = k.split('|'); return (p[1] ? p[1] + ' ' : '') + p[0]; };
+            if (!confirm(`確定「${show(oldKey)}」就是現在的「${show(newKey)}」嗎？\n\n確定後，他的 LINE 綁定、行事曆身分、私人行程、出席紀錄都會搬到新名字，他不需要重新綁定。\n\n請確認是同一個人；對應錯了，別人會看到他的私人行程。`)) return;
+            const r = await lineBindingsApi('club_member_rename', { oldKey: oldKey, newKey: newKey });
+            if (!r.ok) { alert('❌ 沒有搬移成功：' + (MEMBER_RENAME_ERR[r.code] || LINE_BIND_ERR[r.code] || '雲端暫時無法處理，請稍後再試。')); return; }
+            // 本社已送出的報名表也改成新名字（先抓最新資料再存，避免蓋掉別社剛送出的報名）
+            const o = oldKey.split('|'), n = newKey.split('|');
+            if (typeof pullRemoteState === 'function') { try { await pullRemoteState(true); } catch (e) { /* 抓不到就用本機資料 */ } }
+            if (renameMemberInSubmittedOrders(selectedClubName, { name: o[0], nickname: o.slice(1).join('|') }, { name: n[0], nickname: n.slice(1).join('|') })) await saveToStorage();
+            const sum = memberRenameSummary(r.moved);
+            showToast('已對應到現在的名字' + (sum ? '：' + sum : ''), '🔁');
+            renderLineBindings(await lineBindingsApi('club_bindings'));
         }
         async function openLineBindingsModal() {
             if (!selectedClubName) { alert('請先選擇社別。'); return; }
