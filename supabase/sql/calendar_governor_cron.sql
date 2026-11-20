@@ -18,6 +18,7 @@ select cron.schedule(
   $$ select net.http_post(
        url := 'https://ncrvmhfggfczicpyebvn.supabase.co/functions/v1/line-checkin',
        headers := '{"Content-Type":"application/json"}'::jsonb,
+       timeout_milliseconds := 120000,   -- 最多等 2 分鐘（預設只等 5 秒；小程式剛啟動或一次要發很多人時會超過）
        body := jsonb_build_object(
          'action', 'cal_cron_digest',
          'liffId', '2012610534-bqToE4Jl',
