@@ -49,6 +49,7 @@ const puppeteer = require('puppeteer');
   const go = async (x) => { await p.evaluate((x) => { selectCategory(x.cat); changeSubEvent(x.i); }, x); await wait(1200); };
   await go(pick.pay);
   ok('面板出現、顯示尚無備份，最高管理員有「備份並清空」按鈕', await p.evaluate(() => { renderArchivePanel(); return !document.getElementById('eventArchiveSection').classList.contains('hidden') && document.getElementById('archiveBadge').innerText === '尚無備份' && document.getElementById('archivePanelBody').innerHTML.includes('archiveAndResetCurrentEvent'); }));
+  ok('面板文字帶出目前選到的子活動名稱（標題說明、清單、清空按鈕）', await p.evaluate((sub) => { const sec = document.getElementById('eventArchiveSection'), t = sec.textContent, n = '「' + sub + '」'; return [...sec.querySelectorAll('.archive-event-name')].every(e => e.textContent === n) && t.includes(n + '還沒有任何備份') && t.includes('備份並清空' + n) && !t.includes('這個活動') && !t.includes('這一個活動'); }, pick.pay.sub));
   ok('活動主委看得到備份清單，但沒有清空按鈕', await p.evaluate(() => { const r = currentRole; currentRole = 'chair'; renderArchivePanel(); const h = document.getElementById('archivePanelBody').innerHTML; currentRole = r; renderArchivePanel(); return h.includes('歷屆備份') && !h.includes('archiveAndResetCurrentEvent'); }));
   const preWrites = writes.map(w => w.m + ' ' + w.u.split('.supabase.co')[1].slice(0, 60)); if (preWrites.length) console.log('（登入與切換活動時頁面原本就會送出的寫入，已攔下）', preWrites);
   writes.length = 0;
@@ -72,7 +73,9 @@ const puppeteer = require('puppeteer');
   ok('查看備份：列出各社與繳費狀態', await p.evaluate((n) => { const ov = document.getElementById('archiveViewerOverlay'); return !!ov && ov.querySelectorAll('tbody tr').length === n && ov.innerText.includes('已繳'); }, pick.pay.n));
   await p.evaluate(() => closeEventArchiveViewer());
   // 有報名表的活動
-  await go(pick.ord); writes.length = 0;
+  await go(pick.ord);
+  ok('切換子活動後，面板上的活動名稱跟著換', await p.evaluate((sub) => { const sec = document.getElementById('eventArchiveSection'); return [...sec.querySelectorAll('.archive-event-name')].every(e => e.textContent === '「' + sub + '」') && sec.textContent.includes('備份並清空「' + sub + '」'); }, pick.ord.sub));
+  writes.length = 0;
   await p.evaluate(() => archiveAndResetCurrentEvent()); await wait(2500);
   const a2 = archives[1], mainW2 = writes.filter(w => w.u.includes('app_storage') && w.body && w.body.key === 'rotary_3523_spa_data_v3').pop();
   ok('有報名表的活動：備份含報名表與人數，清空後只少這個活動', !!a2 && a2.data.orders.length === pick.ord.n && a2.summary.stats.people > 0 && !!mainW2 && !(pick.ord.sub in mainW2.body.value.registrationOrders) && Object.keys(mainW2.body.value.registrationOrders).filter(k => (mainW2.body.value.registrationOrders[k] || []).length).length === pick.ordKeys - 1);

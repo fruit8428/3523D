@@ -1269,7 +1269,7 @@
                         <div class="w-9 h-9 rounded-lg bg-violet-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">📦</div>
                         <div class="min-w-0">
                             <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">歷屆備份與清空本活動 <span id="archiveBadge" class="ml-1 text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded-full align-middle">讀取中…</span></div>
-                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>查看這個活動以前各屆的報名與繳費狀況（可下載 Excel）。最高管理員可以在上線前或換主委後，把<b>這一個活動</b>目前的報名表與繳費紀錄「先備份、再清空」，其他活動不受影響。</p>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>查看<b class="text-violet-700 archive-event-name">這個活動</b>以前各屆的報名與繳費狀況（可下載 Excel）。最高管理員可以在上線前或換主委後，把<b class="text-violet-700 archive-event-name">這一個活動</b>目前的報名表與繳費紀錄「先備份、再清空」，其他活動不受影響。</p>
                         </div>
                     </div>
                     <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
@@ -10442,6 +10442,9 @@
             const badge = document.getElementById('archiveBadge');
             if (badge) badge.innerText = archiveState.error === 'missing' ? '尚未啟用' : !archiveState.loaded ? '讀取中…' : archiveState.rows.length ? `已有 ${archiveState.rows.length} 份備份` : '尚無備份';
             const E = escapeHtmlText, isAdmin = currentRole === 'super_admin', cnt = archiveCurrentCounts();
+            // 文字跟著上方選到的子活動走，讓人一眼看出現在處理的是哪一個活動
+            const evName = archiveEventInfo().sub || '這個活動', evTag = `「${E(evName)}」`;
+            section.querySelectorAll('.archive-event-name').forEach(el => { el.textContent = `「${evName}」`; });
             let html = '';
             if (!supabaseClient) html = '<div class="text-sm text-slate-500">目前沒有連上雲端資料庫，無法使用備份功能。</div>';
             else if (archiveState.error === 'missing') html = '<div class="text-sm font-bold text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-3 leading-relaxed">⚠️ 雲端尚未建立備份資料表，請最高管理員在 Supabase 執行 <code class="font-mono">supabase/sql/event_archives.sql</code>。在建立之前不能清空活動資料（沒有備份就不清空）。<div class="mt-2"><button type="button" onclick="refreshArchivePanel()" class="px-3 py-1.5 bg-white border border-amber-400 rounded-md text-xs font-bold text-amber-900 hover:bg-amber-100">🔄 重新檢查</button></div></div>';
@@ -10458,13 +10461,13 @@
                             <button type="button" onclick="viewEventArchive(${Number(r.id)})" class="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-md text-xs font-bold">👁 查看</button>
                             <button type="button" onclick="exportEventArchiveExcel(${Number(r.id)})" class="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md text-xs font-bold">📥 Excel</button>
                         </div>
-                    </div>`).join('') : '<div class="text-sm text-slate-500 py-2">這個活動還沒有任何備份。</div>';
-                html = `<div class="text-xs font-bold text-slate-500 mb-1">這個活動的歷屆備份</div>${list}`;
+                    </div>`).join('') : `<div class="text-sm text-slate-500 py-2"><b class="text-violet-700">${evTag}</b>還沒有任何備份。</div>`;
+                html = `<div class="text-xs font-bold text-slate-500 mb-1"><span class="text-violet-700">${evTag}</span>的歷屆備份</div>${list}`;
                 if (isAdmin) html += `
                     <div class="mt-4 p-3 rounded-lg border border-rose-200 bg-rose-50">
-                        <div class="font-bold text-sm text-rose-700">🧹 備份並清空「這一個活動」</div>
+                        <div class="font-bold text-sm text-rose-700">🧹 備份並清空${evTag}</div>
                         <div class="text-xs text-slate-700 mt-1 leading-relaxed">目前有 <b>${cnt.orders}</b> 社的報名表、<b>${cnt.pays}</b> 筆繳費紀錄。按下後會先備份（含銀行入帳與報到紀錄），確認備份成功才清空報名表與繳費紀錄；費用設定、活動日期、DM、主委指派都保留，其他活動不受影響。只有最高管理員看得到這個按鈕。</div>
-                        <button type="button" onclick="archiveAndResetCurrentEvent()" class="mt-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-bold">📦 備份並清空本活動</button>
+                        <button type="button" onclick="archiveAndResetCurrentEvent()" class="mt-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-bold">📦 備份並清空${evTag}</button>
                     </div>`;
             }
             body.innerHTML = html;
