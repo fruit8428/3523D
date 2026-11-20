@@ -104,6 +104,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 | `test.js` | `extract_js.js` 產生的輸出，不要手動編輯。 |
 | `checkin.html` | 櫃台報到頁（獨立頁面，只讀 `app_storage`、絕不寫回）。見「活動報到系統」。 |
 | `line.html` | LINE 自助報到頁（LIFF 的 Endpoint，社友在 LINE 裡開啟）。不直接碰資料庫，全部透過雲端小程式 `line-checkin`。 |
+| `club-dues.js` | 社費推播的填寫畫面（執秘用，見「社費推播」）。 |
 | `checkin-core.js` | 報到的純函式（應到名單、合併報到紀錄、統計），`index.html` 與 `checkin.html` 共用，可用 node 直接測。 |
 | `stub.js` | 在 node 裡 require `test.js` 用的 DOM/Supabase 假物件。 |
 
@@ -180,6 +181,17 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - **手動補救**：「📱 LINE 綁定名單」裡，綁定的名字已不在社友庫的那一列會顯示警告與下拉選單（只列尚未綁定的社友，同姓名排最前）→ `remapLineMember()`。自動搬移失敗、或 Excel 整批匯入改名（匯入不會自動搬）都靠這個。
 - **雲端** `club_member_rename`（`lib.ts`，社密碼把關，與綁定名單同一做法）：新名字要在社友庫、舊名字要**已不在**社友庫（所以不能把另一位現有社友的紀錄搬給自己），再呼叫資料庫函式 `member_rename_move`（`supabase/sql/member_rename.sql`，只開放 service_role、一筆交易）。兩個名字各自都綁了 LINE＝`MEMBER_RENAME_CONFLICT`。搬移範圍：`line_bindings`、`event_checkins`、`calendar_roles`、私人行程 `owner_key`、`calendar_ics`、`calendar_rsvp`（含 `guest_of` 與 `guest:<key>:n` 同行者）、`calendar_attendance`、`calendar_makeups`、`calendar_report_viewers`、`calendar_stat_viewers`、`calendar_settings.backup_notify`、`calendar_digest_log`；姓名有改時連同總監秘書的 `syncMark`／`secProxy` 標記。**新增以 person_key 認人的資料表時，要把它加進這個函式。** `event_archives`（歷屆備份）是歷史快照，不改。
 - 測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/member_rename.ts`（把關 7 項）、`node check_member_rename.js`（需 8000 埠，13 項）；資料庫函式在 3521 用「交易＋rollback」實測過。
+
+### 社費推播（2026-11-20，規格 `社費.md`）
+
+執秘用 LINE 把「每位社友自己的社費明細」推給他。**每人金額是個資，絕不可進 `app_storage`**；`club-dues.js` 的任何操作都不呼叫 `saveToStorage()`。
+- **開放**：沿用行事曆後台 ④-2（`calendar_club_push` 有該社＝開放；同一個開關同時管活動提醒與社費推播，使用者已知並同意）。快捷列 `#clubDuesBtn` 預設隱藏，`duesRefreshButton()`（由 `updateRolePermissionsUI()` 呼叫，同一社 5 分鐘只問一次 `club_dues_status`）確認開放才顯示；雲端沒開放一律 `DUES_CLUB_OFF`。
+- **身分**：社的登入密碼（`checkClubPassword`，用 `lineBindingsApi()` 呼叫）。**不設推播密碼、不限次數**（使用者決定；已知 `clubPasswords` 公開可讀的風險並接受）。只擋「60 秒內內容一模一樣」（`content_hash`，`DUES_DUPLICATE`）。
+- **算法只有一份**：`checkin-core.js` 的 `duesNormalize`／`duesCompute`／`duesPlainText`／`duesMoney`（畫面小計與雲端實際推出去的相同；改了要 `cp` 到小程式資料夾並重新部署，index.html 的 `checkin-core.js?v=` 也要換）。表單＝`{info:{period,due,method,note}, common:[{name,amount}], members:{'姓名|Nick Name':{off:[共同品項序號], extra:[{name,amount}]}}}`；金額整數可負、0 或無名稱的品項不算；只列社友（寶尊眷不列）；**小計 0 不推**。
+- **畫面**（`club-dues.js`，全域名稱 `dues*`，視窗 `#clubDuesOverlay` 動態建立）：畫面上的共同品項用 `id`、取消勾選存 id，`duesFormOut()` 才轉成序號（沒填完的列不算）。輸入框用 `oninput` 改資料、只重畫表格（`duesRenderTable`），不可整個重畫否則會打斷輸入。草稿存 localStorage `rotary_dues_draft::<社名>`（有改過 `dues.dirty` 才存；發送成功後清掉）；沒有草稿時帶出雲端的上次內容，個別品項標 `carried`（黃色「沿用上次」，按一下確認）。預覽與「複製明細文字」在前端算；未綁定名單來自 `club_dues_get` 的 `bound`（不回傳 LINE 使用者代碼）。
+- **雲端**（`supabase/functions/line-checkin/dues.ts`，由 `lib.ts` 轉送）：`club_dues_status`／`club_dues_get`／`club_dues_send`。發送：重新用社友庫計算 → 一人一則 Flex 卡片（`buildDuesMessage`，只用官方帳號 token）→ 存 `club_dues_state`（每社一列＝上次內容）＋ `club_dues_log`（只記人數與總金額，不記每人明細）。兩張表在 `supabase/sql/club_dues.sql`，RLS 開啟、無 policy、anon 無權限。`member_rename_move` 會把 `club_dues_state` 裡的索引一起改名。
+- 不做：Excel 匯入、PDF 附件、記錄是否已繳。
+- 測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/club_dues.ts`（18 項）、`node check_club_dues.js`（需 8000 埠，25 項）。
 
 ### 刪除社友與已送出的報名表（2026-11-14）
 

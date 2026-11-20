@@ -328,7 +328,60 @@
         };
     }
 
+    // ---------- 社費推播：執秘填的表單 → 每位社友的明細（報名系統畫面與雲端小程式共用同一套算法） ----------
+    // form＝{ info:{period,due,method,note}, common:[{name,amount}], members:{ '姓名|Nick Name': { off:[共同品項的序號…], extra:[{name,amount}] } } }
+    // 金額是整數、可以是負數（例：溢繳折抵）；金額為 0 或沒有名稱的品項不算。
+    const DUES_LIMITS = { common: 10, extra: 10, name: 30, amount: 9999999, period: 40, due: 40, method: 200, note: 300 };
+    function duesText(v, max) { return String(v == null ? '' : v).replace(/[\u0000-\u001f]+/g, ' ').trim().slice(0, max); }
+    function duesItems(list, max, keepCarried) {
+        const out = [];
+        (Array.isArray(list) ? list : []).forEach(it => {
+            if (out.length >= max || !it) return;
+            const name = duesText(it.name, DUES_LIMITS.name), amount = Math.round(Number(it.amount));
+            if (!name || !Number.isFinite(amount) || amount === 0 || Math.abs(amount) > DUES_LIMITS.amount) return;
+            const o = { name, amount };
+            if (keepCarried && it.carried) o.carried = true;
+            out.push(o);
+        });
+        return out;
+    }
+    // 整理表單：去掉不合法的內容。共同品項的「序號」以整理後的陣列為準，所以畫面要先整理再讓使用者取消勾選
+    function duesNormalize(form, keepCarried) {
+        const f = form || {}, info = f.info || {};
+        const common = duesItems(f.common, DUES_LIMITS.common, false);
+        const members = {};
+        Object.keys(f.members && typeof f.members === 'object' ? f.members : {}).forEach(k => {
+            const m = f.members[k] || {};
+            const off = Array.from(new Set((Array.isArray(m.off) ? m.off : []).map(Number).filter(i => Number.isInteger(i) && i >= 0 && i < common.length))).sort((a, b) => a - b);
+            const extra = duesItems(m.extra, DUES_LIMITS.extra, keepCarried);
+            if (off.length || extra.length) members[k] = { off, extra };
+        });
+        return { info: { period: duesText(info.period, DUES_LIMITS.period), due: duesText(info.due, DUES_LIMITS.due), method: duesText(info.method, DUES_LIMITS.method), note: duesText(info.note, DUES_LIMITS.note) }, common, members };
+    }
+    // 每位社友的明細與小計。只列社友庫裡的社友（寶(尊)眷不列），順序同社友名單（P → S → Nick Name）
+    function duesCompute(memberList, form) {
+        const f = duesNormalize(form);
+        return sortMembers((Array.isArray(memberList) ? memberList : []).filter(m => m && m.name && !isSpouseMember(m))).map(m => {
+            const key = personKey(m), mine = f.members[key] || { off: [], extra: [] };
+            const items = f.common.filter((_, i) => !mine.off.includes(i)).map(it => ({ name: it.name, amount: it.amount })).concat(mine.extra.map(it => ({ name: it.name, amount: it.amount })));
+            return { key, name: m.name, nickname: m.nickname || '', items, total: items.reduce((n, it) => n + it.amount, 0) };
+        });
+    }
+    function duesMoney(n) { const v = Math.round(Number(n) || 0); return (v < 0 ? '-' : '') + String(Math.abs(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+    // 給沒綁定 LINE 的社友用的純文字明細（內容與 LINE 卡片相同）
+    function duesPlainText(club, info, p) {
+        const i = info || {};
+        const lines = ['【' + club + '】' + (i.period || '社費'), (p.name + (p.nickname ? ' ' + p.nickname : '')) + ' 社友您好', '────────────'];
+        (p.items || []).forEach(it => lines.push(it.name + '　' + duesMoney(it.amount)));
+        lines.push('────────────', '合計　NT$ ' + duesMoney(p.total));
+        if (i.due) lines.push('繳費期限：' + i.due);
+        if (i.method) lines.push('繳費方式：' + i.method);
+        if (i.note) lines.push(i.note);
+        return lines.join('\n');
+    }
+
     root.CheckinCore = {
+        DUES_LIMITS, duesNormalize, duesCompute, duesMoney, duesPlainText,
         isPaidStatus, isDistrictOfficeDivision, paymentDivisions, divisionPayRows, isPaymentTrackingCat, configuredClubFee, listStatEvents, eventStats,
         norm, personKey, makeEventKey, parseEventKey, isApportionEvent, isPelsEvent, PELS_SHORT,
         buildClubIndex, prizeMealGuests, buildRoster, mergeCheckins, computeStats, matchEntry,

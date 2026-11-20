@@ -17,8 +17,9 @@
     <!-- 地區設定：由 scripts/build-config.js 從 config/districts/<代號>.json 產生，所有地區專屬內容都從這裡來 -->
     <script src="./district-config.js"></script>
     <!-- 報到系統共用邏輯（應到名單與統計的算法，與櫃台報到頁 checkin.html 共用） -->
-    <script src="./checkin-core.js?v=20261120"></script>
+    <script src="./checkin-core.js?v=20261121"></script>
     <script src="./calendar-desk.js"></script>
+    <script src="./club-dues.js?v=20261120"></script>
     <script>
         if (!window.DISTRICT) {
             console.error('找不到 district-config.js，請執行 node scripts/build-config.js');
@@ -483,6 +484,9 @@
                     </button>
                     <button id="changePasswordBtn" onclick="changeMyClubPassword()" class="hidden px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold rounded-md transition flex items-center gap-1" title="修改本社的登入密碼">
                         🔑 修改密碼
+                    </button>
+                    <button id="clubDuesBtn" onclick="openClubDues()" class="hidden px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700 font-bold rounded-md transition flex items-center gap-1 shadow-sm" title="用 LINE 把每位社友自己的社費明細推給他（需由地區系統管理者開放）">
+                        💰 推播社費
                     </button>
                     <button id="calendarDeskBtn" onclick="openCalendarDesk()" class="hidden px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white border border-sky-700 font-bold rounded-md transition flex items-center gap-1 shadow-sm" title="新增、修改本社或地區的行程；社友會在 LINE 行事曆看到">
                         🗓️ 行事曆管理
@@ -2991,6 +2995,7 @@
             if (typeof renderChairBankMailSection === 'function') renderChairBankMailSection(); // 主委端帳號／信箱／入帳紀錄
             if (typeof renderPelsInsuranceSection === 'function') renderPelsInsuranceSection(); // 社長當選人研討會：出席方式總覽與旅平險名單
             if (typeof renderArchivePanel === 'function') renderArchivePanel(); // 歷屆備份面板（同樣只用已抓到的資料重畫）
+            if (typeof duesRefreshButton === 'function') duesRefreshButton(); // 「💰 推播社費」按鈕：行事曆後台 ④-2 有開放的社才顯示（同一社 5 分鐘內只問一次雲端）
             if (typeof renderCheckinPanel === 'function') renderCheckinPanel(); // 活動報到面板（只用已抓到的資料重畫；換了活動才重新抓）
             if (typeof renderLinePushPanel === 'function') renderLinePushPanel(); // LINE 推播面板（只切換顯示；換了活動才重設對象清單，不會洗掉正在打的訊息）
             // 主選單與子活動的增刪只開放給最高管理員（活動主委、執秘都看不到）

@@ -142,6 +142,13 @@ begin
         end;
     end if;
 
+    -- ---------- 社費推播：上次填的個別品項（存在 JSON 裡，以「姓名|Nick Name」當索引） ----------
+    if to_regclass('public.club_dues_state') is not null then
+        update club_dues_state
+           set data = jsonb_set(data, '{members}', ((data->'members') - p_old) || jsonb_build_object(p_new, data->'members'->p_old))
+         where club_name = p_club and data->'members' ? p_old and not (data->'members' ? p_new);
+    end if;
+
     return out;
 end $$;
 

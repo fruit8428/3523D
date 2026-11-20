@@ -9,6 +9,7 @@
 //    這個資料夾裡的 checkin-core.js 是專案根目錄那一份的複本，根目錄的改了要一起複製過來。
 // =====================================================================
 import "./checkin-core.js";
+import { handleDues } from "./dues.ts";
 import { agendaReply, backupReminder, CalError, governorDigest, clubReminder, parseAgendaKeyword, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
 // deno-lint-ignore no-explicit-any
 type Any = any;
@@ -347,6 +348,18 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
     if (error) dbFail(error);
     // 不回傳 LINE 使用者代碼
     return { ok: true, bindings: (data || []).map((r: Any) => ({ key: r.person_key, name: r.full_name, nickname: r.nickname, displayName: r.display_name || "", boundAt: r.bound_at })) };
+  }
+
+  // ---------- 執秘：社費推播（把每位社友自己的社費明細用 LINE 推給他）。開放與否沿用行事曆後台 ④-2；用社的登入密碼確認 ----------
+  if (action === "club_dues_status" || action === "club_dues_get" || action === "club_dues_send") {
+    const club = String(body.club || "");
+    const state = await loadState(deps, true);
+    checkClubPassword(deps, state, club, body.clubPassword);
+    return await handleDues(action, body, {
+      admin: deps.admin, club, core: Core, fail,
+      members: Array.isArray((state.members || {})[club]) ? state.members[club] : [],
+      send: deps.push && deps.push.token && deps.push.sendMessages ? deps.push.sendMessages : undefined,
+    });
   }
 
   // ---------- 執秘：社友改名後，把他名下的紀錄（LINE 綁定、行事曆身分、私人行程、出席…）搬到新名字 ----------
