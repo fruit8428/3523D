@@ -1277,6 +1277,25 @@
                 </div>
             </div>
 
+            <!-- ================= 歷屆備份與清空本活動 ================= -->
+            <div data-panel="eventArchive" id="eventArchiveSection" class="bg-white rounded-xl shadow-sm border-2 border-violet-200/90 p-4 sm:p-5">
+                <button type="button" onclick="togglePanel('eventArchive'); renderArchivePanel(true);" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_eventArchive">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-lg bg-violet-600 text-white flex items-center justify-center text-lg shrink-0 shadow-sm">📦</div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-900 text-sm sm:text-base leading-tight">歷屆備份與清空本活動 <span id="archiveBadge" class="ml-1 text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded-full align-middle">讀取中…</span></div>
+                            <p class="text-[11px] sm:text-xs text-slate-500 mt-1 leading-relaxed"><b class="text-slate-700">點開可以：</b>查看這個活動以前各屆的報名與繳費狀況（可下載 Excel）。最高管理員可以在上線前或換主委後，把<b>這一個活動</b>目前的報名表與繳費紀錄「先備份、再清空」，其他活動不受影響。</p>
+                        </div>
+                    </div>
+                    <span class="shrink-0 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 group-hover:bg-blue-100 px-2.5 py-1 rounded-md whitespace-nowrap flex items-center gap-1 mt-0.5">
+                        <span id="panelToggleText_eventArchive">展開</span><span id="panelChevron_eventArchive" class="inline-block transition-transform duration-200">▼</span>
+                    </span>
+                </button>
+                <div id="panelBody_eventArchive" class="hidden mt-4 pt-4 border-t border-slate-100">
+                    <div id="archivePanelBody"></div>
+                </div>
+            </div>
+
             <!-- ================= 各分區各社繳費狀況清楚列表 (依附圖42要求新增：專為開會秀出打造) ================= -->
             <div data-panel="eventIncome" id="eventIncomeSection" class="hidden bg-white rounded-xl shadow-sm border-2 border-emerald-200/90 p-4 sm:p-5 space-y-4">
                 <button type="button" onclick="togglePanel('eventIncome')" class="w-full flex items-start justify-between gap-3 text-left group" aria-expanded="false" id="panelHeader_eventIncome">
@@ -2986,6 +3005,7 @@
             if (typeof renderRemitInfoBox === 'function') renderRemitInfoBox(); // 執秘端匯款資訊
             if (typeof renderChairBankMailSection === 'function') renderChairBankMailSection(); // 主委端帳號／信箱／入帳紀錄
             if (typeof renderPelsInsuranceSection === 'function') renderPelsInsuranceSection(); // 社長當選人研討會：出席方式總覽與旅平險名單
+            if (typeof renderArchivePanel === 'function') renderArchivePanel(); // 歷屆備份面板（同樣只用已抓到的資料重畫）
             if (typeof renderCheckinPanel === 'function') renderCheckinPanel(); // 活動報到面板（只用已抓到的資料重畫；換了活動才重新抓）
             if (typeof renderLinePushPanel === 'function') renderLinePushPanel(); // LINE 推播面板（只切換顯示；換了活動才重設對象清單，不會洗掉正在打的訊息）
             // 主選單與子活動的增刪只開放給最高管理員（活動主委、執秘都看不到）
@@ -10430,6 +10450,239 @@
         let toastTimer = null;
         // 畫面上顯示／存檔用的時間一律用台灣時間（UTC+8，台灣沒有日光節約時間），不受使用者裝置時區影響。
         // 以前直接用 toISOString() 會得到世界標準時間，比台灣慢 8 小時，凌晨 0–8 點連日期都會少一天。
+        // ================= 歷屆備份與清空本活動（2026-11-20） =================
+        // 一次只處理「目前這一個活動」：先把報名表、繳費紀錄、銀行入帳、報到紀錄存成一筆備份（表 event_archives，只能新增與讀取），
+        // 讀回來確認筆數相符後才清空報名表與繳費紀錄。費用設定、活動日期、DM、主委指派都保留。
+        // 面板裡不放 <input>（會讓即時同步暫停重畫）；備份名稱用 prompt 輸入。
+        let archiveState = { key: '', rows: [], error: '', loaded: false, loading: false };
+        let archiveFetchSeq = 0, archiveBusy = false;
+        function archiveIsMissingTable(e) { return /does not exist|schema cache|could not find|PGRST20[25]|42P01/i.test(((e && e.message) || '') + ' ' + ((e && e.code) || '')); }
+        function archiveEventInfo() {
+            const cat = categoriesData.find(c => c.id === currentCatId) || {};
+            const sub = (cat.subEvents && cat.subEvents[currentSubEventIndex]) || '';
+            return { cat, sub, key: getActivePaymentKey() };
+        }
+        async function refreshArchivePanel() {
+            if (!supabaseClient) return;
+            const key = getActivePaymentKey(), seq = ++archiveFetchSeq;
+            if (archiveState.key !== key) archiveState = { key, rows: [], error: '', loaded: false, loading: true };
+            else archiveState.loading = true;
+            let rows = [], error = '';
+            try {
+                const { data, error: e } = await supabaseClient.from('event_archives').select('id,event_key,cat_name,sub_name,label,archived_at,archived_by,summary').eq('event_key', key).order('archived_at', { ascending: false }).limit(50);
+                if (e) throw e;
+                rows = data || [];
+            } catch (e) { error = archiveIsMissingTable(e) ? 'missing' : ((e && e.message) || '讀取失敗'); }
+            if (seq !== archiveFetchSeq) return;      // 讀取中又換了活動，這次的結果作廢
+            archiveState = { key, rows, error, loaded: true, loading: false };
+            renderArchivePanel();
+        }
+        function archiveSummaryText(sm) {
+            const st = (sm && sm.stats) || {}, parts = [];
+            if (st.people !== null && st.people !== undefined) parts.push(`報名 ${st.regClubs || 0} 社・${st.people || 0} 人`);
+            parts.push(`已繳 ${st.paidClubs || 0} / ${st.dueClubs || 0} 社`);
+            parts.push(`已收 NT$ ${(Number(st.paidAmt) || 0).toLocaleString()}`);
+            if (sm && sm.checkedIn) parts.push(`報到 ${sm.checkedIn} 人`);
+            return parts.join('｜');
+        }
+        function archiveCurrentCounts() {
+            const { sub, key } = archiveEventInfo();
+            const orders = ((registrationOrders || {})[sub] || []).length;
+            const pays = Object.keys((chairPaymentRecords || {})[key] || {}).length;
+            return { orders, pays };
+        }
+        function renderArchivePanel(forceFetch) {
+            const section = document.getElementById('eventArchiveSection'), body = document.getElementById('archivePanelBody');
+            if (!section || !body) return;
+            const key = getActivePaymentKey();
+            if (archiveState.key !== key) { archiveState = { key, rows: [], error: '', loaded: false, loading: true }; refreshArchivePanel(); }
+            else if (forceFetch && !archiveState.loading) refreshArchivePanel();
+            const badge = document.getElementById('archiveBadge');
+            if (badge) badge.innerText = archiveState.error === 'missing' ? '尚未啟用' : !archiveState.loaded ? '讀取中…' : archiveState.rows.length ? `已有 ${archiveState.rows.length} 份備份` : '尚無備份';
+            const E = escapeHtmlText, isAdmin = currentRole === 'super_admin', cnt = archiveCurrentCounts();
+            let html = '';
+            if (!supabaseClient) html = '<div class="text-sm text-slate-500">目前沒有連上雲端資料庫，無法使用備份功能。</div>';
+            else if (archiveState.error === 'missing') html = '<div class="text-sm font-bold text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-3 leading-relaxed">⚠️ 雲端尚未建立備份資料表，請最高管理員在 Supabase 執行 <code class="font-mono">supabase/sql/event_archives.sql</code>。在建立之前不能清空活動資料（沒有備份就不清空）。<div class="mt-2"><button type="button" onclick="refreshArchivePanel()" class="px-3 py-1.5 bg-white border border-amber-400 rounded-md text-xs font-bold text-amber-900 hover:bg-amber-100">🔄 重新檢查</button></div></div>';
+            else if (archiveState.error) html = `<div class="text-sm font-bold text-rose-700">讀取備份失敗：${E(archiveState.error)} <button type="button" onclick="refreshArchivePanel()" class="ml-2 px-3 py-1 bg-white border border-slate-300 rounded-md text-xs">重試</button></div>`;
+            else if (!archiveState.loaded) html = '<div class="text-sm text-slate-500">讀取中…</div>';
+            else {
+                const list = archiveState.rows.length ? archiveState.rows.map(r => `
+                    <div class="flex flex-wrap items-center justify-between gap-2 py-2.5 border-b border-slate-100">
+                        <div class="min-w-0">
+                            <div class="font-bold text-sm text-slate-900">${E(r.label || '（未命名）')}<span class="ml-2 text-xs font-normal text-slate-500">備份於 ${E(String(r.archived_at || '').slice(0, 10))}${r.archived_by ? '・' + E(r.archived_by) : ''}</span></div>
+                            <div class="text-xs text-slate-600 mt-0.5">${E(archiveSummaryText(r.summary))}</div>
+                        </div>
+                        <div class="flex gap-2 shrink-0">
+                            <button type="button" onclick="viewEventArchive(${Number(r.id)})" class="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-md text-xs font-bold">👁 查看</button>
+                            <button type="button" onclick="exportEventArchiveExcel(${Number(r.id)})" class="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md text-xs font-bold">📥 Excel</button>
+                        </div>
+                    </div>`).join('') : '<div class="text-sm text-slate-500 py-2">這個活動還沒有任何備份。</div>';
+                html = `<div class="text-xs font-bold text-slate-500 mb-1">這個活動的歷屆備份</div>${list}`;
+                if (isAdmin) html += `
+                    <div class="mt-4 p-3 rounded-lg border border-rose-200 bg-rose-50">
+                        <div class="font-bold text-sm text-rose-700">🧹 備份並清空「這一個活動」</div>
+                        <div class="text-xs text-slate-700 mt-1 leading-relaxed">目前有 <b>${cnt.orders}</b> 社的報名表、<b>${cnt.pays}</b> 筆繳費紀錄。按下後會先備份（含銀行入帳與報到紀錄），確認備份成功才清空報名表與繳費紀錄；費用設定、活動日期、DM、主委指派都保留，其他活動不受影響。只有最高管理員看得到這個按鈕。</div>
+                        <button type="button" onclick="archiveAndResetCurrentEvent()" class="mt-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-bold">📦 備份並清空本活動</button>
+                    </div>`;
+            }
+            body.innerHTML = html;
+        }
+        // 讀出某活動目前所有要備份的資料
+        async function collectEventArchiveData() {
+            const { cat, sub, key } = archiveEventInfo();
+            const state = { categoriesData, divisionsData, registrationOrders, chairConfig };
+            const bank = [], checkins = [];
+            try { const { data, error } = await supabaseClient.from('bank_transactions').select('id,mail_date,tx_time,tx_date,amount,note,account_masked,matched_key,matched_club,matched_at').eq('matched_key', key).limit(1000); if (!error) bank.push(...(data || [])); } catch (e) { /* 沒有銀行入帳功能的地區 */ }
+            try {
+                for (let from = 0; ; from += 1000) {
+                    const { data, error } = await supabaseClient.from('event_checkins').select('*').eq('event_key', key).order('id').range(from, from + 999);
+                    if (error) break;
+                    checkins.push(...(data || []));
+                    if (!data || data.length < 1000) break;
+                }
+            } catch (e) { /* 沒有報到資料表 */ }
+            const data = {
+                version: 1, eventKey: key, catId: cat.id || '', catName: cat.name || '', subName: sub,
+                orders: JSON.parse(JSON.stringify((registrationOrders || {})[sub] || [])),
+                payments: JSON.parse(JSON.stringify((chairPaymentRecords || {})[key] || {})),
+                fees: (chairConfig.subEventFees || {})[key] || null,
+                eventDate: (chairConfig.eventDates || {})[key] || null,
+                chairs: { category: ((appAuthData.eventChairs || {})[cat.id] || []).slice(), subEvent: ((appAuthData.eventChairs || {})[key] || []).slice() },
+                divisions: getPaymentDivisions().map(d => ({ id: d.id, name: d.name, clubs: (d.clubs || []).map(c => c.name) })),
+                bankTransactions: bank, checkins
+            };
+            const summary = {
+                stats: CheckinCore.eventStats(state, chairPaymentRecords, key),
+                orderCount: data.orders.length, paymentCount: Object.keys(data.payments).length,
+                bankCount: bank.length, bankTotal: bank.reduce((a, t) => a + (Number(t.amount) || 0), 0),
+                checkedIn: checkins.filter(r => r.status === 'in').length, checkinRows: checkins.length
+            };
+            return { key, cat, sub, data, summary };
+        }
+        function downloadJsonFile(name, obj) {
+            try {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 1)], { type: 'application/json' }));
+                a.download = name; document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+            } catch (e) { console.warn('下載備份檔失敗', e); }
+        }
+        async function archiveAndResetCurrentEvent() {
+            if (currentRole !== 'super_admin') { alert('⚠️ 權限限制：只有最高管理員可以備份並清空活動資料！'); return; }
+            if (!supabaseClient) { alert('目前沒有連上雲端資料庫，無法備份，所以不會清空。'); return; }
+            if (archiveBusy) return;
+            archiveBusy = true;
+            try {
+                await pullRemoteState(true);      // 先抓最新資料，避免備份到舊的、或清空時蓋掉別社剛送出的其他活動報名
+                const pack = await collectEventArchiveData();
+                const sm = pack.summary;
+                if (!sm.orderCount && !sm.paymentCount && !sm.checkinRows && !sm.bankCount) { alert(`「${pack.sub}」目前沒有報名表、繳費紀錄、銀行入帳或報到紀錄，不需要清空。`); return; }
+                const label = prompt(`請替這份備份取個名字（接手的主委會看到），例如屆別或年度：`, `${DISTRICT.rotaryYear || ''} 年度`.trim());
+                if (label === null) return;
+                if (!confirm(`⚠️ 確定要「備份並清空」這個活動嗎？\n\n活動：${pack.sub}\n備份名稱：${label.trim() || '（未命名）'}\n\n將備份並清空：\n・報名表 ${sm.orderCount} 社\n・繳費紀錄 ${sm.paymentCount} 筆\n另外備份（不刪除）：銀行入帳 ${sm.bankCount} 筆、報到紀錄 ${sm.checkinRows} 筆\n\n費用設定、活動日期、DM、主委指派會保留；其他活動不受影響。\n清空後所有裝置同步生效。`)) return;
+                if (!confirm(`再次確認：真的要清空「${pack.sub}」目前的報名表與繳費紀錄嗎？\n（會先備份，備份失敗就不會清空）`)) return;
+                // 1. 寫入備份
+                const row = { event_key: pack.key, cat_name: pack.cat.name || '', sub_name: pack.sub, label: label.trim().slice(0, 60), archived_by: currentRole === 'super_admin' ? '最高管理員' : (selectedClubName || ''), summary: sm, data: pack.data };
+                const ins = await supabaseClient.from('event_archives').insert(row).select('id').single();
+                if (ins.error || !ins.data) { alert('❌ 備份失敗，資料沒有清空。\n\n' + (archiveIsMissingTable(ins.error) ? '雲端尚未建立備份資料表（supabase/sql/event_archives.sql）。' : ((ins.error && ins.error.message) || '請稍後再試。'))); return; }
+                const id = ins.data.id;
+                // 2. 讀回來確認筆數相符
+                const back = await supabaseClient.from('event_archives').select('data').eq('id', id).single();
+                const bd = back.data && back.data.data;
+                if (back.error || !bd || (bd.orders || []).length !== sm.orderCount || Object.keys(bd.payments || {}).length !== sm.paymentCount) { alert('❌ 備份寫入後核對不符，為了安全資料沒有清空。請再試一次或聯絡系統管理者。'); return; }
+                // 3. 另外下載一份到這台電腦
+                downloadJsonFile(`${DISTRICT.code}地區_${String(pack.sub).replace(/[\\/:*?"<>|\s]+/g, '_')}_備份_${taiwanTodayStr()}.json`, Object.assign({ label: row.label, archivedAt: new Date().toISOString(), summary: sm }, pack.data));
+                // 4. 清空這個活動的報名表與繳費紀錄
+                if (registrationOrders) delete registrationOrders[pack.sub];
+                if (chairPaymentRecords) delete chairPaymentRecords[pack.key];
+                currentFormSelectedMembers = [];
+                currentFormPrizeSponsors = [];
+                await savePaymentRecords();
+                const saved = await saveToStorage();
+                if (saved === false) { alert(`⚠️ 備份已完成（編號 ${id}），但清空時存檔失敗，請重新整理後再按一次。`); return; }
+                // 5. 銀行入帳：改標成「已封存」，才不會出現在新一屆的入帳明細，也不會被重新配對
+                if (sm.bankCount) {
+                    const mk = `${pack.key}::封存#${id}`;
+                    try { await supabaseClient.from('bank_transactions').update({ matched_key: mk }).eq('matched_key', pack.key); } catch (e) { console.warn('銀行入帳封存標記失敗', e); }
+                    (bankTransactions || []).forEach(t => { if (t.matched_key === pack.key) t.matched_key = mk; });
+                }
+                // 6. 報到紀錄要報到密碼才能清空（已經備份）
+                let checkinNote = '';
+                if (sm.checkinRows) {
+                    const pw = prompt(`這個活動還有 ${sm.checkinRows} 筆報到紀錄（已備份）。\n要一併清空請輸入「報到密碼」；按取消則保留，之後可到「活動報到」面板清空。`);
+                    if (pw !== null && pw.trim()) {
+                        try { const r = await supabaseClient.rpc('checkin_reset', { p_event_key: pack.key, p_password: pw.trim() }); if (r.error) throw r.error; if (typeof notifyCheckinPeers === 'function') notifyCheckinPeers('reset'); checkinNote = '報到紀錄也已清空。'; }
+                        catch (e) { checkinNote = '報到紀錄沒有清空（' + checkinErrorText(e) + '），可到「活動報到」面板再清。'; }
+                    } else checkinNote = '報到紀錄保留，可到「活動報到」面板清空。';
+                }
+                refreshAllViewsAfterReset();
+                if (typeof renderEventIncomeBox === 'function') renderEventIncomeBox();
+                if (typeof refreshCheckinPanel === 'function' && isCheckinApplicable()) refreshCheckinPanel();
+                await refreshArchivePanel();
+                alert(`✅ 「${pack.sub}」已備份並清空。\n\n備份名稱：${row.label || '（未命名）'}\n備份檔也已下載到這台電腦。${checkinNote ? '\n' + checkinNote : ''}`);
+            } catch (e) {
+                console.error(e);
+                alert('❌ 發生錯誤：' + ((e && e.message) || e) + '\n\n請重新整理頁面確認目前的資料狀況。');
+            } finally { archiveBusy = false; renderArchivePanel(); }
+        }
+        // ---------- 查看／下載某一份備份 ----------
+        const ARCHIVE_PAY_STATUS = { PAID_EMAIL: '已繳（銀行入帳）', PAID_MANUAL: '已繳（人工核訖）', EXEMPT: '免繳', NOTIFIED: '已回報待確認', UNPAID: '未繳' };
+        async function loadEventArchive(id) {
+            const { data, error } = await supabaseClient.from('event_archives').select('*').eq('id', id).single();
+            if (error || !data) { alert('讀取備份失敗，請稍後再試。'); return null; }
+            return data;
+        }
+        // 各社一列：分區、人數、金額、繳費狀態、名單
+        function archiveClubRows(d) {
+            const divOf = {}; (d.divisions || []).forEach(v => (v.clubs || []).forEach(c => { divOf[c] = v.name; }));
+            const names = new Set((d.orders || []).map(o => o.clubName).concat(Object.keys(d.payments || {})));
+            const order = []; (d.divisions || []).forEach(v => (v.clubs || []).forEach(c => { if (names.has(c)) { order.push(c); names.delete(c); } }));
+            return order.concat([...names]).map(club => {
+                const o = (d.orders || []).find(x => x.clubName === club) || null, p = (d.payments || {})[club] || null;
+                const items = (o && o.items) || [];
+                return { club, division: divOf[club] || '', people: items.length, total: o ? (Number(o.grandTotal) || 0) : 0, hasOrder: !!o,
+                    status: p ? (ARCHIVE_PAY_STATUS[p.status] || p.status || '') : '未繳', paidAmt: p && CheckinCore.isPaidStatus(p.status) ? (Number(p.amount) || 0) : 0, payDate: (p && p.date) || '',
+                    names: items.map(it => (it.nickname ? it.nickname + ' ' : '') + (it.name || '')).join('、') };
+            });
+        }
+        async function viewEventArchive(id) {
+            const a = await loadEventArchive(id); if (!a) return;
+            const E = escapeHtmlText, d = a.data || {}, rows = archiveClubRows(d);
+            let ov = document.getElementById('archiveViewerOverlay');
+            if (!ov) { ov = document.createElement('div'); ov.id = 'archiveViewerOverlay'; document.body.appendChild(ov); }
+            ov.className = 'fixed inset-0 z-[70] bg-slate-900/60 flex items-start sm:items-center justify-center p-3 overflow-y-auto';
+            ov.onclick = ev => { if (ev.target === ov) closeEventArchiveViewer(); };
+            ov.innerHTML = `<div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[92vh] flex flex-col">
+                <div class="p-4 border-b border-slate-200 flex items-start justify-between gap-3">
+                    <div class="min-w-0"><div class="text-xs font-bold text-violet-700">📦 歷屆備份（唯讀）</div><div class="font-bold text-lg text-slate-900 leading-snug">${E(a.sub_name)}｜${E(a.label || '（未命名）')}</div>
+                        <div class="text-xs text-slate-500 mt-0.5">備份於 ${E(String(a.archived_at || '').slice(0, 10))}・${E(archiveSummaryText(a.summary))}</div></div>
+                    <div class="flex gap-2 shrink-0"><button type="button" onclick="exportEventArchiveExcel(${Number(a.id)})" class="px-3 py-1.5 bg-white border border-slate-300 rounded-md text-xs font-bold">📥 Excel</button><button type="button" onclick="closeEventArchiveViewer()" class="px-3 py-1.5 bg-slate-800 text-white rounded-md text-xs font-bold">關閉</button></div>
+                </div>
+                <div class="p-4 overflow-auto">
+                    ${rows.length ? `<table class="w-full text-sm"><thead><tr class="text-left text-xs text-slate-500 border-b"><th class="py-2 pr-2">分區</th><th class="pr-2">社名</th><th class="pr-2 text-right">人數</th><th class="pr-2 text-right">報名金額</th><th class="pr-2">繳費</th><th>報名名單</th></tr></thead><tbody>${rows.map(r => `<tr class="border-b border-slate-100 align-top"><td class="py-2 pr-2 text-xs text-slate-500 whitespace-nowrap">${E(r.division)}</td><td class="pr-2 font-bold whitespace-nowrap">${E(r.club)}</td><td class="pr-2 text-right">${r.hasOrder ? r.people : '－'}</td><td class="pr-2 text-right whitespace-nowrap">${r.hasOrder ? '$' + r.total.toLocaleString() : '－'}</td><td class="pr-2 whitespace-nowrap ${r.paidAmt || /已繳|免繳/.test(r.status) ? 'text-emerald-700 font-bold' : 'text-slate-500'}">${E(r.status)}${r.paidAmt ? ' $' + r.paidAmt.toLocaleString() : ''}</td><td class="text-xs text-slate-600 leading-relaxed">${E(r.names)}</td></tr>`).join('')}</tbody></table>` : '<div class="text-sm text-slate-500">這份備份裡沒有報名表或繳費紀錄。</div>'}
+                    <div class="text-xs text-slate-500 mt-3">另含銀行入帳 ${(d.bankTransactions || []).length} 筆、報到紀錄 ${(d.checkins || []).length} 筆，完整內容請下載 Excel。</div>
+                </div></div>`;
+        }
+        function closeEventArchiveViewer() { const ov = document.getElementById('archiveViewerOverlay'); if (ov) ov.remove(); }
+        async function exportEventArchiveExcel(id) {
+            const a = await loadEventArchive(id); if (!a) return;
+            if (typeof XLSX === 'undefined') { alert('Excel 元件尚未載入，請稍後再試。'); return; }
+            const d = a.data || {}, st = (a.summary && a.summary.stats) || {};
+            const wb = XLSX.utils.book_new();
+            const add = (name, aoa) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);
+            add('摘要', [['活動', a.sub_name], ['主選單', a.cat_name], ['備份名稱', a.label], ['備份時間', String(a.archived_at || '').slice(0, 19).replace('T', ' ')], ['備份者', a.archived_by],
+                ['報名社數', st.regClubs == null ? '' : st.regClubs], ['報名人數', st.people == null ? '' : st.people], ['應繳社數', st.dueClubs || 0], ['已繳社數', st.paidClubs || 0], ['應收金額', st.expected || 0], ['已收金額', st.paidAmt || 0],
+                ['銀行入帳筆數', (d.bankTransactions || []).length], ['已報到人數', (a.summary && a.summary.checkedIn) || 0]]);
+            add('各社彙總', [['分區', '社名', '報名人數', '報名金額', '繳費狀態', '已繳金額', '繳費日期']].concat(archiveClubRows(d).map(r => [r.division, r.club, r.hasOrder ? r.people : '', r.hasOrder ? r.total : '', r.status, r.paidAmt || '', r.payDate])));
+            const detail = [['社名', '職務', 'Nick Name', '姓名', '飲食', '素食備註', '參加方式', '差點', '費用', 'PELS 出席方式']];
+            (d.orders || []).forEach(o => (o.items || []).forEach(it => detail.push([o.clubName, it.role || '', it.nickname || '', it.name || '', it.diet === 'VEGAN' ? '素' : '葷', it.veganNote || '', it.participation || '', it.handicap == null ? '' : it.handicap, it.fee == null ? '' : it.fee, it.pelsOption || ''])));
+            add('報名明細', detail);
+            add('繳費紀錄', [['社名', '狀態', '金額', '日期', '方式', '備註', '核訖時間']].concat(Object.keys(d.payments || {}).map(c => { const p = d.payments[c] || {}; return [c, ARCHIVE_PAY_STATUS[p.status] || p.status || '', p.amount == null ? '' : p.amount, p.date || '', p.method || '', p.note || '', p.verifiedAt || '']; })));
+            add('銀行入帳', [['日期', '金額', '備註', '歸屬社']].concat((d.bankTransactions || []).map(t => [t.tx_date || '', t.amount == null ? '' : t.amount, t.note || '', t.matched_club || ''])));
+            add('報到紀錄', [['社名', '姓名', 'Nick Name', '狀態', '報到時間', '方式', '現場加報']].concat((d.checkins || []).map(r => { const pk = String(r.person_key || '').split('|'); return [r.club_name || '', r.full_name || pk[0] || '', pk[1] || '', r.status === 'in' ? '已到' : r.status === 'pending' ? '加報未到' : '已取消', r.checked_in_at ? String(r.checked_in_at).slice(0, 19).replace('T', ' ') : '', r.method || '', r.is_walk_in ? '是' : '']; })));
+            XLSX.writeFile(wb, `${DISTRICT.code}地區_${String(a.sub_name).replace(/[\\/:*?"<>|\s]+/g, '_')}_${String(a.label || '備份').replace(/[\\/:*?"<>|\s]+/g, '_')}_歷屆備份.xlsx`);
+        }
+
         function taiwanNowStr() {   // 例：2026-11-12 10:12
             return new Date(Date.now() + 8 * 3600 * 1000).toISOString().replace('T', ' ').substring(0, 16);
         }
