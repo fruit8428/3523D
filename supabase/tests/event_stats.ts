@@ -91,3 +91,19 @@ await adm("cal_admin_statviewers_save", { eventKey: "sports::高爾夫", people:
 ok("重新儲存＝整批取代：趙被移除後看不到", await code(handleMember("cal_stats", {}, db, U("甲社", "趙|Z"), reg)) === "CAL_FORBIDDEN" && T.calendar_stat_viewers.filter((r: any) => r.event_key === "*").length === 1);
 ok("不認得的活動、後台密碼錯誤被擋", await code(adm("cal_admin_statviewers_save", { eventKey: "x::y", people: [] })) === "BAD_REQUEST" && await code(handleAdmin("cal_admin_statviewers_get", { adminPassword: "x" }, { admin: db, password: "pw", members: async () => MEMBERS, clubInfos: async () => [] })) === "CAL_ADMIN_AUTH_FAILED");
 ok("沒綁定 LINE 的人被擋", (await code(handleMember("cal_stats", {}, db, null, reg))) === "NOT_BOUND");
+
+// ---------- 活動日期（畫面預設只列今天起兩個月內） ----------
+{
+  const day = (n: number) => new Date(Date.now() + n * 86400e3 + 8 * 3600e3).toISOString().slice(0, 10);
+  const regD: any = { ...reg, stats: { events: reg.stats.events, of: async (k: string) => ({ ...Core.eventStats(state, payments, k), date: k === "sports::高爾夫" ? "2030-01-02" : "" }) } };
+  T.calendar_events = [
+    { registration_key: "seminars::地區訓練講習會", start_at: day(-40) + "T01:00:00Z", status: "confirmed", layer: "district" },
+    { registration_key: "seminars::地區訓練講習會", start_at: day(10) + "T01:00:00Z", status: "confirmed", layer: "district" },
+    { registration_key: "seminars::地區訓練講習會", start_at: day(3) + "T01:00:00Z", status: "cancelled", layer: "district" },
+    { registration_key: "seminars::社長當選人研討會 PELS", start_at: day(-5) + "T01:00:00Z", status: "confirmed", layer: "district" },
+  ];
+  const r = await handleMember("cal_stats", {}, db, U("甲社", "總|G"), regD);
+  const d = (k: string) => r.events.find((e: any) => e.key === k).date;
+  ok("日期：主委填的優先；沒填的用行事曆上今天以後最近一場（已取消不算）", d("sports::高爾夫") === "2030-01-02" && d("seminars::地區訓練講習會") === day(10));
+  ok("日期：只有過去的行程就取最後一場；分攤金沒有日期", d("seminars::社長當選人研討會 PELS") === day(-5) && d("app::上半年分攤金") === "");
+}

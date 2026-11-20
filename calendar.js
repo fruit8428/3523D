@@ -692,6 +692,17 @@ async function calArCopy() {
 // =====================================================================
 let calCanStats = false, calStatAll = false, calStatKeys = [];
 let calStats = null, calStatsOpen = false, calStatsExp = '', calStatsSeq = 0;
+let calStatsShowAll = false;      // false＝只列「今天起兩個月內」的活動＋分攤金／配合款（沒有日期，一直列著）；true＝全部
+const CAL_STATS_MONTHS = 2;
+function calStatsInWindow(s) {
+    if (s.mode === 'apportion') return true;
+    if (!s.date) return false;
+    const t = tpParts(Date.now()), from = ymd(Date.now());
+    const end = new Date(Date.UTC(t.y, t.m - 1 + CAL_STATS_MONTHS, t.d));       // 兩個月後的同一天
+    const to = `${end.getUTCFullYear()}-${p2(end.getUTCMonth() + 1)}-${p2(end.getUTCDate())}`;
+    return s.date >= from && s.date <= to;
+}
+function calStatsSetAll(v) { calStatsShowAll = v; calStatsExp = ''; calStatsRender(); window.scrollTo({ top: 0 }); }
 const calStatCan = key => !!key && (calStatAll || calStatKeys.includes(key));
 const calMoney = n => 'NT$ ' + (Number(n) || 0).toLocaleString();
 const calShortClub = n => String(n).replace(/扶輪社$/, '');
@@ -728,21 +739,26 @@ function calStatsToggle(i) { const k = calStats.events[i].key; calStatsExp = cal
 function calStatsRender() {
     if (!calStats) return;
     let lastCat = null;
+    const hidden = calStats.events.filter(s => !calStatsInWindow(s)).length;
     const cards = calStats.events.map((s, i) => {
+        if (!calStatsShowAll && !calStatsInWindow(s)) return '';
         const open = calStatsExp === s.key;
         const headCat = s.catName !== lastCat ? `<div class="text-sm font-black text-slate-500 mt-4 mb-1">${E(s.catName)}</div>` : '';
         lastCat = s.catName;
         return `${headCat}<div class="bg-white rounded-2xl border ${open ? 'border-blue-400' : 'border-slate-200'} shadow-sm p-4 mb-2">
             <button type="button" onclick="calStatsToggle(${i})" class="w-full text-left">
-                <div class="flex items-start justify-between gap-2"><div class="font-black text-lg leading-snug">${E(s.subName)}</div><div class="shrink-0 text-sm font-bold text-blue-700">${open ? '收合 ▲' : '各分區 ▼'}</div></div>
+                <div class="flex items-start justify-between gap-2"><div class="font-black text-lg leading-snug">${E(s.subName)}${s.date ? `<div class="text-xs font-bold text-slate-500 mt-0.5">📅 ${E(s.date.replace(/-/g, '/'))}</div>` : ''}</div><div class="shrink-0 text-sm font-bold text-blue-700">${open ? '收合 ▲' : '各分區 ▼'}</div></div>
                 <div class="mt-2">${calStatSummary(s)}</div>
             </button>${open ? calStatRows(s) : ''}</div>`;
     }).join('');
     const y = window.scrollY, first = $('calStatsTop') === null;
     $('calSub').innerHTML = `<div id="calStatsTop"></div><button type="button" onclick="calStatsClose()" class="text-base font-bold text-blue-700 py-2">‹ 返回行事曆</button>
         <div class="flex items-center justify-between gap-2 mt-1"><h2 class="font-black text-xl">💰 報名／繳費狀況</h2><button type="button" onclick="calOpenStats(true)" class="shrink-0 text-sm font-bold text-blue-700 border border-blue-200 bg-white rounded-lg px-3 py-1.5">🔄 重新整理</button></div>
-        <div class="text-xs text-slate-500 mt-1">更新時間 ${calStatTime(calStats.at)}・${calStats.all ? '全部活動' : '後台開放給您的活動'}・點卡片看各分區與未繳社名</div>
-        ${cards || '<div class="bg-white rounded-2xl border border-slate-200 p-5 mt-3 text-center text-slate-500">目前沒有可以查看的活動。</div>'}
+        <div class="text-xs text-slate-500 mt-1">更新時間 ${calStatTime(calStats.at)}・點卡片看各分區與未繳社名</div>
+        <div class="text-xs text-slate-600 mt-1">${calStatsShowAll ? '目前顯示：全部活動' : `目前顯示：今天起 ${CAL_STATS_MONTHS} 個月內的活動，以及分攤金／配合款`}</div>
+        ${cards || `<div class="bg-white rounded-2xl border border-slate-200 p-5 mt-3 text-center text-slate-500">${calStats.events.length ? `今天起 ${CAL_STATS_MONTHS} 個月內沒有活動。` : '目前沒有可以查看的活動。'}</div>`}
+        ${calStatsShowAll ? `<button type="button" onclick="calStatsSetAll(false)" class="mt-3 w-full bg-white border border-slate-300 text-slate-700 font-bold rounded-xl py-3">只看 ${CAL_STATS_MONTHS} 個月內的活動</button>`
+            : hidden ? `<button type="button" onclick="calStatsSetAll(true)" class="mt-3 w-full bg-white border border-slate-300 text-slate-700 font-bold rounded-xl py-3">顯示全部活動（還有 ${hidden} 個）</button>` : ''}
         <p class="text-xs text-slate-500 mt-3 leading-relaxed">已繳＝主委核訖、銀行入帳自動對帳成功或免繳的社。分攤金、研討會、年會＝每一社都要繳；運動賽事、社慶等＝有報名的社才要繳。這些數字只有總監、總監秘書與後台指定的人看得到。</p>`;
     if (!first) window.scrollTo({ top: y });
 }

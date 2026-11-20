@@ -62,7 +62,8 @@ function statDeps(deps: Deps) {
   })();
   return {
     events: async () => Core.listStatEvents((await load()).state).map((e: Any) => ({ key: e.key, catName: e.catName, subName: e.subName })),
-    of: async (eventKey: string) => { const x = await load(); return Core.eventStats(x.state, x.payments, eventKey); },
+    // date＝主委在「活動設定」填的活動日期（沒填是空字串；分攤金沒有日期）
+    of: async (eventKey: string) => { const x = await load(); const st = Core.eventStats(x.state, x.payments, eventKey); const d = ((x.state.chairConfig.eventDates || {})[eventKey] || {}).date; return st && st.ok ? { ...st, date: /^\d{4}-\d{2}-\d{2}$/.test(String(d || "")) ? d : "" } : st; },
   };
 }
 

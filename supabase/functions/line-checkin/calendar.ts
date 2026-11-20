@@ -365,6 +365,21 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
       const st = await reg!.stats!.of(ev.key);
       if (st && st.ok) out.push(st);
     }
+    // 活動日期：主委沒填的，用行事曆上對應這個活動的行程日期補（今天以後最近的一場，沒有就取最後一場）。畫面預設只列「今天起兩個月內」的活動
+    if (out.some((s) => !s.date)) {
+      const q = await admin.from("calendar_events").select("registration_key,start_at,status,layer").limit(2000);
+      const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10), byKey = new Map<string, string[]>();
+      for (const r of q.error ? [] : q.data || []) {
+        if (!r.registration_key || r.status === "cancelled" || r.layer === "private") continue;
+        const d = new Date(Date.parse(r.start_at) + 8 * 3600_000).toISOString().slice(0, 10);
+        byKey.set(r.registration_key, [...(byKey.get(r.registration_key) || []), d]);
+      }
+      for (const s of out) {
+        if (s.date) continue;
+        const ds = (byKey.get(s.key) || []).sort();
+        s.date = ds.find((d) => d >= today) || ds[ds.length - 1] || "";
+      }
+    }
     return { ok: true, at: new Date().toISOString(), all: sa.all, events: out };
   }
 
