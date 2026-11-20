@@ -4,7 +4,7 @@ const puppeteer = require('puppeteer');
   const browser = await puppeteer.launch({ headless: 'new' });
   const page = await browser.newPage();
   let fail = 0; const ok = (n, c) => { console.log((c ? '✅ ' : '❌ ') + n); if (!c) fail++; };
-  const saved = {}; const sent = []; let svRows = [{ eventKey: 's::高爾夫', club: '乙社', key: '林|Lin', name: '林', nickname: 'Lin' }];
+  const saved = {}; const sent = []; let bnPeople = []; let svRows = [{ eventKey: 's::高爾夫', club: '乙社', key: '林|Lin', name: '林', nickname: 'Lin' }];
   const members = [{ key: '王|P Robert', name: '王', nickname: 'P Robert', role: '社長', spouse: false, isDefault: true },
                    { key: '李|S Ken', name: '李', nickname: 'S Ken', role: '社友', spouse: false, isDefault: true },
                    { key: '陳|PP Fred', name: '陳', nickname: 'PP Fred', role: '社友', spouse: false, isDefault: false }];
@@ -20,6 +20,8 @@ const puppeteer = require('puppeteer');
     let r = { ok: false, code: 'BAD_REQUEST' };
     if (b.action === 'cal_admin_state') r = { ok: true, types: [], roles: [], clubs: ['甲社', '乙社'], clubsWithoutEditor: [], clubInfos: [{ name: '甲社', division: '第一分區', code: '01-1' }, { name: '乙社', division: '第二分區', code: '02-1' }], reportCustomClubs: Object.keys(saved).map(c => ({ club: c, count: saved[c].length })) };
     if (b.action === 'cal_admin_viewers_get') r = view(b.club);
+    if (b.action === 'cal_admin_backupnotify_save') bnPeople = b.people.map(x => ({ club: x.club, key: x.key, name: x.key.split('|')[0], nickname: x.key.split('|')[1] }));
+    if (b.action && b.action.startsWith('cal_admin_backupnotify_')) { const test = b.action.endsWith('_test'); r = { ok: true, afterDays: 7, sent: test ? bnPeople.filter(x => x.name !== '陳').length : 0, due: test ? [] : [{ key: 's::高爾夫', subName: '高爾夫', date: '2026-11-13', regClubs: 2, people: 6, paidClubs: 1 }], recipients: bnPeople.map(x => Object.assign({}, x, { status: x.name === '陳' ? 'NOT_BOUND' : test ? 'SENT' : 'PREVIEW' })) }; }
     if (b.action === 'cal_admin_statviewers_save') svRows = svRows.filter(v => v.eventKey !== b.eventKey).concat(b.people.map(x => ({ eventKey: b.eventKey, club: x.club, key: x.key, name: x.key.split('|')[0], nickname: x.key.split('|')[1] })));
     if (b.action === 'cal_admin_statviewers_get' || b.action === 'cal_admin_statviewers_save') r = { ok: true, events: [{ key: 'app::分攤金', catName: '地辦分攤金', subName: '上半年分攤金' }, { key: 's::高爾夫', catName: '運動賽事', subName: '高爾夫' }], viewers: svRows };
     if (b.action === 'cal_admin_digest_preview' || b.action === 'cal_admin_digest_test') r = { ok: true, day: b.day, sent: b.action === 'cal_admin_digest_test' ? 2 : 0, governors: [{ name: '王總監', nickname: 'Gov', club: '甲社', events: [{ id: 'd1', layer: 'district', title: '授證典禮', time: '18:00–21:00', location: '君悅', dressCode: '正式' }], recipients: [{ as: '總監', name: '王總監', status: b.action === 'cal_admin_digest_test' ? 'SENT' : 'PREVIEW' }, { as: '總監秘書（副本）', name: '林秘書', status: 'NOT_BOUND' }] }] };
@@ -73,6 +75,16 @@ const puppeteer = require('puppeteer');
   const sv1 = sent.filter(x => x.action === 'cal_admin_statviewers_save').pop();
   ok('⑤ 儲存：送出活動與勾選的人（只送社名與 key）', !!sv1 && sv1.eventKey === 's::高爾夫' && sv1.people.length === 2 && sv1.people.every(x => x.club === '甲社' && Object.keys(x).length === 2));
   ok('⑤ 儲存後顯示成功、選單人數更新', await page.evaluate(() => document.getElementById('svMsg').textContent.includes('已儲存（2 人）') && document.getElementById('svEvent').textContent.includes('高爾夫（已指定 2 人）') && document.getElementById('svEvent').value === 's::高爾夫'));
+  // ---------- ⑥ 系統管理者（備份提醒收件人） ----------
+  ok('⑥ 一開始沒有收件人會提醒，並列出目前到期的活動', await page.evaluate(() => document.getElementById('bnChips').innerText.includes('還沒有指定任何人') && document.getElementById('bnDue').innerText.includes('高爾夫（2026-11-13）')));
+  await page.select('#bnClub', '甲社'); await wait(400);
+  await page.evaluate(() => { const c = document.querySelectorAll('#bnMembers input[type=checkbox]'); c[0].click(); c[2].click(); }); await wait(100);
+  ok('⑥ 可勾選多人（本人＋備援）', await page.evaluate(() => document.querySelectorAll('#bnChips > span').length === 2 && document.getElementById('bnMsg').textContent === '尚未儲存'));
+  await page.click('#bnSave'); await wait(400);
+  const bn1 = sent.filter(x => x.action === 'cal_admin_backupnotify_save').pop();
+  ok('⑥ 儲存：送出兩位收件人，並標出誰還沒綁定 LINE', !!bn1 && bn1.people.length === 2 && await page.evaluate(() => { const t = document.getElementById('bnChips').innerText; return t.includes('已綁定 LINE') && t.includes('還沒綁定 LINE') && document.getElementById('bnMsg').textContent.includes('已儲存（2 人）'); }));
+  await page.click('#bnTest'); await wait(400);
+  ok('⑥ 測試發送：顯示每個人的結果', sent.some(x => x.action === 'cal_admin_backupnotify_test') && await page.evaluate(() => document.getElementById('bnChips').innerText.includes('已發送') && document.getElementById('bnMsg').textContent === '已發送 1 人'));
   ok('⑤ 無 JS 錯誤', jsErr.length === 0); if (jsErr.length) console.log(jsErr);
   await browser.close();
   console.log(fail ? `❌ ${fail} 項失敗` : '全部通過'); process.exit(fail ? 1 : 0);

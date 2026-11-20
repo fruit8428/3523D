@@ -145,6 +145,86 @@ export interface StatDeps {
   events: () => Promise<{ key: string; catName: string; subName: string }[]>;
   of: (eventKey: string) => Promise<Any>;
 }
+// 活動日期：主委沒填的，用行事曆上對應這個活動的行程日期補（今天以後最近的一場，沒有就取最後一場；已取消與私人行程不算）
+export async function fillStatDates(admin: Any, list: Any[], now = Date.now()): Promise<void> {
+  if (!list.some((s) => !s.date)) return;
+  const q = await admin.from("calendar_events").select("registration_key,start_at,status,layer").limit(2000);
+  const today = new Date(now + 8 * 3600_000).toISOString().slice(0, 10), byKey = new Map<string, string[]>();
+  for (const r of q.error ? [] : q.data || []) {
+    if (!r.registration_key || r.status === "cancelled" || r.layer === "private") continue;
+    const d = new Date(Date.parse(r.start_at) + 8 * 3600_000).toISOString().slice(0, 10);
+    byKey.set(r.registration_key, [...(byKey.get(r.registration_key) || []), d]);
+  }
+  for (const s of list) {
+    if (s.date) continue;
+    const ds = (byKey.get(s.key) || []).sort();
+    s.date = ds.find((d) => d >= today) || ds[ds.length - 1] || "";
+  }
+}
+
+// =====================================================================
+// 活動結束滿一週的「備份提醒」：每晚排程順便檢查，推播給行事曆後台「⑥」指定的系統管理者（可多人＝備援人員）。
+//   條件：活動日期在 7～21 天前（多留兩週，排程哪天失敗隔天還會補發）、還有報名或已繳紀錄、活動日期之後還沒備份過、這個活動這個日期還沒提醒過。
+//   收件人與「已提醒」紀錄都放在 calendar_settings（key＝backup_notify／backup_reminded::<活動key>::<日期>），不需要新資料表。
+//   只是提醒：備份並清空仍要最高管理員登入報名系統自己按（要先確認帳務結清）。分攤金／配合款沒有日期，不會提醒。
+// =====================================================================
+export const BACKUP_NOTIFY_KEY = "backup_notify";
+export const BACKUP_REMIND_AFTER_DAYS = 7, BACKUP_REMIND_WINDOW_DAYS = 21;
+export interface BackupPerson { club: string; key: string; name: string; nickname: string }
+export async function loadBackupRecipients(admin: Any): Promise<BackupPerson[]> {
+  const { data, error } = await admin.from("calendar_settings").select("value").eq("key", BACKUP_NOTIFY_KEY).maybeSingle();
+  if (error || !data) return [];
+  try { const a = JSON.parse(String(data.value || "[]")); return Array.isArray(a) ? a.filter((p: Any) => p && p.club && p.key) : []; } catch (_e) { return []; }
+}
+async function lineIdOf(admin: Any, club: string, key: string): Promise<string> {
+  const { data, error } = await admin.from("line_bindings").select("line_user_id").eq("club_name", club).eq("person_key", key).maybeSingle();
+  return error || !data ? "" : String(data.line_user_id);
+}
+// 目前「該備份了」的活動
+export async function backupDueEvents(admin: Any, stats: StatDeps, now = Date.now()): Promise<Any[]> {
+  const day = (n: number) => new Date(now + 8 * 3600_000 - n * 86400_000).toISOString().slice(0, 10);
+  const latest = day(BACKUP_REMIND_AFTER_DAYS), earliest = day(BACKUP_REMIND_WINDOW_DAYS);
+  const list: Any[] = [];
+  for (const ev of await stats.events()) { const st = await stats.of(ev.key); if (st && st.ok && st.mode !== "apportion") list.push(st); }
+  await fillStatDates(admin, list, now);
+  const out: Any[] = [];
+  for (const s of list) {
+    if (!s.date || s.date > latest || s.date < earliest) continue;
+    if (!((s.regClubs || 0) > 0 || (s.paidClubs || 0) > 0)) continue;                 // 已經沒有資料（清空過了）
+    const done = await admin.from("calendar_settings").select("key").eq("key", `backup_reminded::${s.key}::${s.date}`).maybeSingle();
+    if (!done.error && done.data) continue;                                           // 提醒過了
+    const arch = await admin.from("event_archives").select("id,archived_at").eq("event_key", s.key).gte("archived_at", s.date + "T00:00:00+08:00").limit(1);
+    if (!arch.error && (arch.data || []).length) continue;                            // 活動後已經備份過
+    out.push({ key: s.key, catName: s.catName, subName: s.subName, date: s.date, regClubs: s.regClubs || 0, people: s.people || 0, paidClubs: s.paidClubs || 0, paidAmt: s.paidAmt || 0 });
+  }
+  return out;
+}
+export function backupReminderText(events: Any[], test = false): string {
+  const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+  const lines = events.map((e) => `・${e.subName}（${md(e.date)}）\n　報名 ${e.regClubs} 社 ${e.people} 人、已繳 ${e.paidClubs} 社`);
+  return `${test ? "【測試】" : ""}📦 活動備份提醒\n\n以下活動已結束滿一週，資料還沒有備份並清空：\n${lines.join("\n")}\n\n請以最高管理員登入報名系統，切到該活動，在主委後台「📦 歷屆備份與清空本活動」按「備份並清空」。\n請先確認帳務都已結清；每個活動只提醒一次。`;
+}
+export async function backupReminder(admin: Any, o: { stats: StatDeps; send?: (to: string, messages: Any[]) => Promise<void>; test?: boolean; now?: number }): Promise<Any> {
+  const now = o.now || Date.now();
+  const people = await loadBackupRecipients(admin);
+  const recipients: Any[] = [];
+  for (const p of people) recipients.push({ ...p, lineId: await lineIdOf(admin, p.club, p.key) });
+  const due = o.test ? [] : await backupDueEvents(admin, o.stats, now);
+  const view = (status: (r: Any) => string) => recipients.map((r) => ({ club: r.club, key: r.key, name: r.name, nickname: r.nickname, status: status(r) }));
+  if (!o.send) return { ok: true, due, sent: 0, recipients: view((r) => r.lineId ? "PREVIEW" : "NOT_BOUND") };
+  const events = o.test ? [{ subName: "（這是測試，不是真的提醒）", date: new Date(now + 8 * 3600_000).toISOString().slice(0, 10), regClubs: 0, people: 0, paidClubs: 0 }] : due;
+  if (!events.length || !recipients.length) return { ok: true, due, sent: 0, recipients: view((r) => r.lineId ? "NO_EVENTS" : "NOT_BOUND") };
+  const msg = [{ type: "text", text: backupReminderText(events, !!o.test) }];
+  let sent = 0; const st = new Map<string, string>();
+  for (const r of recipients) {
+    const id = r.club + "\u0001" + r.key;
+    if (!r.lineId) { st.set(id, "NOT_BOUND"); continue; }
+    try { await o.send(r.lineId, msg); sent++; st.set(id, "SENT"); } catch (_e) { st.set(id, "FAILED"); }
+  }
+  if (sent && !o.test) for (const e of due) await admin.from("calendar_settings").upsert({ key: `backup_reminded::${e.key}::${e.date}`, value: new Date(now).toISOString() }, { onConflict: "key" });
+  return { ok: true, due, sent, recipients: view((r) => st.get(r.club + "\u0001" + r.key) || "") };
+}
+
 export const STAT_ALL = "*";      // calendar_stat_viewers.event_key＝* 代表「全部活動」
 // 這個人可以看哪些活動的報名狀況：總監、總監秘書＝全部；其餘看後台指定（calendar_stat_viewers）。資料表還沒建立＝沒有人被指定
 export async function statAccess(admin: Any, me: CalMe, roles: CalRoles): Promise<{ all: boolean; keys: Set<string> }> {
@@ -365,21 +445,7 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
       const st = await reg!.stats!.of(ev.key);
       if (st && st.ok) out.push(st);
     }
-    // 活動日期：主委沒填的，用行事曆上對應這個活動的行程日期補（今天以後最近的一場，沒有就取最後一場）。畫面預設只列「今天起兩個月內」的活動
-    if (out.some((s) => !s.date)) {
-      const q = await admin.from("calendar_events").select("registration_key,start_at,status,layer").limit(2000);
-      const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10), byKey = new Map<string, string[]>();
-      for (const r of q.error ? [] : q.data || []) {
-        if (!r.registration_key || r.status === "cancelled" || r.layer === "private") continue;
-        const d = new Date(Date.parse(r.start_at) + 8 * 3600_000).toISOString().slice(0, 10);
-        byKey.set(r.registration_key, [...(byKey.get(r.registration_key) || []), d]);
-      }
-      for (const s of out) {
-        if (s.date) continue;
-        const ds = (byKey.get(s.key) || []).sort();
-        s.date = ds.find((d) => d >= today) || ds[ds.length - 1] || "";
-      }
-    }
+    await fillStatDates(admin, out);      // 畫面預設只列「今天起兩個月內」的活動
     return { ok: true, at: new Date().toISOString(), all: sa.all, events: out };
   }
 
@@ -1361,6 +1427,29 @@ export async function handleAdmin(action: string, body: Any, ctx: AdminCtx): Pro
       ok: true, events,
       viewers: (data || []).map((r: Any) => ({ eventKey: r.event_key, club: r.club_name, key: r.person_key, name: r.full_name, nickname: r.nickname })),
     };
+  }
+
+  // ---------- 備份提醒的收件人（系統管理者，可多人＝備援人員）、目前到期的活動、測試發送 ----------
+  if (action === "cal_admin_backupnotify_get" || action === "cal_admin_backupnotify_save" || action === "cal_admin_backupnotify_test") {
+    if (action === "cal_admin_backupnotify_save") {
+      const all = await ctx.members();
+      const seen = new Set<string>(), list: BackupPerson[] = [];
+      for (const p of Array.isArray(body.people) ? body.people.slice(0, 20) : []) {      // 只收社友庫裡的人，最多 20 位
+        const club = String((p && p.club) || ""), key = String((p && p.key) || "");
+        const m = (Array.isArray(all[club]) ? all[club] : []).find((x: Any) => x && personKey(x) === key);
+        if (!m || seen.has(club + "\u0001" + key)) continue;
+        seen.add(club + "\u0001" + key);
+        list.push({ club, key, name: m.name || "", nickname: m.nickname || "" });
+      }
+      const up = await admin.from("calendar_settings").upsert({ key: BACKUP_NOTIFY_KEY, value: JSON.stringify(list) }, { onConflict: "key" });
+      if (up.error) dbFail(up.error);
+    }
+    if (!ctx.reg || !ctx.reg.stats) fail("CAL_REG_UNAVAILABLE");
+    if (action === "cal_admin_backupnotify_test") {
+      if (!ctx.sendLine) fail("PUSH_DISABLED");
+      return await backupReminder(admin, { stats: ctx.reg!.stats!, send: ctx.sendLine, test: true });
+    }
+    return { ...(await backupReminder(admin, { stats: ctx.reg!.stats! })), afterDays: BACKUP_REMIND_AFTER_DAYS };
   }
 
   // ---------- 總監每日推播：預覽（不發送）、測試發送（立刻發、標「測試」、不記錄） ----------

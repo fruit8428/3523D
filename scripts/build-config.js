@@ -43,6 +43,18 @@ if (!cfg.divisions.some((d) => d.name === '地區團隊')) {
 
 const out = `// 由 scripts/build-config.js 自動產生，請改 config/districts/${cfg.code}.json 再重新產生，不要直接編輯本檔。
 window.DISTRICT = ${JSON.stringify(cfg, null, 2)};
+// 扶輪年度依今天的日期自動計算（台灣時間，每年 7/1 換年度），不必每年改設定檔。
+// 設定檔寫 "rotaryYearAuto": false 才會固定使用上面 rotaryYear／rotaryYearLong 的值。
+(function () {
+  var d = window.DISTRICT;
+  d.rotaryYearOf = function (ms) {
+    var t = new Date((ms == null ? Date.now() : ms) + 8 * 3600e3), y = t.getUTCMonth() >= 6 ? t.getUTCFullYear() : t.getUTCFullYear() - 1;
+    return { short: y + '-' + ('0' + ((y + 1) % 100)).slice(-2), long: y + '-' + (y + 1) };
+  };
+  if (d.rotaryYearAuto === false) return;
+  var r = d.rotaryYearOf();
+  d.rotaryYear = r.short; d.rotaryYearLong = r.long;
+})();
 `;
 fs.writeFileSync(path.join(root, 'district-config.js'), out);
 const clubs = cfg.divisions.reduce((a, d) => a + (d.clubs || []).length, 0);

@@ -1,6 +1,6 @@
 // 報名／繳費統計：checkin-core.js 的算法 + 雲端權限（誰可以看）
 import "../functions/line-checkin/checkin-core.js";
-import { handleMember, handleAdmin } from "../functions/line-checkin/calendar.ts";
+import { handleMember, handleAdmin, backupReminder, backupDueEvents } from "../functions/line-checkin/calendar.ts";
 const Core = (globalThis as any).CheckinCore;
 const ok = (name: string, cond: boolean) => { console.log((cond ? "✅ " : "❌ ") + name); if (!cond) Deno.exitCode = 1; };
 const code = async (p: Promise<any>) => { try { await p; return "OK"; } catch (e: any) { return e.code || String(e); } };
@@ -50,10 +50,12 @@ function fake(tables: Record<string, any[]>) {
     tables[t] ||= []; const f: any[] = []; let op = "select", payload: any = null, one = false;
     const b: any = {
       select() { return b; }, insert(pl: any) { op = "insert"; payload = pl; return b; }, delete() { op = "delete"; return b; },
+      upsert(pl: any) { op = "upsert"; payload = pl; return b; }, gte(k: string, v: any) { f.push((r: any) => r[k] >= v); return b; },
       eq(k: string, v: any) { f.push((r: any) => r[k] === v); return b; }, order() { return b; }, limit() { return b; }, maybeSingle() { one = true; return b; },
       then(res: any) {
         const m = (r: any) => f.every((x) => x(r)); let d: any[] = [];
         if (op === "insert") tables[t].push(...(Array.isArray(payload) ? payload : [payload]));
+        else if (op === "upsert") { const i = tables[t].findIndex((r) => r.key === payload.key); if (i >= 0) tables[t][i] = payload; else tables[t].push(payload); }
         else if (op === "delete") { const keep = tables[t].filter((r) => !m(r)); tables[t].length = 0; tables[t].push(...keep); }
         else d = tables[t].filter(m);
         res({ data: one ? d[0] || null : d, error: null });
@@ -106,4 +108,38 @@ ok("沒綁定 LINE 的人被擋", (await code(handleMember("cal_stats", {}, db, 
   const d = (k: string) => r.events.find((e: any) => e.key === k).date;
   ok("日期：主委填的優先；沒填的用行事曆上今天以後最近一場（已取消不算）", d("sports::高爾夫") === "2030-01-02" && d("seminars::地區訓練講習會") === day(10));
   ok("日期：只有過去的行程就取最後一場；分攤金沒有日期", d("seminars::社長當選人研討會 PELS") === day(-5) && d("app::上半年分攤金") === "");
+}
+
+// ---------- 活動結束滿一週的備份提醒 ----------
+{
+  const NOW = Date.parse("2027-03-20T12:00:00Z");
+  const day = (n: number) => new Date(NOW + 8 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
+  const dates: any = { "sports::高爾夫": day(7), "seminars::地區訓練講習會": day(6), "seminars::社長當選人研討會 PELS": day(30), "app::上半年分攤金": day(10) };
+  const stats: any = { events: reg.stats.events, of: async (k: string) => ({ ...Core.eventStats(state, payments, k), date: dates[k] || "" }) };
+  T.calendar_events = []; T.calendar_settings = []; T.event_archives = [];
+  T.line_bindings = [{ club_name: "甲社", person_key: "王|", line_user_id: "U-wang" }];
+  const due = await backupDueEvents(db, stats, NOW);
+  ok("到期：只有結束剛滿 7 天且還有資料的活動（6 天的還沒到、30 天的太久、分攤金不提醒）", due.length === 1 && due[0].key === "sports::高爾夫" && due[0].people === 3);
+  const sentTo: any[] = []; const send = async (to: string, m: any[]) => { sentTo.push([to, m[0].text]); };
+  ok("沒有指定收件人：不發送、不記錄", (await backupReminder(db, { stats, send, now: NOW })).sent === 0 && sentTo.length === 0 && T.calendar_settings.length === 0);
+  const admB = (action: string, extra: any) => handleAdmin(action, { adminPassword: "pw", ...extra }, { admin: db, password: "pw", members: async () => MEMBERS, clubInfos: async () => [], reg: { roster: reg.roster, stats }, sendLine: send });
+  const sv = await admB("cal_admin_backupnotify_save", { people: [{ club: "甲社", key: "王|" }, { club: "甲社", key: "趙|Z" }, { club: "甲社", key: "鬼|" }, { club: "甲社", key: "王|" }] });
+  ok("後台指定收件人：可多人（備援）、只收社友庫裡的人、不重複，並標出誰還沒綁定 LINE", sv.recipients.length === 2 && sv.recipients.find((r: any) => r.name === "王").status === "PREVIEW" && sv.recipients.find((r: any) => r.name === "趙").status === "NOT_BOUND" && sv.afterDays === 7);
+  const t1 = await admB("cal_admin_backupnotify_test", {});
+  ok("測試發送：只發給已綁定的人、標【測試】、不留「已提醒」紀錄", t1.sent === 1 && sentTo.length === 1 && sentTo[0][0] === "U-wang" && sentTo[0][1].startsWith("【測試】") && !T.calendar_settings.some((r: any) => r.key.startsWith("backup_reminded")));
+  sentTo.length = 0;
+  const r1 = await backupReminder(db, { stats, send, now: NOW });
+  ok("排程：發給已綁定的管理者，內容含活動名稱、日期與人數", r1.sent === 1 && sentTo.length === 1 && sentTo[0][1].includes("高爾夫") && sentTo[0][1].includes("報名 2 社 3 人") && r1.recipients.find((r: any) => r.name === "趙").status === "NOT_BOUND");
+  sentTo.length = 0;
+  ok("同一個活動只提醒一次（同一天排程再跑不會重發）", (await backupReminder(db, { stats, send, now: NOW })).sent === 0 && sentTo.length === 0);
+  const r2 = await backupReminder(db, { stats, send, now: NOW + 86400e3 });
+  ok("隔天：昨天提醒過的不再發，只提醒剛滿一週的另一個活動", r2.sent === 1 && sentTo.length === 1 && !sentTo[0][1].includes("高爾夫") && sentTo[0][1].includes("地區訓練講習會"));
+  T.calendar_settings = T.calendar_settings.filter((r: any) => !r.key.startsWith("backup_reminded"));
+  T.event_archives.push({ id: 1, event_key: "sports::高爾夫", archived_at: day(2) + "T10:00:00+08:00" });
+  ok("活動後已經備份過就不提醒", (await backupDueEvents(db, stats, NOW)).length === 0);
+  T.event_archives[0].archived_at = day(200) + "T10:00:00+08:00";
+  ok("只有去年的舊備份：照樣提醒", (await backupDueEvents(db, stats, NOW)).length === 1);
+  T.line_bindings = [];
+  ok("收件人都沒綁定 LINE：發不出去，也不記成已提醒（之後綁定了還會補發）", (await backupReminder(db, { stats, send, now: NOW })).sent === 0 && !T.calendar_settings.some((r: any) => r.key.startsWith("backup_reminded")));
+  ok("後台密碼錯誤被擋", await code(handleAdmin("cal_admin_backupnotify_get", { adminPassword: "x" }, { admin: db, password: "pw", members: async () => MEMBERS, clubInfos: async () => [] })) === "CAL_ADMIN_AUTH_FAILED");
 }

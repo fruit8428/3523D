@@ -79,6 +79,22 @@
         </section>
 
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h2 class="font-black text-lg">⑥ 系統管理者（活動結束後的備份提醒）</h2>
+            <p class="text-sm text-slate-600 mt-1 leading-relaxed">活動<b>結束滿一週</b>、資料還沒有備份並清空時，系統會在當天<b>晚上 8:00</b> 用 LINE 提醒這裡指定的人（每個活動只提醒一次）。<b>可以指定多人</b>，例如您本人再加一位備援人員，兩人都會收到。收件人要在 LINE 綁定過身分。提醒只是通知，備份並清空仍要以最高管理員登入報名系統，在主委後台的「📦 歷屆備份與清空本活動」操作。活動要有日期（主委在活動設定填的，或行事曆上的行程）才會提醒；分攤金／配合款沒有日期，不會提醒。</p>
+            <div class="mt-3 text-sm font-bold">會收到提醒的人</div>
+            <div id="bnChips" class="mt-2 flex flex-wrap gap-2"></div>
+            <div class="mt-4 text-sm font-bold">加入新的人：先選社，再勾選社友</div>
+            <select id="bnClub" class="mt-2 w-full border border-slate-300 rounded-lg px-3 py-2.5 text-base" onchange="bnLoadClub()"></select>
+            <div id="bnMembers" class="mt-2"></div>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <button type="button" id="bnSave" onclick="bnSave()" class="bg-blue-700 text-white font-bold rounded-lg px-5 py-2.5">儲存</button>
+                <button type="button" id="bnTest" onclick="bnTest()" class="border border-slate-300 font-bold rounded-lg px-4 py-2.5">📤 現在測試發送</button>
+                <span id="bnMsg" class="self-center text-sm"></span>
+            </div>
+            <div id="bnDue" class="mt-4 text-sm"></div>
+        </section>
+
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
             <h2 class="font-black text-lg">⑤ 活動類型</h2>
             <p class="text-sm text-slate-600 mt-1">刪除某個類型後，使用它的行程會變成「未分類」。</p>
             <div id="typeList" class="mt-3 space-y-2"></div>
@@ -133,6 +149,7 @@
     async function refresh() { const r = await api('cal_admin_state'); if (r.ok) { state = r; render(); } else alert(errText(r.code)); }
     function render() {
         if (!svLoaded) svLoad();
+        if (!bnLoaded) bnLoad();
         $('roleList').innerHTML = state.roles.length ? `<table class="w-full text-sm"><thead><tr class="text-left text-slate-500 border-b"><th class="py-2">姓名</th><th>所屬社</th><th>角色</th><th>管理範圍</th><th></th></tr></thead><tbody>${state.roles.map(r => `<tr class="border-b border-slate-100"><td class="py-2 font-bold">${E(r.name)}${r.nickname ? `<span class="ml-1 font-normal text-slate-500">${E(r.nickname)}</span>` : ''}</td><td>${E(clubLabel(r.club))}</td><td>${E(ROLE_NAME[r.role] || r.role)}</td><td>${E(r.role === 'club_editor' ? clubLabel(r.managedClub) : r.role === 'district_editor' ? '全地區' : '')}</td><td class="text-right"><button type="button" onclick="revoke(${Number(r.id)})" class="text-rose-700 font-bold">移除</button></td></tr>`).join('')}</tbody></table>` : '<div class="text-slate-500 text-sm">還沒有指定任何管理者。</div>';
         $('noEditorCount').textContent = state.clubsWithoutEditor.length;
         // 依分區分組，社名前面加社代號，方便對照找人
@@ -283,6 +300,80 @@
         svSel = sv.viewers.filter(v => v.eventKey === eventKey).map(v => ({ club: v.club, key: v.key, name: v.name, nickname: v.nickname }));
         svRenderChips(); svRenderMembers();
         const m = $('svMsg'); m.className = 'self-center text-sm font-bold text-emerald-700'; m.textContent = `✅ 已儲存（${svSel.length} 人），重新打開 LINE 行事曆後生效`;
+    }
+
+    // ---------- ⑥ 系統管理者：活動結束滿一週的備份提醒收件人（可多人） ----------
+    let bnSel = [], bnClubMembers = [], bnLoaded = false, bnSaved = [];
+    const BN_STATUS = { PREVIEW: '已綁定 LINE', NOT_BOUND: '⚠️ 還沒綁定 LINE，收不到', SENT: '✅ 已發送', FAILED: '❌ 發送失敗', NO_EVENTS: '已綁定 LINE' };
+    function bnApply(r) {
+        bnSaved = r.recipients || [];
+        bnSel = bnSaved.map(p => ({ club: p.club, key: p.key || null, name: p.name, nickname: p.nickname, status: p.status }));
+        const due = r.due || [];
+        $('bnDue').innerHTML = `<div class="font-bold">目前到期、今晚會提醒的活動（${due.length}）</div>` + (due.length
+            ? `<ul class="mt-1 list-disc pl-5 text-slate-700">${due.map(e => `<li>${E(e.subName)}（${E(e.date)}）：報名 ${e.regClubs} 社 ${e.people} 人、已繳 ${e.paidClubs} 社</li>`).join('')}</ul>`
+            : '<div class="text-slate-500 mt-1">沒有。（活動結束滿一週、還有報名或繳費資料、而且還沒備份的才會列在這裡）</div>');
+    }
+    async function bnLoad() {
+        const groups = [];
+        (state.clubInfos || []).forEach(c => { let g = groups.find(x => x.division === c.division); if (!g) { g = { division: c.division, clubs: [] }; groups.push(g); } g.clubs.push(c); });
+        $('bnClub').innerHTML = '<option value="">— 請選擇社 —</option>' + groups.map(g => `<optgroup label="${E(g.division)}">${g.clubs.map(c => `<option value="${E(c.name)}">${E(c.code ? c.code + ' ' : '')}${E(c.name)}</option>`).join('')}</optgroup>`).join('');
+        const r = await api('cal_admin_backupnotify_get');
+        if (!r.ok) { $('bnChips').innerHTML = `<span class="text-sm font-bold text-rose-700">${E(errText(r.code))}</span>`; return; }
+        bnLoaded = true; bnApply(r); bnKeysFromServer(r); bnRenderChips();
+    }
+    // 伺服器回傳的收件人沒有帶 key（畫面只需要姓名），儲存時用「姓名|Nick Name」還原
+    function bnKeysFromServer() { bnSel.forEach(p => { if (p.key === null) p.key = `${p.name || ''}|${p.nickname || ''}`; }); }
+    const bnKeyOf = p => p.club + '\u0001' + p.key;
+    function bnDirty() { const m = $('bnMsg'); m.className = 'self-center text-sm font-bold text-amber-700'; m.textContent = '尚未儲存'; }
+    function bnRenderChips() {
+        $('bnChips').innerHTML = bnSel.length ? bnSel.map((p, i) => `<span class="inline-flex items-center gap-1 bg-amber-50 border border-amber-300 rounded-full pl-3 pr-1 py-1 text-sm"><b>${E(p.nickname || p.name)}</b><span class="text-slate-500">${E(p.nickname ? p.name : '')}・${E(p.club)}</span>${p.status ? `<span class="ml-1 text-xs ${p.status === 'NOT_BOUND' || p.status === 'FAILED' ? 'text-rose-700 font-bold' : 'text-emerald-700'}">${E(BN_STATUS[p.status] || '')}</span>` : ''}<button type="button" onclick="bnRemove(${i})" class="ml-1 w-6 h-6 rounded-full bg-white border border-slate-300 text-slate-600 font-bold" aria-label="移除">×</button></span>`).join('') : '<span class="text-sm text-rose-700 font-bold">還沒有指定任何人，所以不會有人收到提醒。</span>';
+    }
+    function bnRemove(i) { bnSel.splice(i, 1); bnRenderChips(); bnRenderMembers(); bnDirty(); }
+    async function bnLoadClub() {
+        const club = $('bnClub').value; bnClubMembers = [];
+        if (!club) { $('bnMembers').innerHTML = ''; return; }
+        $('bnMembers').innerHTML = '<div class="text-sm text-slate-500">讀取中…</div>';
+        const r = await api('cal_admin_viewers_get', { club: club });       // 借用 ③ 的動作取得該社社友名單（已排序）
+        if ($('bnClub').value !== club) return;
+        if (!r.ok) { $('bnMembers').innerHTML = `<div class="text-sm font-bold text-rose-700">${E(errText(r.code))}</div>`; return; }
+        bnClubMembers = r.members.map(m => ({ club: club, key: m.key, name: m.name, nickname: m.nickname, role: m.role, spouse: m.spouse }));
+        bnRenderMembers();
+    }
+    function bnRenderMembers() {
+        const box = $('bnMembers');
+        if (!$('bnClub').value) { box.innerHTML = ''; return; }
+        if (!bnClubMembers.length) { box.innerHTML = '<div class="text-sm text-slate-500">這一社的社友庫還沒有資料。</div>'; return; }
+        const on = new Set(bnSel.map(bnKeyOf));
+        box.innerHTML = `<div class="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-80 overflow-y-auto">${bnClubMembers.map((m, i) => `<label class="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50 ${m.spouse ? 'pl-8 text-slate-500' : ''}">
+            <input type="checkbox" class="w-5 h-5" ${on.has(bnKeyOf(m)) ? 'checked' : ''} onchange="bnToggle(${i}, this.checked)">
+            <span class="min-w-0 flex-1"><span class="font-bold">${E(m.nickname || m.name)}</span>${m.nickname ? `<span class="ml-1 text-slate-500">${E(m.name)}</span>` : ''}${m.role ? `<span class="ml-2 text-xs text-slate-400">${E(m.role)}</span>` : ''}</span></label>`).join('')}</div>`;
+    }
+    function bnToggle(i, checked) {
+        const m = bnClubMembers[i], k = bnKeyOf(m);
+        bnSel = bnSel.filter(p => bnKeyOf(p) !== k);
+        if (checked) bnSel.push({ club: m.club, key: m.key, name: m.name, nickname: m.nickname, status: '' });
+        bnRenderChips(); bnDirty();
+    }
+    async function bnSave() {
+        if (!bnSel.length && !confirm('一個人都沒指定，活動結束後就不會有人收到備份提醒。確定要這樣儲存嗎？')) return;
+        const btn = $('bnSave'); btn.disabled = true; btn.textContent = '儲存中…';
+        const r = await api('cal_admin_backupnotify_save', { people: bnSel.map(p => ({ club: p.club, key: p.key })) });
+        btn.disabled = false; btn.textContent = '儲存';
+        if (!r.ok) return alert(errText(r.code));
+        bnApply(r); bnKeysFromServer(); bnRenderChips(); bnRenderMembers();
+        const m = $('bnMsg'); m.className = 'self-center text-sm font-bold text-emerald-700'; m.textContent = `✅ 已儲存（${bnSel.length} 人）`;
+    }
+    async function bnTest() {
+        if (!bnSaved.length) return alert('請先指定收件人並按「儲存」，再測試發送。');
+        if (!confirm(`要立刻發一則【測試】訊息給已儲存的 ${bnSaved.length} 位收件人嗎？（會用到官方帳號的推播額度）`)) return;
+        const btn = $('bnTest'); btn.disabled = true; btn.textContent = '發送中…';
+        const r = await api('cal_admin_backupnotify_test');
+        btn.disabled = false; btn.textContent = '📤 現在測試發送';
+        if (!r.ok) return alert(r.code === 'PUSH_DISABLED' ? '這個地區還沒有開放 LINE 推播（沒有設定官方帳號的 token）。' : errText(r.code));
+        const st = {}; (r.recipients || []).forEach(p => { st[p.club + '\u0001' + (p.key || `${p.name || ''}|${p.nickname || ''}`)] = p.status; });
+        bnSel.forEach(p => { if (st[bnKeyOf(p)]) p.status = st[bnKeyOf(p)]; });
+        bnRenderChips();
+        const m = $('bnMsg'); m.className = 'self-center text-sm font-bold text-emerald-700'; m.textContent = `已發送 ${r.sent} 人`;
     }
 
     // ---------- ④ 總監每日推播 ----------

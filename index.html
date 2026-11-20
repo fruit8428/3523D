@@ -10523,7 +10523,11 @@
                 const pack = await collectEventArchiveData();
                 const sm = pack.summary;
                 if (!sm.orderCount && !sm.paymentCount && !sm.checkinRows && !sm.bankCount) { alert(`「${pack.sub}」目前沒有報名表、繳費紀錄、銀行入帳或報到紀錄，不需要清空。`); return; }
-                const label = prompt(`請替這份備份取個名字（接手的主委會看到），例如屆別或年度：`, `${DISTRICT.rotaryYear || ''} 年度`.trim());
+                // 預設名稱＝「活動舉辦當時」的扶輪年度（有活動日期就用活動日期算；7/1 換年度後才備份上一屆的活動，名稱也不會變成新年度）
+                const evDate = ((chairConfig.eventDates || {})[pack.key] || {}).date || '';
+                const evMs = /^\d{4}-\d{2}-\d{2}$/.test(evDate) ? Date.parse(evDate + 'T12:00:00+08:00') : NaN;
+                const yearLabel = (typeof DISTRICT.rotaryYearOf === 'function' && Number.isFinite(evMs)) ? DISTRICT.rotaryYearOf(evMs).short : (DISTRICT.rotaryYear || '');
+                const label = prompt(`請替這份備份取個名字（接手的主委會看到），例如屆別或年度：`, `${yearLabel} 年度`.trim());
                 if (label === null) return;
                 if (!confirm(`⚠️ 確定要「備份並清空」這個活動嗎？\n\n活動：${pack.sub}\n備份名稱：${label.trim() || '（未命名）'}\n\n將備份並清空：\n・報名表 ${sm.orderCount} 社\n・繳費紀錄 ${sm.paymentCount} 筆\n另外備份（不刪除）：銀行入帳 ${sm.bankCount} 筆、報到紀錄 ${sm.checkinRows} 筆\n\n費用設定、活動日期、DM、主委指派會保留；其他活動不受影響。\n清空後所有裝置同步生效。`)) return;
                 if (!confirm(`再次確認：真的要清空「${pack.sub}」目前的報名表與繳費紀錄嗎？\n（會先備份，備份失敗就不會清空）`)) return;

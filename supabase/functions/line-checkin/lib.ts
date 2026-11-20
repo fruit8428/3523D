@@ -9,7 +9,7 @@
 //    這個資料夾裡的 checkin-core.js 是專案根目錄那一份的複本，根目錄的改了要一起複製過來。
 // =====================================================================
 import "./checkin-core.js";
-import { agendaReply, CalError, governorDigest, parseAgendaKeyword, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
+import { agendaReply, backupReminder, CalError, governorDigest, parseAgendaKeyword, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
 // deno-lint-ignore no-explicit-any
 type Any = any;
 const Core = (globalThis as Any).CheckinCore;
@@ -356,6 +356,9 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
       let st: Any = null;      // 判斷總監是否已被正式報名：同一次推播只讀一次報名資料
       const reg = { roster: async (eventKey: string) => { if (!st) st = await loadState(deps, false); const ro = Core.buildRoster(st, eventKey); return { ok: !!ro.ok, title: ro.title || "", persons: ro.persons || [] }; } };
       const r = await governorDigest(deps.admin, { liffId, send: send!, reg });
+      // 順便檢查有沒有「結束滿一週、還沒備份」的活動，提醒系統管理者（失敗不影響總監推播）
+      try { const br = await backupReminder(deps.admin, { stats: statDeps(deps), send: send! }); (r as Any).backup = { due: br.due.length, sent: br.sent }; if (br.due.length) console.log("備份提醒", JSON.stringify({ due: br.due.map((e: Any) => e.subName), sent: br.sent })); }
+      catch (e) { console.error("備份提醒失敗", (e as Error).message); }
       console.log("總監每日推播", JSON.stringify({ day: r.day, sent: r.sent, governors: (r.governors || []).map((g: Any) => ({ events: g.events.length, recipients: g.recipients.map((x: Any) => x.status) })) }));
       return r;
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
@@ -366,7 +369,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
         admin: deps.admin, password: deps.calendarAdminPassword || "",
         sendLine: deps.push && deps.push.token && deps.push.sendMessages ? deps.push.sendMessages : undefined,
         members: async () => (await loadState(deps, true)).members,
-        reg: { roster: async (eventKey: string) => { const ro = Core.buildRoster(await loadState(deps, false), eventKey); return { ok: !!ro.ok, title: ro.title || "", persons: ro.persons || [] }; } },
+        reg: { roster: async (eventKey: string) => { const ro = Core.buildRoster(await loadState(deps, false), eventKey); return { ok: !!ro.ok, title: ro.title || "", persons: ro.persons || [] }; }, stats: statDeps(deps) },
         statEvents: () => statDeps(deps).events(),
         clubInfos: async () => ((await loadState(deps, false)).divisionsData || []).flatMap((d: Any) => (d.clubs || []).map((c: Any) => ({ name: c.name, division: d.name || `第 ${d.id} 分區`, code: c.code || "" }))),
       });
