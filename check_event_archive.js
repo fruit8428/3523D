@@ -4,6 +4,7 @@ const puppeteer = require('puppeteer');
   const b = await puppeteer.launch({ headless: 'new' }); const p = await b.newPage();
   let fail = 0; const ok = (n, c) => { console.log((c ? '✅ ' : '❌ ') + n); if (!c) fail++; };
   const errs = []; p.on('pageerror', e => errs.push(e.message));
+  const extraArchives = [{ id: 900, event_key: 'gone::舊活動', cat_name: '舊主選單', sub_name: '舊活動', label: '2025-26 年度', archived_at: '2026-06-30T00:00:00Z', archived_by: '最高管理員', summary: { stats: { people: 12, regClubs: 3, paidClubs: 3, dueClubs: 3, paidAmt: 9000, expected: 9000 } } }];
   const writes = [], archives = []; let failInsert = true; const dialogs = [];
   p.on('dialog', d => { dialogs.push(d.type() + ':' + d.message().slice(0, 40)); d.accept(d.type() === 'prompt' ? '測試屆' : undefined); });
   await p.setRequestInterception(true);
@@ -22,6 +23,7 @@ const puppeteer = require('puppeteer');
       }
       const idm = u.match(/id=eq\.(\d+)/);
       if (idm) { const row = archives.find(a => a.id === Number(idm[1])); return row ? json(200, one ? row : [row]) : json(406, { message: 'none' }); }
+      if (!u.includes('event_key=eq.')) return json(200, archives.concat(extraArchives).map(x => Object.assign({}, x, { data: undefined })));      // 總覽：全部活動
       const km = decodeURIComponent(((u.match(/event_key=eq\.([^&]+)/) || [])[1] || '').replace(/\+/g, ' '));
       return json(200, archives.filter(a => a.event_key === km).map(a => Object.assign({}, a, { data: undefined })));
     }
@@ -84,6 +86,20 @@ const puppeteer = require('puppeteer');
   await p.evaluate(() => closeEventArchiveViewer());
   const xl = await p.evaluate(async (id) => { let got = null; const orig = XLSX.writeFile; XLSX.writeFile = (wb, name) => { got = { name, sheets: wb.SheetNames, detail: XLSX.utils.sheet_to_json(wb.Sheets['報名明細'], { header: 1 }).length }; }; await exportEventArchiveExcel(id); XLSX.writeFile = orig; return got; }, a2.id);
   ok('Excel：六個工作表，報名明細有資料', !!xl && xl.sheets.join() === '摘要,各社彙總,報名明細,繳費紀錄,銀行入帳,報到紀錄' && xl.detail > 1 && xl.name.includes('測試屆'));
+  // 全部活動的備份總覽
+  await p.evaluate(() => openArchiveOverview()); await wait(800);
+  const ovw = await p.evaluate(() => { const o = document.getElementById('archiveOverviewOverlay'); return o ? { rows: o.querySelectorAll('tbody tr').length, text: o.innerText, labels: [...o.querySelectorAll('select option')].map(x => x.value) } : null; });
+  ok('總覽：列出所有活動的備份（含已改名或刪除的活動），並有屆別選單', !!ovw && ovw.rows === 3 && ovw.text.includes(pick.pay.sub) && ovw.text.includes(pick.ord.sub) && ovw.text.includes('舊活動') && ovw.text.includes('活動已改名或刪除') && ovw.text.includes('共 3 份備份、3 個活動') && ovw.labels.join() === ',測試屆,2025-26 年度');
+  ok('總覽：依主選單順序排，已不存在的活動排最後', await p.evaluate(() => { const r = archiveOverviewSorted(); return r[r.length - 1].event_key === 'gone::舊活動'; }));
+  await p.evaluate(() => setArchiveOverviewLabel('2025-26 年度')); await wait(150);
+  ok('總覽：選屆別後只列那一屆', await p.evaluate(() => { const o = document.getElementById('archiveOverviewOverlay'); return o.querySelectorAll('tbody tr').length === 1 && o.innerText.includes('12 人') && o.innerText.includes('$9,000'); }));
+  await p.evaluate(() => setArchiveOverviewLabel('')); await wait(150);
+  const oxl = await p.evaluate(() => { let got = null; const orig = XLSX.writeFile; XLSX.writeFile = (wb, name) => { got = { name, n: XLSX.utils.sheet_to_json(wb.Sheets['備份總覽'], { header: 1 }).length }; }; exportArchiveOverviewExcel(); XLSX.writeFile = orig; return got; });
+  ok('總覽：匯出 Excel（一列一份備份）', !!oxl && oxl.n === 4 && oxl.name.includes('歷屆備份總覽'));
+  await p.evaluate((id) => viewEventArchive(id), a1.id); await wait(600);
+  ok('總覽：按查看會在總覽上方打開那份備份，關閉後回到總覽', await p.evaluate(() => !!document.getElementById('archiveViewerOverlay') && !!document.getElementById('archiveOverviewOverlay')) && await p.evaluate(() => { closeEventArchiveViewer(); return !document.getElementById('archiveViewerOverlay') && !!document.getElementById('archiveOverviewOverlay'); }));
+  await p.evaluate(() => closeArchiveOverview());
+  ok('總覽：活動主委看不到總覽按鈕，直接呼叫也被擋', await p.evaluate(async () => { const r = currentRole; currentRole = 'chair'; renderArchivePanel(); const h = document.getElementById('archivePanelBody').innerHTML; await openArchiveOverview(); const opened = !!document.getElementById('archiveOverviewOverlay'); currentRole = r; renderArchivePanel(); return !h.includes('openArchiveOverview') && !opened && document.getElementById('archivePanelBody').innerHTML.includes('openArchiveOverview'); }));
   // 沒有任何資料的活動：提示不需要清空（線上找一個空的活動）
   const empty = await p.evaluate(() => { let r = null; categoriesData.forEach(c => (c.subEvents || []).forEach((s, i) => { if (!r && !((registrationOrders || {})[s] || []).length && !Object.keys((chairPaymentRecords || {})[c.id + '::' + s] || {}).length && /社慶|桌球|羽毛球/.test(s)) r = { cat: c.id, i }; })); return r; });
   if (empty) { await go(empty); writes.length = 0; const n0 = archives.length; await p.evaluate(() => archiveAndResetCurrentEvent()); await wait(1500);
