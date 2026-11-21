@@ -105,6 +105,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 | `checkin.html` | 櫃台報到頁（獨立頁面，只讀 `app_storage`、絕不寫回）。見「活動報到系統」。 |
 | `line.html` | LINE 自助報到頁（LIFF 的 Endpoint，社友在 LINE 裡開啟）。不直接碰資料庫，全部透過雲端小程式 `line-checkin`。 |
 | `club-dues.js` | 社費推播的填寫畫面（執秘用，見「社費推播」）。 |
+| `global-grants.js` | 全球獎助金查詢畫面（見「全球獎助金查詢」）。 |
 | `checkin-core.js` | 報到的純函式（應到名單、合併報到紀錄、統計），`index.html` 與 `checkin.html` 共用，可用 node 直接測。 |
 | `stub.js` | 在 node 裡 require `test.js` 用的 DOM/Supabase 假物件。 |
 
@@ -192,6 +193,15 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - **雲端**（`supabase/functions/line-checkin/dues.ts`，由 `lib.ts` 轉送）：`club_dues_status`／`club_dues_get`／`club_dues_send`。發送：重新用社友庫計算 → 一人一則 Flex 卡片（`buildDuesMessage`，只用官方帳號 token）→ 存 `club_dues_state`（每社一列＝上次內容）＋ `club_dues_log`（只記人數與總金額，不記每人明細）。兩張表在 `supabase/sql/club_dues.sql`，RLS 開啟、無 policy、anon 無權限。`member_rename_move` 會把 `club_dues_state` 裡的索引一起改名。
 - 不做：Excel 匯入、PDF 附件、記錄是否已繳。
 - 測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/club_dues.ts`（18 項）、`node check_club_dues.js`（需 8000 埠，25 項）。
+
+### 全球獎助金查詢（2026-11-21，規格 `讀取Rotary-Shared資料說明.md`）
+
+查詢共用 Supabase 專案 **Rotary-Shared**（`ceqxbzctljutsbvdmgwv`，所有地區共用，由另一個爬蟲專案寫入）的 `global_grants`。**只讀不寫**；瀏覽器不直接連 Rotary-Shared，一律經過本地區的 `line-checkin`。
+- **三道開關**：畫面＝地區設定檔 `grantsEnabled`（`ggInitButton()` 由 `initRagAssistantButton()` 呼叫，切換快捷列 `#globalGrantsBtn`）；真正把關＝雲端 secrets `ROTARY_SHARED_SUPABASE_URL`＋`ROTARY_SHARED_SUPABASE_SECRET_KEY` 都有值（`index.ts` 才建立 `deps.shared`，否則 `GRANTS_NOT_CONFIGURED`）；身分＝社的登入密碼（`lib.ts` 對所有 `grants_*` 先 `checkClubPassword`，前端用 `lineBindingsApi()`）。金鑰是 `sb_secret_`（可讀可寫全部資料，無法設唯讀），**絕不可出現在前端、設定檔或 git**；每個地區一把專屬金鑰，由使用者點 `設定全球獎助金金鑰.command` 輸入。
+- **雲端** `supabase/functions/line-checkin/grants.ts`（`handleGrants`，只用 select）：`grants_list`（`withOptions` 時加回國家／區域選項、總數、`updatedAt`）、`grants_export`（完整欄位，一次 `EXPORT_PAGE`＝100 筆，`next` 不是 null 就再取）、`grants_related`（`district`＝主辦或國際夥伴地區，或 `pledges` 含 `{"地區": 代號}`；鍵名是中文）、`grants_get`。**篩選只有一份** `applyFilters()`，清單與匯出共用（畫面幾筆就匯出幾筆）；使用者輸入先過 `safeText()` 才進 `.or()`／`.ilike()`。清單不取長篇說明；排除 `removed_from_list` 非 null；「募款中」一律用 `remaining_amount > 0`。讀取失敗只回 `GRANTS_READ_FAILED`，紀錄只記錯誤代碼（原始訊息可能含網址或金鑰片段）。
+- **畫面** `global-grants.js`（全域名稱 `gg*`，視窗 `#globalGrantsOverlay` 動態建立）：資料只放記憶體 `gg`（同一社 10 分鐘內重開沿用），**不可存 `localStorage`／`app_storage`，不呼叫 `saveToStorage()`**。篩選列（`ggRenderFilters`）與結果（`ggRenderResults`）分開畫，才不會打斷輸入；關鍵字停止輸入 0.5 秒才查，`gg.seq` 丟棄過期結果。外部文字一律 `ggE()`；Email 格式正常才做 `mailto:`（`ggMail`）、來源網址要 http(s) 開頭才做連結。服務重點下拉是固定的七大重點 `GG_FOCUS`（資料裡的中文名稱固定，名稱本身含頓號所以不能用頓號拆）。匯出 `ggExport()` 用已載入的 SheetJS，欄位 `GG_XLSX_COLS`（順序比照爬蟲的 Excel）、金額寫數字、認捐明細一筆一行、超過 32,000 字截斷；SheetJS 社群版寫不出凍結窗格，改加自動篩選。
+- 沒做：地區自己的收藏／洽談備註（說明檔第 7 節 `grant_notes`）、一鍵寄信給所有聯絡人（要做前先問使用者）。
+- 測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/global_grants.ts`（假的 `deps.shared`，37 項）、`node check_grants.js`（需 8000 埠，37 項）。
 
 ### 刪除社友與已送出的報名表（2026-11-14）
 

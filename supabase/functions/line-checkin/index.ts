@@ -36,8 +36,13 @@ const lineApi = async (path: string, init?: RequestInit) => {
 };
 
 const CHANNEL_SECRET = (Deno.env.get("LINE_MESSAGING_CHANNEL_SECRET") || "").trim();
+// 共用專案 Rotary-Shared（全球獎助金，只讀）：兩個 secret 都有值才建立連線，否則是 null（＝這個地區未開放獎助金查詢）
+const SHARED_URL = (Deno.env.get("ROTARY_SHARED_SUPABASE_URL") || "").trim();
+const SHARED_KEY = (Deno.env.get("ROTARY_SHARED_SUPABASE_SECRET_KEY") || "").trim();
+const shared = SHARED_URL && SHARED_KEY ? createClient(SHARED_URL, SHARED_KEY, { auth: { persistSession: false } }) : null;
 const deps: Deps = {
   admin,
+  shared,
   liffId: (Deno.env.get("LINE_LIFF_ID") || "").trim(),
   async reply(replyToken: string, messages: unknown[]) {
     await lineApi("/v2/bot/message/reply", { method: "POST", body: JSON.stringify({ replyToken, messages }) });

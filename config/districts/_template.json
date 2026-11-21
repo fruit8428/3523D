@@ -1,5 +1,5 @@
 {
-  "_說明": "新地區設定範本：複製成 config/districts/<地區代號>.json，把每個欄位換成該地區的值，再執行 node scripts/build-config.js。supabaseAnonKey 填 Supabase 的 publishable（anon）金鑰，不要填 secret。lineLiffId 填 LINE Developers 的 LIFF ID（要用 LINE 自助報到才需要，沒有就留空）。linePushEnabled 填 true 才會出現「LINE 推播提醒」面板（另需在雲端小程式設定官方帳號 token 與推播密碼，由系統管理者決定是否開放）。calendarEnabled 填 true 才會出現「行事曆管理」（需先在該地區的 Supabase 執行 supabase/sql/calendar.sql、部署雲端小程式並設定 CALENDAR_ADMIN_PASSWORD）。",
+  "_說明": "新地區設定範本：複製成 config/districts/<地區代號>.json，把每個欄位換成該地區的值，再執行 node scripts/build-config.js。supabaseAnonKey 填 Supabase 的 publishable（anon）金鑰，不要填 secret。lineLiffId 填 LINE Developers 的 LIFF ID（要用 LINE 自助報到才需要，沒有就留空）。linePushEnabled 填 true 才會出現「LINE 推播提醒」面板（另需在雲端小程式設定官方帳號 token 與推播密碼，由系統管理者決定是否開放）。calendarEnabled 填 true 才會出現「行事曆管理」（需先在該地區的 Supabase 執行 supabase/sql/calendar.sql、部署雲端小程式並設定 CALENDAR_ADMIN_PASSWORD）。grantsEnabled 填 true 才會出現「全球獎助金」查詢（另需在該地區的雲端小程式設定 ROTARY_SHARED_SUPABASE_URL 與 ROTARY_SHARED_SUPABASE_SECRET_KEY 兩個 secrets，金鑰由系統管理者在共用專案 Rotary-Shared 逐地區發放，絕不可寫進這個檔案）。",
   "code": "3481",
   "name": "國際扶輪 3481 地區",
   "nameEn": "Rotary District 3481",
@@ -15,6 +15,7 @@
   "lineOfficialId": "",
   "linePushEnabled": false,
   "calendarEnabled": false,
+  "grantsEnabled": false,
   "emailDomain": "rotary3481.org",
   "divisions": [
     {

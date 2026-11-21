@@ -10,6 +10,7 @@
 // =====================================================================
 import "./checkin-core.js";
 import { handleDues } from "./dues.ts";
+import { handleGrants } from "./grants.ts";
 import { agendaReply, backupReminder, CalError, governorDigest, clubReminder, parseAgendaKeyword, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
 // deno-lint-ignore no-explicit-any
 type Any = any;
@@ -27,6 +28,7 @@ export interface Deps {
   calendarAdminPassword?: string;                      // 行事曆後台密碼（secret CALENDAR_ADMIN_PASSWORD；空字串＝後台關閉）
   reply?: (replyToken: string, messages: Any[]) => Promise<void>;   // LINE 聊天室回覆（Webhook 用；不算推播額度）
   liffId?: string;                                     // 地區的 LIFF ID（secret LINE_LIFF_ID；聊天室回覆的連結用）
+  shared?: Any;                                        // supabase-js（共用專案 Rotary-Shared，全球獎助金；沒設定 secrets＝null＝這個地區未開放）
 }
 // LINE 推播：要用「LINE 官方帳號」的 Messaging API 才能主動傳訊息給社友（LINE Login 頻道不行）。
 // token 或 password 任一個是空的＝這個地區沒有開放推播。
@@ -360,6 +362,14 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
       members: Array.isArray((state.members || {})[club]) ? state.members[club] : [],
       send: deps.push && deps.push.token && deps.push.sendMessages ? deps.push.sendMessages : undefined,
     });
+  }
+
+  // ---------- 全球獎助金查詢（資料在共用專案 Rotary-Shared，只讀）。用社的登入密碼確認後才回傳（含聯絡人姓名與 Email） ----------
+  if (action.startsWith("grants_")) {
+    const club = String(body.club || "");
+    const state = await loadState(deps, true);
+    checkClubPassword(deps, state, club, body.clubPassword);
+    return await handleGrants(action, body, { shared: deps.shared || null, fail });
   }
 
   // ---------- 執秘：社友改名後，把他名下的紀錄（LINE 綁定、行事曆身分、私人行程、出席…）搬到新名字 ----------
