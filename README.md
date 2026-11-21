@@ -306,7 +306,7 @@ supabase functions deploy fetch-bank-mail --no-verify-jwt
 - 聯絡資訊僅供洽談合作使用，請勿用於群發信件。
 - 這個功能只能查詢，不能修改計畫資料；查到的內容不會存進報名系統的資料庫。
 
-> **開放某個地區使用（系統管理者）**：① 地區設定檔 `grantsEnabled` 設為 `true`（決定按鈕顯不顯示）；② 在共用專案 Rotary-Shared 替該地區發一把專屬金鑰，點兩下 `設定全球獎助金金鑰.command` 存進該地區雲端小程式的 secrets（`ROTARY_SHARED_SUPABASE_URL`、`ROTARY_SHARED_SUPABASE_SECRET_KEY`）；③ 重新部署雲端小程式 `line-checkin`。沒有設定金鑰時，畫面顯示「本地區尚未開放全球獎助金查詢」，其他功能不受影響。**金鑰絕不可寫進網頁或設定檔。**詳細規格見 `讀取Rotary-Shared資料說明.md`。
+> **開放／關閉某個地區（系統管理者）**：地區設定檔 `grantsEnabled` 設為 `true` 就會出現按鈕，不需要另外設定金鑰——共用資料庫 Rotary-Shared 的這張資料表已設成「公開唯讀」（任何人只能讀取，不能新增、修改、刪除；SQL 見 `supabase/sql/rotary_shared_readonly.sql`），雲端小程式用的是可公開的唯讀金鑰。要關閉某個地區：把 `grantsEnabled` 改回 `false`（隱藏按鈕），或在該地區的雲端小程式設 secret `GRANTS_DISABLED=1`（畫面顯示「本地區尚未開放全球獎助金查詢」）。詳細規格見 `讀取Rotary-Shared資料說明.md`。
 
 ## LINE 自助報到（社友自己掃 QR Code 報到）
 

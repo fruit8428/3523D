@@ -28,7 +28,7 @@ export interface Deps {
   calendarAdminPassword?: string;                      // 行事曆後台密碼（secret CALENDAR_ADMIN_PASSWORD；空字串＝後台關閉）
   reply?: (replyToken: string, messages: Any[]) => Promise<void>;   // LINE 聊天室回覆（Webhook 用；不算推播額度）
   liffId?: string;                                     // 地區的 LIFF ID（secret LINE_LIFF_ID；聊天室回覆的連結用）
-  shared?: Any;                                        // supabase-js（共用專案 Rotary-Shared，全球獎助金；沒設定 secrets＝null＝這個地區未開放）
+  shared?: Any;                                        // supabase-js（共用專案 Rotary-Shared，全球獎助金；公開唯讀的 publishable 金鑰；null＝這個地區關閉）
 }
 // LINE 推播：要用「LINE 官方帳號」的 Messaging API 才能主動傳訊息給社友（LINE Login 頻道不行）。
 // token 或 password 任一個是空的＝這個地區沒有開放推播。

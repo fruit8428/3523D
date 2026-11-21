@@ -36,10 +36,15 @@ const lineApi = async (path: string, init?: RequestInit) => {
 };
 
 const CHANNEL_SECRET = (Deno.env.get("LINE_MESSAGING_CHANNEL_SECRET") || "").trim();
-// 共用專案 Rotary-Shared（全球獎助金，只讀）：兩個 secret 都有值才建立連線，否則是 null（＝這個地區未開放獎助金查詢）
-const SHARED_URL = (Deno.env.get("ROTARY_SHARED_SUPABASE_URL") || "").trim();
-const SHARED_KEY = (Deno.env.get("ROTARY_SHARED_SUPABASE_SECRET_KEY") || "").trim();
-const shared = SHARED_URL && SHARED_KEY ? createClient(SHARED_URL, SHARED_KEY, { auth: { persistSession: false } }) : null;
+// 共用專案 Rotary-Shared（全球獎助金）。global_grants 已設成「公開唯讀」（RLS 開啟、anon 只有 SELECT，見 supabase/sql/rotary_shared_readonly.sql），
+// 所以這裡用的是可以公開的 publishable 金鑰：只能讀、不能寫（由資料庫擋住）。不要換成 sb_secret_ 的私密金鑰。
+// 要關閉某個地區的獎助金查詢：在那個地區設 secret GRANTS_DISABLED=1（或把地區設定檔的 grantsEnabled 改成 false 隱藏按鈕）。
+// 兩個 ROTARY_SHARED_* secret 只在共用專案搬家或換金鑰時才需要設定，平常用下面的預設值。
+const SHARED_URL = (Deno.env.get("ROTARY_SHARED_SUPABASE_URL") || "https://ceqxbzctljutsbvdmgwv.supabase.co").trim();
+const SHARED_KEY = (Deno.env.get("ROTARY_SHARED_SUPABASE_KEY") || "sb_publishable_zw-9bf0JhQausCpaVHOS6Q_eLz8l01-").trim();
+const GRANTS_OFF = /^(1|true|yes)$/i.test((Deno.env.get("GRANTS_DISABLED") || "").trim());
+const shared = !GRANTS_OFF && SHARED_URL && SHARED_KEY && !/^sb_secret_/.test(SHARED_KEY)
+  ? createClient(SHARED_URL, SHARED_KEY, { auth: { persistSession: false } }) : null;
 const deps: Deps = {
   admin,
   shared,

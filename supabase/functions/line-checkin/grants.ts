@@ -1,7 +1,7 @@
 // 全球獎助金查詢：讀取共用專案 Rotary-Shared 的 global_grants（全世界扶輪社正在募款的 Global Grants 計畫）。
 // 規格見專案根目錄「讀取Rotary-Shared資料說明.md」。
 //   - 只讀不寫：這個檔案只用 select，不可以新增、修改、刪除 global_grants（下次爬蟲執行會覆蓋）。
-//   - 連線（ctx.shared）用的是 Rotary-Shared 的私密金鑰，只存在雲端小程式的 secrets；沒設定＝這個地區未開放。
+//   - 連線（ctx.shared）用的是 Rotary-Shared 的公開金鑰（publishable）：資料表已設成公開唯讀，寫入會被資料庫擋下。null＝這個地區關閉。
 //   - 身分由 lib.ts 先用社的登入密碼確認過才會進來；資料只經過這裡傳給畫面，不寫進任何資料表或紀錄檔。
 //   - 查詢失敗時不把原始錯誤訊息傳給前端（可能含網址或金鑰片段），只回固定代碼。
 // deno-lint-ignore-file no-explicit-any
