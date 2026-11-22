@@ -135,7 +135,8 @@ async function api(a,x){window.__calls.push([a,x]); if(S.fail)return{ok:false,co
     const has = re => p.waitForFunction(re => new RegExp(re).test(document.getElementById('memberPortraitOverlay').innerText), { timeout: 8000 }, re).then(() => true, () => false);
     await has('本社找到');
     let s = await txt();
-    if (process.env.DBG) console.log(JSON.stringify(s), calls.filter(c => /job_list/.test(c.action)).map(c => c.club));
+    const okList = calls.some(c => c.action === 'photo_desk_job_list' && c.club === CLUB) && s.includes('地區年會') && s.includes('本社找到 2 人（確定 5 張、待本人確認 1 張）') && s.includes('已發送');
+    if (!okList) console.log('   [除錯]', JSON.stringify(s).slice(0, 600), JSON.stringify(calls.map(c => c.action + '/' + c.club).slice(-6)));
     ok('活動照片：列出地區的活動與本社結果（找到 2 人、確定 5 張、待確認 1 張、已發送）', calls.some(c => c.action === 'photo_desk_job_list' && c.club === CLUB) && s.includes('地區年會') && s.includes('本社找到 2 人（確定 5 張、待本人確認 1 張）') && s.includes('已發送'));
     ok('地區的活動：執秘沒有發送／重新比對／刪除按鈕，只說明由地區管理者發送', !(await p.$('.mpj-send')) && !(await p.$('.mpj-rerun')) && !(await p.$('.mpj-del')) && s.includes('由地區管理者發送通知'));
     await p.click('.mpj-who'); await wait(100);
