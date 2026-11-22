@@ -61,7 +61,10 @@ const fs = require('fs'), os = require('os'), path = require('path');
     await p.evaluate(c => { document.getElementById('loginClubSelect').value = c; document.getElementById('loginPassword').value = 'fruit8428'; document.getElementById('loginForm').dispatchEvent(new Event('submit')); }, CLUB);
     await wait(2000);
     const hidden = () => p.$eval('#memberPortraitBtn', e => e.classList.contains('hidden'));
-    ok('地區沒開（photoEnabled=false）：按鈕不顯示，也不問雲端', await hidden() && !calls.some(c => c.action === 'photo_desk_status'));
+    // 本機的地區設定現在是開的，所以先關掉來測「地區沒開」的情況
+    const n0 = calls.filter(c => c.action === 'photo_desk_status').length;
+    await p.evaluate(() => { DISTRICT.photoEnabled = false; mpBtnState = { club: '', enabled: false, at: 0 }; return mpRefreshButton(); }); await wait(300);
+    ok('地區沒開（photoEnabled=false）：按鈕不顯示，也不問雲端', await hidden() && calls.filter(c => c.action === 'photo_desk_status').length === n0);
     await p.evaluate(() => { DISTRICT.photoEnabled = true; mpBtnState.at = 0; return mpRefreshButton(); }); await wait(300);
     ok('地區有開但這個社沒開放：有問雲端，按鈕不顯示', calls.some(c => c.action === 'photo_desk_status' && c.club === CLUB && 'clubPassword' in c) && await hidden());
     const n1 = calls.filter(c => c.action === 'photo_desk_status').length;
