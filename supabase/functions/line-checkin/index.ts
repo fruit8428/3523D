@@ -51,7 +51,7 @@ const shared = !GRANTS_OFF && SHARED_URL && SHARED_KEY && !/^sb_secret_/.test(SH
 const GH_TOKEN = (Deno.env.get("PHOTO_GITHUB_TOKEN") || "").trim();
 const GH_REPO = (Deno.env.get("PHOTO_GITHUB_REPO") || "fruit8428/photo-finder").trim();
 const GH_WORKFLOW = (Deno.env.get("PHOTO_GITHUB_WORKFLOW") || "match.yml").trim();
-const GH_REF = (Deno.env.get("PHOTO_GITHUB_REF") || "main").trim();
+const GH_REF = (Deno.env.get("PHOTO_GITHUB_REF") || "master").trim();     // photo-finder 的預設分支是 master
 const deps: Deps = {
   admin,
   photoDispatch: GH_TOKEN ? async (inputs: Record<string, string>) => {
