@@ -101,7 +101,7 @@ function mypShow() {
         + '<button type="button" onclick="mypCloseView()" class="font-bold px-3 py-2">✕ 關閉</button>'
         + '<span class="text-sm opacity-80">' + (v.i + 1) + '／' + list.length + '</span>'
         + '<button type="button" onclick="mypDownload()" class="myp-dl bg-white text-slate-900 font-bold rounded-lg px-3 py-2 text-sm">⬇️ ' + (mypIsMobile() ? '載入原圖' : '下載原圖') + '</button></div>'
-        + '<div id="mypHint" class="hidden px-3 pb-2 text-center text-sm text-amber-200 leading-relaxed"></div>'
+        + '<div id="mypHint" class="' + (mypIsMobile() ? '' : 'hidden ') + 'px-3 pb-2 text-center text-sm text-amber-200 leading-relaxed">要存進手機相簿：先按右上「載入原圖」，再<b>長按照片</b>選「儲存到照片」。<br><a href="#" onclick="mypOpenOutside();return false" class="underline">存不進相簿？改用瀏覽器開啟原圖</a></div>'
         + '<div class="flex-1 min-h-0 flex items-center justify-center relative">'
         + '<img id="mypBig" src="' + mypThumb(ph.file, 1600) + '" alt="" class="max-w-full max-h-full object-contain" onerror="mypBroken(this)">'
         + (v.i > 0 ? '<button type="button" onclick="mypStep(-1)" class="absolute left-1 top-1/2 -translate-y-1/2 bg-black/50 text-white text-2xl rounded-full w-11 h-11">‹</button>' : '')
@@ -127,7 +127,7 @@ function mypDownload() {
         if (!mypView || mypView !== v || document.getElementById('mypBig') !== img) return;      // 已經換張或關掉了
         img.src = full.src;
         if (btn) { btn.disabled = false; btn.textContent = '✓ 已是原圖'; }
-        hint.innerHTML = '已載入原圖（' + full.naturalWidth + '×' + full.naturalHeight + '）。<b>長按照片</b>，選「儲存影像」就能存進手機相簿。<br><a href="#" onclick="mypOpenOutside();return false" class="underline">長按沒有反應？改用瀏覽器開啟</a>';
+        hint.innerHTML = '已載入原圖（' + full.naturalWidth + '×' + full.naturalHeight + '）。現在<b>長按照片</b>，選「儲存到照片」。<br><a href="#" onclick="mypOpenOutside();return false" class="underline">存不進相簿？改用瀏覽器開啟原圖</a>';
     };
     full.onerror = function () {
         if (btn) btn.disabled = false;
