@@ -153,6 +153,29 @@ ok("李太太自己綁了 LINE 之後：李不再看得到她的照片，她自�
 r = await adm("preview", { id: JOB.id });
 ok("之後再預覽：新綁 LINE 的李太太是新的通知對象（1 人）；李自己沒有照片所以不再列入，已通知的剩王 1 人", r.targets === 1 && r.already === 1);
 
+// ---------- 只有「不太確定」的人不推播 ----------
+{
+  const before = { enabled: T.photo_club_enabled.slice(), binds: T.line_bindings.slice() };
+  T.photo_club_enabled.push({ club_name: "北區社" });
+  await adm("add", { title: "只有不太確定", url: "https://drive.google.com/drive/folders/3BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" });
+  const MJ = T.photo_jobs.find((j) => j.title === "只有不太確定");
+  ["m1", "m2"].forEach((f) => put(MJ, "北區社", "趙|Z", f, "maybe"));          // 趙：2 張都不太確定
+  put(MJ, "松山社", "陳|C", "m3", "maybe");                                    // 陳：沒綁 LINE、只有不太確定
+  Object.assign(MJ, { status: "done" });
+  const n = sent.length;
+  let pv = await adm("preview", { id: MJ.id });
+  ok("只有不太確定的照片：不列入通知對象，另外回報人數；沒綁 LINE 又只有不太確定的人不列在收不到的名單", pv.targets === 0 && pv.maybeOnly === 1 && pv.unbound.length === 0 && pv.people === 2);
+  let sd = await adm("send", { id: MJ.id, liffId: "1234-abcd" });
+  ok("按發送也不會推給他", sd.ok && sd.sent === 0 && sent.length === n && !T.photo_notified.some((x) => x.job_id === MJ.id));
+  ok("活動已標成發送：他自己打開 LINE 仍然看得到那 2 張，可以按是／不是", (await line("photo_my", {}, "U趙")).jobs[0].people[0].ask.length === 2);
+  await line("photo_my_answer", { id: T.photo_matches.find((m) => m.job_id === MJ.id && m.file_id === "m1").id, yes: true }, "U趙");
+  pv = await adm("preview", { id: MJ.id });
+  ok("本人按了一張「是」之後＝有確定的照片，再發送就會通知他", pv.targets === 1 && pv.maybeOnly === 0 && (await adm("send", { id: MJ.id, liffId: "1234-abcd" })).sent === 1 && sent[sent.length - 1].to === "U趙" && J(sent[sent.length - 1].m).includes("找到 1 張") && J(sent[sent.length - 1].m).includes("1 張不太確定"));
+  await adm("delete", { id: MJ.id });
+  T.photo_club_enabled = before.enabled; T.line_bindings = before.binds;
+  sent.length = n;
+}
+
 // ---------- 重新比對、刪除 ----------
 Object.assign(JOB, { status: "running", started_at: new Date().toISOString() });
 ok("比對中：不能重新比對", (await adm("rerun", { id: JOB.id })).code === "PHOTO_RUNNING");

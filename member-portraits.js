@@ -306,7 +306,7 @@ function mpRenderJobs() {
         + '<input id="mpjTitle" type="text" maxlength="60" class="border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="活動名稱（例：11 月例會）">'
         + '<input id="mpjUrl" type="url" class="border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="貼上 Google 雲端硬碟資料夾連結">'
         + '<button type="button" id="mpjAddBtn" onclick="mpjAdd()" class="bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg px-4 py-2 text-sm whitespace-nowrap">開始找照片</button></div>'
-        + '<p class="text-xs text-slate-500 mt-1.5 leading-relaxed">資料夾要請攝影師設成「知道連結的任何人都能檢視」。只會比對「① 大頭照」裡已經有大頭照的人。比對通常需要十幾到三十分鐘，完成後請按「發送通知」，社友才會在 LINE 收到看照片的連結；沒綁 LINE 的寶尊眷會併在對應社友的訊息裡。</p>'
+        + '<p class="text-xs text-slate-500 mt-1.5 leading-relaxed">資料夾要請攝影師設成「知道連結的任何人都能檢視」。只會比對「① 大頭照」裡已經有大頭照的人。比對通常需要十幾到三十分鐘，完成後請按「發送通知」，社友才會在 LINE 收到看照片的連結（至少要有一張「確定」的照片才會通知）；沒綁 LINE 的寶尊眷會併在對應社友的訊息裡。</p>'
         + '<div id="mpjMsg" class="' + (mp.jobMsg ? '' : 'hidden ') + 'mt-2 text-sm font-bold rounded-lg px-3 py-2 ' + (mp.jobBad ? 'text-rose-700 bg-rose-50 border border-rose-200' : 'text-emerald-800 bg-emerald-50 border border-emerald-200') + '">' + E(mp.jobMsg) + '</div>'
         + '<div id="mpjList" class="mt-3">' + mpjListHtml() + '</div>'
         + '</div></div>';
@@ -367,8 +367,9 @@ async function mpjSend(i) {
     var j = mpjJob(i); if (!j) return;
     var pv = await mpjCall('photo_desk_job_preview', { id: j.id });
     if (!pv) return;
-    if (!pv.targets) { mpjSay('沒有需要通知的人。' + (pv.already ? '已通知過 ' + pv.already + ' 人。' : '') + (pv.unbound.length ? '有 ' + pv.unbound.length + ' 人沒有綁定 LINE，收不到：' + pv.unbound.slice(0, 10).map(function (x) { return x.name; }).join('、') : ''), !pv.already); mpjRefresh(); return; }
+    var mo = pv.maybeOnly ? '有 ' + pv.maybeOnly + ' 人只有「不太確定」的照片，依規定不通知。' : '';
+    if (!pv.targets) { mpjSay('沒有需要通知的人。' + (pv.already ? '已通知過 ' + pv.already + ' 人。' : '') + mo + (pv.unbound.length ? '有 ' + pv.unbound.length + ' 人沒有綁定 LINE，收不到：' + pv.unbound.slice(0, 10).map(function (x) { return x.name; }).join('、') : ''), !pv.already && !pv.maybeOnly); mpjRefresh(); return; }
     var un = pv.unbound.length ? '\n\n有 ' + pv.unbound.length + ' 人有照片但沒有綁定 LINE（本人與家人都沒綁），收不到：\n' + pv.unbound.slice(0, 15).map(function (x) { return '・' + x.name; }).join('\n') : '';
-    if (!confirm('要發送「' + j.title + '」的照片通知嗎？\n\n會用 LINE 通知 ' + pv.targets + ' 人（每人一則，會使用官方帳號的推播額度）。' + (pv.already ? '\n已通知過的 ' + pv.already + ' 人不會重複收到。' : '') + un)) return;
+    if (!confirm('要發送「' + j.title + '」的照片通知嗎？\n\n會用 LINE 通知 ' + pv.targets + ' 人（每人一則，會使用官方帳號的推播額度）。' + (pv.already ? '\n已通知過的 ' + pv.already + ' 人不會重複收到。' : '') + (pv.maybeOnly ? '\n另有 ' + pv.maybeOnly + ' 人只有「不太確定」的照片，不會通知。' : '') + un)) return;
     await mpjCall('photo_desk_job_send', { id: j.id, liffId: typeof LINE_LIFF_ID === 'string' ? LINE_LIFF_ID : '' }, function (r) { return '已發送 ' + r.sent + ' 人' + (r.failed ? '，失敗 ' + r.failed + ' 人' : '') + '。'; });
 }

@@ -97,7 +97,7 @@ async function api(a,x){window.__calls.push([a,x]); if(S.fail)return{ok:false,co
     const calls = []; let restWrites = 0, started = true, canRun = true;
     const mk = (id, scope, title, status, extra) => Object.assign({ id, scope, club: scope === 'club' ? '台北松山扶輪社' : '', title, folderId: 'f', status, progress: {}, totalPhotos: 0, error: '', createdAt: '2026-11-22T03:00:00Z', sentAt: null, stuck: false, people: 0, sure: 0, pending: 0, persons: [] }, extra || {});
     let jobs = [mk('d1', 'district', '地區年會', 'done', { totalPhotos: 523, people: 2, sure: 5, pending: 1, sentAt: '2026-11-22T05:00:00Z', persons: [{ key: '王小明|Tony', sure: 4, pending: 1 }, { key: '李太太|Amy', sure: 1, pending: 0 }] })];
-    let preview = { ok: true, title: '', people: 2, targets: 2, already: 0, unbound: [{ club: '台北松山扶輪社', name: '陳' }], canSend: true };
+    let preview = { ok: true, title: '', people: 2, targets: 2, already: 0, maybeOnly: 3, unbound: [{ club: '台北松山扶輪社', name: '陳' }], canSend: true };
     await p.setRequestInterception(true);
     p.on('request', r => {
       const u = r.url(), m = r.method();
@@ -167,7 +167,7 @@ async function api(a,x){window.__calls.push([a,x]); if(S.fail)return{ok:false,co
     await p.evaluate(() => mpjLoad(true)); await wait(300);
     ok('比對完成且尚未發送：有「發送通知」', (await txt()).includes('尚未發送') && (await p.$eval('.mpj-send', e => e.innerText)).includes('發送通知'));
     accept = false; await p.click('.mpj-send'); await wait(400); accept = true;
-    ok('發送：先預覽並確認（人數、會用推播額度、誰收不到）；按取消就不發送', dialogs.some(d => d.includes('會用 LINE 通知 2 人') && d.includes('推播額度') && d.includes('・陳')) && !calls.some(c => c.action === 'photo_desk_job_send'));
+    ok('發送：先預覽並確認（人數、會用推播額度、誰收不到）；按取消就不發送', dialogs.some(d => d.includes('會用 LINE 通知 2 人') && d.includes('推播額度') && d.includes('・陳') && d.includes('另有 3 人只有「不太確定」的照片，不會通知')) && !calls.some(c => c.action === 'photo_desk_job_send'));
     await p.click('.mpj-send');
     const snd = () => calls.find(c => c.action === 'photo_desk_job_send');
     ok('發送：帶活動代號與 LIFF 代號；顯示已發送 2 人，按鈕變成「再發送」', await has('已發送 2 人') && snd().id === jobs[0].id && snd().liffId === await p.evaluate(() => LINE_LIFF_ID) && (await p.$eval('.mpj-send', e => e.innerText)).includes('再發送'));

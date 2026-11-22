@@ -134,7 +134,7 @@ export function buildPhotoMessage(title: string, name: string, sure: number, pen
   };
 }
 
-// 誰會收到通知：有照片的人本人有綁 LINE 就傳給本人；沒綁的寶尊眷併給對應的社友（使用者決定）。只算已開放的社
+// 誰會收到通知：有照片的人本人有綁 LINE 就傳給本人；沒綁的寶尊眷併給對應的社友（使用者決定）。只算已開放的社；至少要有一張「確定」的才通知
 async function plan(ctx: JobCtx, job: Any, club?: string) {
   const on = await enabledClubs(ctx);
   const rows = (await matchRows(ctx, [job.id], club)).filter((r) => r.status !== "no" && on.has(r.club_name));
@@ -152,15 +152,20 @@ async function plan(ctx: JobCtx, job: Any, club?: string) {
     const nameOf = (k: string) => { const m = list.find((x) => personKey(x) === k); return m ? String(m.name) : k.split("|")[0]; };
     let to = uidOf.has(`${p.club}\u0001${p.key}`) ? p.key : "";
     if (!to) to = ctx.family(list, p.key, p.key.split("|")[0]).find((k) => uidOf.has(`${p.club}\u0001${k}`)) || "";
-    if (!to) { unbound.push({ club: p.club, name: nameOf(p.key) }); continue; }
+    if (!to) { if (p.sure > 0) unbound.push({ club: p.club, name: nameOf(p.key) }); continue; }      // 只有「不太確定」的人本來就不通知，不用列在收不到的名單
     const tk = `${p.club}\u0001${to}`;
     const t = targets.get(tk) || { uid: uidOf.get(tk)!, club: p.club, key: to, name: nameOf(to), sure: 0, pending: 0, others: [] };
     t.sure += p.sure; t.pending += p.pending;
     if (to !== p.key) t.others.push(nameOf(p.key));
     targets.set(tk, t);
   }
-  const list = [...targets.values()];
-  return { fresh: list.filter((t) => !sentTo.has(`${t.club}\u0001${t.key}`)), already: list.filter((t) => sentTo.has(`${t.club}\u0001${t.key}`)).length, unbound, people: people.size };
+  // 使用者 2026-11-23 的規定：至少要有一張「確定」的照片才推播（含本人按過「是」的，以及併進來的寶尊眷的）。
+  // 只有「不太確定」的人不通知，避免社友點開卻全都不是他；之後有了確定的照片，再按一次發送就會通知到。
+  const all2 = [...targets.values()];
+  const list = all2.filter((t) => t.sure > 0);
+  const isSent = (t: Any) => sentTo.has(`${t.club}\u0001${t.key}`);
+  return { fresh: list.filter((t) => !isSent(t)), already: list.filter(isSent).length, unbound, people: people.size,
+    maybeOnly: all2.filter((t) => t.sure === 0 && !isSent(t)).length };
 }
 
 // ---------- 管理者（行事曆後台密碼，club 不給）與執秘（社密碼，club＝自己的社）共用 ----------
@@ -203,7 +208,7 @@ export async function photoJobs(action: string, body: Any, ctx: JobCtx, club: st
   if (action === "preview" || action === "send") {
     if (job.status !== "done") ctx.fail("PHOTO_NOT_READY");
     const p = await plan(ctx, job, club);
-    const base = { ok: true, title: job.title, people: p.people, targets: p.fresh.length, already: p.already, unbound: p.unbound.slice(0, 200) };
+    const base = { ok: true, title: job.title, people: p.people, targets: p.fresh.length, already: p.already, maybeOnly: p.maybeOnly, unbound: p.unbound.slice(0, 200) };
     if (action === "preview") return { ...base, canSend: !!ctx.send };
     if (!ctx.send) ctx.fail("PUSH_DISABLED");
     const liffId = String(body.liffId || "");
