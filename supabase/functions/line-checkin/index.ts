@@ -9,6 +9,7 @@
 //   LINE_MESSAGING_ACCESS_TOKEN、LINE_PUSH_PASSWORD   （選填）LINE 推播用：官方帳號 Messaging API 的 Channel access token
 //                           與推播密碼。兩個都有設定，這個地區才算「開放推播」；系統管理者要關閉時把它們刪掉即可。
 //                           總監每日推播（cal_cron_digest）只需要 token；它由資料庫排程呼叫，用 calendar_settings.cron_secret 把關。
+//   PHOTO_GITHUB_TOKEN      （選填）活動照片找人：啟動相片專案 GitHub Actions 的 token（PHOTO_GITHUB_REPO／_WORKFLOW／_REF 可改預設值）
 //   LINE_MESSAGING_CHANNEL_SECRET、LINE_LIFF_ID   （選填）聊天室關鍵字回覆（Webhook）：官方帳號 Messaging API 的 Channel secret
 //                           （用來驗證訊息真的來自 LINE）與地區的 LIFF ID。Webhook URL＝這支小程式的網址。
 // =====================================================================
@@ -45,8 +46,22 @@ const SHARED_KEY = (Deno.env.get("ROTARY_SHARED_SUPABASE_KEY") || "sb_publishabl
 const GRANTS_OFF = /^(1|true|yes)$/i.test((Deno.env.get("GRANTS_DISABLED") || "").trim());
 const shared = !GRANTS_OFF && SHARED_URL && SHARED_KEY && !/^sb_secret_/.test(SHARED_KEY)
   ? createClient(SHARED_URL, SHARED_KEY, { auth: { persistSession: false } }) : null;
+// 活動照片找人：人臉比對在相片專案的 GitHub Actions 執行。貼上連結時由這裡呼叫 GitHub「啟動那個工作流程」。
+// PHOTO_GITHUB_TOKEN 只需要該倉庫的 Actions 讀寫權限（fine-grained token）；沒設定＝工作只會排著，等運算程式自己來接。
+const GH_TOKEN = (Deno.env.get("PHOTO_GITHUB_TOKEN") || "").trim();
+const GH_REPO = (Deno.env.get("PHOTO_GITHUB_REPO") || "fruit8428/photo-finder").trim();
+const GH_WORKFLOW = (Deno.env.get("PHOTO_GITHUB_WORKFLOW") || "match.yml").trim();
+const GH_REF = (Deno.env.get("PHOTO_GITHUB_REF") || "main").trim();
 const deps: Deps = {
   admin,
+  photoDispatch: GH_TOKEN ? async (inputs: Record<string, string>) => {
+    const res = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows/${GH_WORKFLOW}/dispatches`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "rotary-registration", "Content-Type": "application/json" },
+      body: JSON.stringify({ ref: GH_REF, inputs }),
+    });
+    if (!res.ok) throw new Error(`GitHub ${res.status}`);      // 不記錄回應內容
+  } : undefined,
   shared,
   liffId: (Deno.env.get("LINE_LIFF_ID") || "").trim(),
   async reply(replyToken: string, messages: unknown[]) {

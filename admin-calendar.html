@@ -121,6 +121,18 @@
                 <button type="button" id="phAdd" onclick="phAdd()" class="bg-blue-700 text-white font-bold rounded-lg px-4 py-2.5">開放</button>
             </div>
             <div id="phMsg" class="mt-2 text-sm font-bold"></div>
+
+            <div class="mt-6 pt-5 border-t border-slate-200">
+                <div class="font-black">📷 地區活動的照片</div>
+                <p class="text-sm text-slate-600 mt-1 leading-relaxed">活動結束後，把攝影師的 <b>Google 雲端硬碟資料夾連結</b>貼在這裡。系統會自動用大頭照比對<b>所有已開放的社</b>，找出每位社友（含寶尊眷）的照片。比對完成後請按「<b>發送通知</b>」，社友才會在 LINE 收到一則訊息與看照片的連結。資料夾要設成「知道連結的任何人都能檢視」。各社自己的活動（例會、社慶）由該社執秘在報名系統貼連結。</p>
+                <div class="mt-3 grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
+                    <input id="pjTitle" type="text" maxlength="60" class="border border-slate-300 rounded-lg px-3 py-2.5 text-base" placeholder="活動名稱（例：地區年會）">
+                    <input id="pjUrl" type="url" class="border border-slate-300 rounded-lg px-3 py-2.5 text-base" placeholder="貼上 Google 雲端硬碟資料夾連結">
+                    <button type="button" id="pjAddBtn" onclick="pjAdd()" class="bg-blue-700 text-white font-bold rounded-lg px-4 py-2.5 whitespace-nowrap">開始找照片</button>
+                </div>
+                <div id="pjMsg" class="mt-2 text-sm font-bold"></div>
+                <div id="pjList" class="mt-3"><span class="text-sm text-slate-500">讀取中…</span></div>
+            </div>
         </section>
 
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
@@ -181,6 +193,7 @@
         if (!bnLoaded) bnLoad();
         if (!cpLoaded) cpLoad(); else cpRender();
         if (!phLoaded) phLoad(); else phRender();
+        if (!pjLoaded) pjLoad();
         $('roleList').innerHTML = state.roles.length ? `<table class="w-full text-sm"><thead><tr class="text-left text-slate-500 border-b"><th class="py-2">姓名</th><th>所屬社</th><th>角色</th><th>管理範圍</th><th></th></tr></thead><tbody>${state.roles.map(r => `<tr class="border-b border-slate-100"><td class="py-2 font-bold">${E(r.name)}${r.nickname ? `<span class="ml-1 font-normal text-slate-500">${E(r.nickname)}</span>` : ''}</td><td>${E(clubLabel(r.club))}</td><td>${E(ROLE_NAME[r.role] || r.role)}</td><td>${E(r.role === 'club_editor' ? clubLabel(r.managedClub) : r.role === 'district_editor' ? '全地區' : '')}</td><td class="text-right"><button type="button" onclick="revoke(${Number(r.id)})" class="text-rose-700 font-bold">移除</button></td></tr>`).join('')}</tbody></table>` : '<div class="text-slate-500 text-sm">還沒有指定任何管理者。</div>';
         $('noEditorCount').textContent = state.clubsWithoutEditor.length;
         // 依分區分組，社名前面加社代號，方便對照找人
@@ -442,6 +455,75 @@
         const club = (window.__phClubs || [])[i]; if (!club) return;
         if (!confirm(`要關閉「${club}」嗎？\n\n關閉後不能再上傳，已上傳的大頭照會保留但不再使用；執秘仍可刪除。`)) return;
         await phSave(club, false, `已關閉：${club}`);
+    }
+
+    // ---------- ⑦ 地區活動的照片：貼連結 → 自動比對 → 按「發送通知」 ----------
+    let pj = { jobs: [], canRun: true, canSend: true }, pjLoaded = false, pjTimer = null, pjBusy = false;
+    const PJ_ERR = { PHOTO_TABLE_MISSING: '資料表還沒建立：請先在 Supabase 執行 supabase/sql/photo_jobs.sql。', PHOTO_NO_TITLE: '請填活動名稱。', PHOTO_BAD_URL: '這不是 Google 雲端硬碟「資料夾」的連結。請打開攝影師給的資料夾，複製網址列的網址再貼上。', PHOTO_DUPLICATE: '這個資料夾已經貼過了。要再比對一次，請在下面那一列按「重新比對」。', PHOTO_NOT_READY: '比對還沒完成，完成後才能發送。', PHOTO_RUNNING: '正在比對中，請等它完成。', PHOTO_JOB_NOT_FOUND: '找不到這個活動，可能已經刪除了。', PUSH_DISABLED: '這個地區還沒開放 LINE 推播（雲端沒有設定官方帳號的 token）。' };
+    function pjErr(code) { return PJ_ERR[code] || (code === 'BAD_REQUEST' && !D.lineLiffId ? '地區設定檔沒有 LINE LIFF ID，無法產生看照片的連結。' : errText(code)); }
+    function pjSay(text, bad) { const m = $('pjMsg'); m.className = 'mt-2 text-sm font-bold ' + (bad ? 'text-rose-700' : 'text-emerald-700'); m.textContent = text || ''; }
+    const pjDate = ts => { try { return new Date(ts).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }); } catch (e) { return ''; } };
+    function pjStatus(j) {
+        if (j.status === 'queued') return `<span class="text-amber-700 font-bold">排隊中</span>${pj.canRun ? '' : '<span class="text-xs text-slate-500">（運算程式尚未設定，暫時不會開始）</span>'}`;
+        if (j.status === 'running') return `<span class="text-blue-700 font-bold">${j.stuck ? '可能卡住了' : '比對中'}</span>${j.progress && j.progress.total ? ` <span class="text-sm text-slate-600">${E(j.progress.stage || '')} ${j.progress.done}／${j.progress.total}</span>` : (j.progress && j.progress.stage ? ` <span class="text-sm text-slate-600">${E(j.progress.stage)}</span>` : '')}`;
+        if (j.status === 'failed') return `<span class="text-rose-700 font-bold">失敗</span> <span class="text-sm text-rose-700">${E(j.error || '')}</span>`;
+        return `<span class="text-emerald-700 font-bold">比對完成</span> <span class="text-sm text-slate-600">共 ${j.totalPhotos} 張，找到 ${j.people} 人（確定 ${j.sure} 張${j.pending ? `、待本人確認 ${j.pending} 張` : ''}）</span>${j.sentAt ? ` <span class="text-sm text-emerald-700">・已發送 ${E(pjDate(j.sentAt))}</span>` : ' <span class="text-sm text-amber-700 font-bold">・尚未發送</span>'}`;
+    }
+    function pjRender() {
+        window.__pjIds = pj.jobs.map(j => j.id);
+        $('pjList').innerHTML = pj.jobs.length ? `<div class="border border-slate-200 rounded-lg divide-y divide-slate-100">${pj.jobs.map((j, i) => `<div class="px-3 py-2.5">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1"><span class="font-bold">${E(j.title)}</span><span class="text-xs rounded px-1.5 py-0.5 ${j.scope === 'district' ? 'bg-blue-50 text-blue-800 border border-blue-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}">${j.scope === 'district' ? '地區' : E(j.club)}</span><span class="text-xs text-slate-500">${E(pjDate(j.createdAt))}</span>
+                <a href="https://drive.google.com/drive/folders/${E(j.folderId)}" target="_blank" rel="noopener" class="text-xs text-blue-700 underline">開啟資料夾</a></div>
+            <div class="mt-1">${pjStatus(j)}</div>
+            <div class="mt-2 flex flex-wrap gap-2">
+                ${j.status === 'done' ? `<button type="button" onclick="pjSend(${i})" class="bg-emerald-600 text-white font-bold rounded-lg px-3 py-1.5 text-sm">📤 ${j.sentAt ? '再發送（只發給還沒通知過的人）' : '發送通知'}</button>` : ''}
+                ${j.status !== 'running' || j.stuck ? `<button type="button" onclick="pjRerun(${i})" class="border border-slate-300 font-bold rounded-lg px-3 py-1.5 text-sm">${j.status === 'queued' ? '再啟動一次' : '重新比對'}</button>` : ''}
+                <button type="button" onclick="pjDelete(${i})" class="text-rose-700 font-bold text-sm px-2">刪除</button>
+            </div></div>`).join('')}</div>` : '<div class="text-sm text-slate-500">還沒有貼過任何活動照片。</div>';
+        // 有工作在排隊或比對中：每 10 秒自動更新一次
+        clearTimeout(pjTimer);
+        if (pj.jobs.some(j => j.status === 'queued' || j.status === 'running')) pjTimer = setTimeout(() => pjLoad(true), 10000);
+    }
+    function pjApply(r) { pj = { jobs: r.jobs || [], canRun: r.canRun !== false, canSend: r.canSend !== false }; pjLoaded = true; pjRender(); }
+    async function pjLoad(quiet) {
+        if (pjBusy) return;
+        const r = await api('photo_admin_job_list');
+        if (!r.ok) { if (!quiet) $('pjList').innerHTML = `<div class="text-sm font-bold text-rose-700">${E(pjErr(r.code))}</div>`; return; }
+        pjApply(r);
+    }
+    async function pjCall(action, extra, okText) {
+        if (pjBusy) return null;
+        pjBusy = true; const r = await api(action, Object.assign({ district: D.code || '' }, extra || {})); pjBusy = false;
+        if (!r.ok) { pjSay(pjErr(r.code), true); return null; }
+        if (r.jobs) pjApply(r);
+        if (okText) pjSay(typeof okText === 'function' ? okText(r) : okText);
+        return r;
+    }
+    async function pjAdd() {
+        const title = $('pjTitle').value.trim(), url = $('pjUrl').value.trim();
+        if (!title) { pjSay(PJ_ERR.PHOTO_NO_TITLE, true); return; }
+        if (!url) { pjSay('請貼上 Google 雲端硬碟資料夾連結。', true); return; }
+        const r = await pjCall('photo_admin_job_add', { title: title, url: url }, r => r.started ? '已開始比對，完成後會顯示在下面（通常需要十幾到三十分鐘）。' : '已排入。運算程式尚未設定或暫時啟動不了，稍後可以按「再啟動一次」。');
+        if (r) { $('pjTitle').value = ''; $('pjUrl').value = ''; }
+    }
+    async function pjRerun(i) {
+        const id = (window.__pjIds || [])[i], j = pj.jobs.find(x => x.id === id); if (!j) return;
+        if (!confirm(`要重新比對「${j.title}」嗎？\n\n適合後來又補了大頭照、或上次失敗的時候。已經找到的照片與社友按過的「是／不是」都會保留。`)) return;
+        await pjCall('photo_admin_job_rerun', { id: id }, r => r.started ? '已重新開始比對。' : '已排入，但運算程式暫時啟動不了。');
+    }
+    async function pjDelete(i) {
+        const id = (window.__pjIds || [])[i], j = pj.jobs.find(x => x.id === id); if (!j) return;
+        if (!confirm(`要刪除「${j.title}」嗎？\n\n比對結果會一起刪掉，社友在 LINE 就看不到這個活動的照片了。攝影師雲端硬碟裡的照片不受影響。`)) return;
+        await pjCall('photo_admin_job_delete', { id: id }, '已刪除。');
+    }
+    async function pjSend(i) {
+        const id = (window.__pjIds || [])[i], j = pj.jobs.find(x => x.id === id); if (!j) return;
+        const pv = await pjCall('photo_admin_job_preview', { id: id });
+        if (!pv) return;
+        if (!pv.targets) { pjSay(`沒有需要通知的人。${pv.already ? `已通知過 ${pv.already} 人。` : ''}${pv.unbound.length ? `有 ${pv.unbound.length} 人沒有綁定 LINE，收不到。` : ''}`, !pv.already); return; }
+        const un = pv.unbound.length ? `\n\n有 ${pv.unbound.length} 人有照片但沒有綁定 LINE（本人與家人都沒綁），收不到：\n${pv.unbound.slice(0, 15).map(u => '・' + u.club + ' ' + u.name).join('\n')}${pv.unbound.length > 15 ? '\n…' : ''}` : '';
+        if (!confirm(`要發送「${j.title}」的照片通知嗎？\n\n會用 LINE 通知 ${pv.targets} 人（每人一則，會使用官方帳號的推播額度）。${pv.already ? `\n已通知過的 ${pv.already} 人不會重複收到。` : ''}${un}`)) return;
+        await pjCall('photo_admin_job_send', { id: id, liffId: D.lineLiffId || '' }, r => `已發送 ${r.sent} 人${r.failed ? `，失敗 ${r.failed} 人` : ''}。`);
     }
 
     // ---------- ④-2 各社活動提醒推播：逐社開放（預設關閉）、前一天幾點推 ----------

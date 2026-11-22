@@ -95,6 +95,11 @@ export async function photoDesk(action: string, body: Any, ctx: PhotoCtx, club: 
     const target = body.id ? mine.filter((r) => r.id === String(body.id)) : mine;
     if (body.id && !target.length) ctx.fail("PHOTO_NOT_FOUND");
     const n = await removeRows(ctx, target);
+    // 大頭照全部刪掉＝收回同意：他的活動照片比對結果也一起刪（資料表還沒建立就略過）
+    if (target.length === mine.length && mine.length) {
+      const dm = await ctx.admin.from("photo_matches").delete().eq("club_name", club).eq("person_key", String(body.personKey || ""));
+      if (dm.error && !missing(dm.error)) console.error("比對結果刪除失敗", String(dm.error.message || "").slice(0, 80));
+    }
     return { ...(await deskList(ctx, club, list, enabled)), removed: n };
   }
   // 看「一個人」的照片：一次只給這個人的簽名網址（10 分鐘失效），不提供整社一次取回

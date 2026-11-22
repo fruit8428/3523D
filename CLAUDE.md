@@ -106,7 +106,8 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 | `line.html` | LINE 自助報到頁（LIFF 的 Endpoint，社友在 LINE 裡開啟）。不直接碰資料庫，全部透過雲端小程式 `line-checkin`。 |
 | `club-dues.js` | 社費推播的填寫畫面（執秘用，見「社費推播」）。 |
 | `global-grants.js` | 全球獎助金查詢畫面（見「全球獎助金查詢」）。 |
-| `member-portraits.js` | 活動照片找人的大頭照畫面（執秘在社友庫上傳，見「活動照片找人」）。 |
+| `member-portraits.js` | 活動照片找人的執秘畫面：① 大頭照、② 活動照片（見「活動照片找人」）。 |
+| `my-photos.js` | 社友在 LINE 看自己的活動照片（`line.html?p=photos`，見「活動照片找人」）。 |
 | `checkin-core.js` | 報到的純函式（應到名單、合併報到紀錄、統計），`index.html` 與 `checkin.html` 共用，可用 node 直接測。 |
 | `stub.js` | 在 node 裡 require `test.js` 用的 DOM/Supabase 假物件。 |
 
@@ -207,7 +208,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 
 ### 活動照片找人・第一步：大頭照（2026-11-22）
 
-整體規格與使用者的決定在相片專案的 `/Users/fruit/Documents/AI Agent/相片scripling/交接_3523報名系統.md`（人臉比對核心在那個專案，GitHub `fruit8428/photo-finder`）。三步：① 大頭照（已做）→ ② 貼 Google 雲端硬碟連結、找照片、執秘確認 → ③ LINE 通知。**大頭照與之後的臉部特徵、比對結果都是敏感個資，絕不可進 `app_storage`／`localStorage`**；`member-portraits.js` 的任何操作都不呼叫 `saveToStorage()`。
+整體規格與使用者的決定在相片專案的 `/Users/fruit/Documents/AI Agent/相片scripling/交接_3523報名系統.md`（人臉比對核心在那個專案，GitHub `fruit8428/photo-finder`）。① 大頭照 → ② 貼 Google 雲端硬碟連結、自動比對 → ③ 按「發送通知」、社友在 LINE 看照片（②③ 見下一節；報名系統這邊都已做，**人臉比對的運算程式在相片專案，要它做好才會真的有結果**）。**大頭照與之後的臉部特徵、比對結果都是敏感個資，絕不可進 `app_storage`／`localStorage`**；`member-portraits.js` 的任何操作都不呼叫 `saveToStorage()`。
 - **由執秘統一建置（使用者 2026-11-22 決定，推翻當天稍早「社友在 LINE 自己上傳」的做法）**：社友把照片傳給執秘，執秘在社友庫上傳。**不要再加回 LINE 自行上傳頁**（`line.html` 沒有任何大頭照程式，`photo_me*` 動作已移除）。
 - **開關**：畫面＝地區設定檔 `photoEnabled`（3521 開、3523 尚未開）；雲端＝表 `photo_club_enabled`（有那一列＝該社開放，預設全部關閉），由 `admin-calendar.html`「⑦ 活動照片找人」逐社開關（`ph*` 函式，動作 `photo_admin_get`／`photo_admin_save`，行事曆後台密碼）。先不收費（使用者決定）。
 - **資料**（`supabase/sql/member_portraits.sql`）：表 `member_portraits`（一張照片一列：`club_name`、`person_key`＝`姓名|Nick Name`、`path`、`consent_by`＝`報名系統（社名）`、`consent_at`），RLS 開啟、無 policy、anon 無權限；檔案在**不公開**的 Storage bucket `member-portraits`（沒有任何 storage policy；檔名是亂數 uuid，不含姓名）。**沒有任何一列＝沒有同意、不比對；刪光＝收回同意。** 每人最多 `PHOTO_MAX`＝3 張。`member_rename_move` 已加上 `member_portraits`（檔名是亂數所以只改 `person_key`）；**第二步新增以人為索引的表時也要加進去**。
@@ -215,6 +216,22 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - **圖片**：前端 `portraitPrepare()` 先縮到最長邊 1600、轉 JPEG（PNG 補白底；讀不了的檔案如電腦上的 HEIC 會提示換一張；最長邊不到 300 視為太小），以 base64 放在 JSON 傳；雲端只收 JPEG 檔頭、3KB～1.5MB。
 - **畫面** `member-portraits.js`（全域 `mp*`／`portrait*`）：社友庫的 `#memberPortraitBtn`（`mpRefreshButton()` 由 `updateRolePermissionsUI()` 呼叫、同一社 5 分鐘只問一次）→ 視窗 `#memberPortraitOverlay`。名單打開時不載入任何照片；按「查看」才取那一個人的（`mp.open`／`mp.photos`，收起或關閉就丟掉）。上傳可多選（`mpPicked` 逐張傳，超過上限的不傳並說明）。「已不在社友庫的人」另列可刪。`deleteMember()` 會呼叫 `mpForgetMember()` 順便刪大頭照。
 - 測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/member_portraits.ts`（25 項，假資料庫與假儲存空間）、`node check_portraits.js`（需 8000 埠，29 項）。
+
+### 活動照片找人・第二、三步：貼連結 → 比對 → 發送通知 → 社友看照片（2026-11-22）
+
+使用者決定的流程：管理者（或執秘）貼上攝影師的 Google 雲端硬碟資料夾連結 → 系統自動比對有大頭照的人 → **按「發送通知」才推播**（先這樣試辦，之後可能改全自動）→ 社友在 LINE 看；「不太確定」的由**本人**按是／不是（不經過執秘）。
+- **分工**：這個專案不做人臉運算。`photo_jobs` 是工作佇列；運算程式在相片專案（`fruit8428/photo-finder`），由 **GitHub Actions** 執行（使用者決定用雲端、不用自己的 Mac），用該地區的私密金鑰直接讀 `member_portraits`／儲存空間、寫 `photo_matches` 與工作進度。**介面契約寫在交接文件第 6 節，改資料表欄位前要先改那裡。**
+- **啟動**：`index.ts` 的 `deps.photoDispatch`＝呼叫 GitHub `workflow_dispatch`（secret `PHOTO_GITHUB_TOKEN`；`PHOTO_GITHUB_REPO` 預設 `fruit8428/photo-finder`、`PHOTO_GITHUB_WORKFLOW` 預設 `match.yml`、`PHOTO_GITHUB_REF` 預設 `main`），inputs＝`{district, job_id}`（`district` 由前端帶 `DISTRICT.code`）。沒設 token 或啟動失敗＝工作照樣建立、停在 queued，回傳 `started:false`／`canRun:false`，畫面如實說明。token 由使用者點兩下 `設定照片比對啟動金鑰.command` 輸入。
+- **資料表**（`supabase/sql/photo_jobs.sql`，要先跑 `member_portraits.sql`；RLS 開啟、無 policy、anon 無權限）：`photo_jobs`（`scope`＝district／club、`club_name`、`title`、`folder_id`、`status`＝queued／running／done／failed、`progress` jsonb `{stage,done,total}`、`total_photos`、`error`、`sent_at`）；`photo_matches`（`job_id`、`club_name`、`person_key`、`file_id`、`file_name`、`score`、`cls`＝sure／maybe、`status`＝auto（程式確定）／pending（等本人確認）／yes／no、`face` jsonb＝臉佔整張圖的比例 `{x,y,w,h}`；unique(job,club,person,file)）；`photo_notified`（已通知的收件人，避免重複）。pg_cron `photo-jobs-cleanup` 每天刪除超過一年的工作（cascade）。**不存臉部特徵**（每次由大頭照重算）。`member_rename_move` 已含 `photo_matches`／`photo_notified`。
+- **雲端** `supabase/functions/line-checkin/photos.ts`：
+  - `photoJobs(動作, body, ctx, club?, by)`：`photo_admin_job_*`（行事曆後台密碼，`club` 不給＝全部）與 `photo_desk_job_*`（社密碼，`club`＝自己的社）共用，動作＝`list`／`add`（`parseFolder()` 只收 drive.google.com 的資料夾網址；同資料夾同範圍重複＝`PHOTO_DUPLICATE`）／`rerun`（比對中未滿一小時＝`PHOTO_RUNNING`；不刪既有結果）／`delete`／`preview`／`send`。**執秘只能動 `scope=club` 且是自己社的工作**（`getJob`，否則 `PHOTO_JOB_NOT_FOUND`）；地區的工作執秘只看得到本社統計與 `persons`（誰幾張），管理者的清單不含個人。
+  - 發送（`plan()`）：只算已開放的社、`status≠no` 的結果；本人有綁 LINE＝傳給本人，沒綁＝找社友庫裡互為寶(尊)眷且有綁的人併過去（`ctx.family`＝lib.ts 的 `familyKeys`），都沒有＝列在 `unbound`；`photo_notified` 有紀錄的不重發。第一次發送才寫 `sent_at`，**`sent_at` 有值社友才看得到該活動**。卡片 `buildPhotoMessage`，連結 `https://liff.line.me/<LIFF>?p=photos&job=<id>`。只需官方帳號 token（`PUSH_DISABLED`），不需推播密碼。
+  - `photoMine`（LINE idToken → 綁定）：`photo_my`（自己＋**沒綁 LINE** 的寶尊眷；只回已發送的活動；回 `file`＝Google 檔案代號與 `face`）、`photo_my_answer`（`{id,yes}`，只能回答自己或沒綁 LINE 家人的列；對「確定」的照片也可以按不是）。
+  - `photo_job_done`（`{secret,id}`，`calendar_settings.cron_secret` 把關，運算程式結束時呼叫）：地區的工作用 LINE 通知 `backup_notify`（後台 ⑥）的人去按發送／告知失敗原因；社的工作不通知。
+  - `portraits.ts` 的 `photo_desk_delete` 把某人大頭照**全部**刪掉時，連同他的 `photo_matches` 一起刪（收回同意）。
+- **畫面**：`admin-calendar.html` ⑦ 下半「地區活動的照片」（`pj*`）；`member-portraits.js` 的「② 活動照片」分頁（`mpTab`／`mpj*`；自動更新只重畫 `#mpjList` 與訊息，不動輸入框；有 queued／running 時每 10 秒重讀）；`my-photos.js`（`myp*`，`line.html?p=photos` → `photosStart()`，`#viewPhotos`；`viewHome` 的 `#homePhotosBtn`）。**LINE 只能看照片，不能上傳大頭照。**
+- **照片顯示用 Google 網頁的網址，不是官方 API**（2026-11-22 用攝影師的公開資料夾實測可用，但 Google 改版可能失效）：縮圖／大圖 `https://drive.google.com/thumbnail?id=<file>&sz=w400|w1600`、下載原圖 `https://drive.google.com/uc?export=download&id=<file>`（LINE 內用 `liff.openWindow({external:true})`）。臉部特寫＝`mypCrop()` 用 `face` 比例把大圖移到只露出那張臉。檔案代號先過 `mypOk()` 才組網址。
+- 測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/photo_jobs.ts`（40 項，假資料庫、假 LINE、假 GitHub）、`node check_photo_jobs.js`（需 8000 埠，38 項）。**尚未有真實比對結果跑過整個流程**（運算程式還沒寫）。
 
 ### 刪除社友與已送出的報名表（2026-11-14）
 

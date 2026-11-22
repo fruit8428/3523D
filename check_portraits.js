@@ -20,7 +20,7 @@ const fs = require('fs'), os = require('os'), path = require('path');
 
   // LINE 頁面不應該再有大頭照入口（使用者決定由執秘統一建置）
   const lineHtml = fs.readFileSync(__dirname + '/line.html', 'utf8');
-  ok('LINE 頁面沒有大頭照的入口與程式', !/photo|大頭照|member-portraits/i.test(lineHtml));
+  ok('LINE 頁面沒有上傳大頭照的入口與程式（只能看活動照片）', !/member-portraits|type="file"|photo_me|photo_desk/i.test(lineHtml) && !/type="file"|photo_me_upload|photo_desk/i.test(fs.readFileSync(__dirname + '/my-photos.js', 'utf8')));
 
   {
     const p = await b.newPage(); await p.setViewport({ width: 1300, height: 900 });

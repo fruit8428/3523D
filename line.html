@@ -103,6 +103,7 @@
             <div class="text-5xl">✅</div>
             <div class="font-black text-xl mt-3">綁定完成</div>
             <p class="text-base text-slate-600 mt-2 leading-relaxed">活動當天，用 LINE 掃描會場的<br><b>報到 QR Code</b> 就能完成報到。</p>
+            <button type="button" id="homePhotosBtn" onclick="page='photos';photosStart()" class="hidden mt-5 w-full border border-blue-300 bg-blue-50 text-blue-800 font-bold rounded-xl py-3">📷 我的活動照片</button>
         </div>
 
         <!-- 報到 -->
@@ -110,11 +111,15 @@
 
         <!-- 扶輪行事曆（?p=calendar，畫面與邏輯在 calendar.js） -->
         <div id="viewCalendar" class="hidden pb-24"></div>
+
+        <!-- 我的活動照片（?p=photos，畫面與邏輯在 my-photos.js；只能看，大頭照由執秘在報名系統建立） -->
+        <div id="viewPhotos" class="hidden pb-10"></div>
     </main>
 
     <div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-6 z-50 px-4 py-2.5 rounded-xl shadow-lg text-sm font-bold text-white bg-slate-900 opacity-0 pointer-events-none transition-opacity duration-300 max-w-[92vw] text-center"></div>
 
     <script src="./calendar.js"></script>
+    <script src="./my-photos.js?v=20261122"></script>
     <script>
         // ================= 基本設定 =================
         const D = window.DISTRICT || {};
@@ -129,7 +134,7 @@
         let divisions = [];        // [{ name, clubs: [社名] }]
         let eventInfo = null;      // 雲端回傳的活動與報到狀態
         let busy = false;
-        let page = '';             // 網址參數 p：calendar＝扶輪行事曆；沒有＝報到／綁定
+        let page = '';             // 網址參數 p：calendar＝扶輪行事曆；photos＝我的活動照片；沒有＝報到／綁定
 
         // ================= 小工具 =================
         const $ = id => document.getElementById(id);
@@ -143,7 +148,7 @@
             const t = $('toast'); t.textContent = msg; t.style.opacity = '1';
             clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.style.opacity = '0'; }, 3500);
         }
-        const VIEWS = ['viewLoading', 'viewMessage', 'viewBind', 'viewHome', 'viewEvent', 'viewCalendar'];
+        const VIEWS = ['viewLoading', 'viewMessage', 'viewBind', 'viewHome', 'viewEvent', 'viewCalendar', 'viewPhotos'];
         function show(id) { VIEWS.forEach(v => $(v).classList.toggle('hidden', v !== id)); }
         function showMessage(icon, title, body, retry) {
             $('msgIcon').textContent = icon; $('msgTitle').textContent = title; $('msgBody').textContent = body;
@@ -355,10 +360,12 @@
             divisions = r.divisions || [];
             eventInfo = r.event || null;
             if (eventInfo && eventInfo.title) $('hdTitle').textContent = eventInfo.title + ' 報到';
-            if (!binding) return showBind(page === 'calendar' ? '請先綁定身分，才能使用行事曆。' : '');
+            if (!binding) return showBind(page === 'calendar' ? '請先綁定身分，才能使用行事曆。' : page === 'photos' ? '請先綁定身分，才能看您的活動照片。' : '');
             if (page === 'calendar') return calendarStart();
+            if (page === 'photos') return photosStart();
             renderIdCard();
             if (eventInfo) return renderEvent();
+            $('homePhotosBtn').classList.toggle('hidden', !D.photoEnabled);      // 地區有開「活動照片找人」才顯示入口
             show('viewHome');
         }
         (async function init() {
@@ -374,6 +381,7 @@
             eventKey = new URLSearchParams(location.search).get('e') || '';
             page = new URLSearchParams(location.search).get('p') || '';
             if (page === 'calendar') $('hdTitle').textContent = '扶輪行事曆';
+            if (page === 'photos') $('hdTitle').textContent = '我的活動照片';
             if (!liff.isLoggedIn()) {   // 用一般瀏覽器開啟時要先登入 LINE；在 LINE 裡開啟會自動登入
                 $('loadingText').textContent = '前往 LINE 登入…';
                 liff.login({ redirectUri: location.href });

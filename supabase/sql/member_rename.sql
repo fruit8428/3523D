@@ -155,6 +155,17 @@ begin
         get diagnostics n = row_count; out := out || jsonb_build_object('portraits', n);
     end if;
 
+    -- ---------- 活動照片找人：比對結果與已通知紀錄 ----------
+    if to_regclass('public.photo_matches') is not null then
+        delete from photo_matches o where o.club_name = p_club and o.person_key = p_old
+           and exists (select 1 from photo_matches x where x.job_id = o.job_id and x.club_name = p_club and x.person_key = p_new and x.file_id = o.file_id);
+        update photo_matches set person_key = p_new where club_name = p_club and person_key = p_old;
+        get diagnostics n = row_count; out := out || jsonb_build_object('photoMatches', n);
+        delete from photo_notified o where o.club_name = p_club and o.person_key = p_old
+           and exists (select 1 from photo_notified x where x.job_id = o.job_id and x.club_name = p_club and x.person_key = p_new);
+        update photo_notified set person_key = p_new where club_name = p_club and person_key = p_old;
+    end if;
+
     return out;
 end $$;
 

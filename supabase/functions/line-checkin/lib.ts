@@ -11,6 +11,7 @@
 import "./checkin-core.js";
 import { handleDues } from "./dues.ts";
 import { photoAdmin, photoDesk } from "./portraits.ts";
+import { photoJobDone, photoJobs, photoMine } from "./photos.ts";
 import { handleGrants } from "./grants.ts";
 import { agendaReply, backupReminder, CalError, governorDigest, clubReminder, parseAgendaKeyword, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
 // deno-lint-ignore no-explicit-any
@@ -29,6 +30,7 @@ export interface Deps {
   calendarAdminPassword?: string;                      // 行事曆後台密碼（secret CALENDAR_ADMIN_PASSWORD；空字串＝後台關閉）
   reply?: (replyToken: string, messages: Any[]) => Promise<void>;   // LINE 聊天室回覆（Webhook 用；不算推播額度）
   liffId?: string;                                     // 地區的 LIFF ID（secret LINE_LIFF_ID；聊天室回覆的連結用）
+  photoDispatch?: (inputs: Record<string, string>) => Promise<void>;   // 啟動相片專案放在 GitHub 的人臉比對程式（secret PHOTO_GITHUB_TOKEN；沒設定＝工作只會排著）
   shared?: Any;                                        // supabase-js（共用專案 Rotary-Shared，全球獎助金；公開唯讀的 publishable 金鑰；null＝這個地區關閉）
 }
 // LINE 推播：要用「LINE 官方帳號」的 Messaging API 才能主動傳訊息給社友（LINE Login 頻道不行）。
@@ -156,6 +158,15 @@ async function eventView(deps: Deps, state: Any, eventKey: string, binding: Any)
 }
 
 const photoCtx = (deps: Deps) => ({ admin: deps.admin, fail });
+// 活動照片（找照片的工作、發送通知、社友看照片）用的：社友庫同一次請求只讀一次
+function jobCtx(deps: Deps) {
+  let all: Promise<Any> | null = null;
+  return {
+    admin: deps.admin, fail, family: familyKeys, dispatch: deps.photoDispatch,
+    members: async () => (await (all ||= loadState(deps, true))).members || {},
+    send: deps.push && deps.push.token && deps.push.sendMessages ? deps.push.sendMessages : undefined,
+  };
+}
 
 function checkClubPassword(deps: Deps, state: Any, club: string, password: string) {
   const stored = ((state.auth || {}).clubPasswords || {})[club];
@@ -381,14 +392,26 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
     const club = String(body.club || "");
     const state = await loadState(deps, true);
     checkClubPassword(deps, state, club, body.clubPassword);
+    // 活動照片：貼自己社的資料夾連結、看本社比對結果（只有誰幾張）、發送通知。地區的活動只看得到、不能動
+    if (action.startsWith("photo_desk_job_")) return await photoJobs(action.slice("photo_desk_job_".length), body, jobCtx(deps), club, `報名系統（${club}）`);
     return await photoDesk(action, body, photoCtx(deps), club, Array.isArray((state.members || {})[club]) ? state.members[club] : []);
   }
   // 行事曆後台（後台密碼）：逐社開放，預設全部關閉。
   if (action.startsWith("photo_admin_")) {
     if (!deps.calendarAdminPassword) fail("CAL_ADMIN_DISABLED");
     if (String(body.adminPassword || "") !== deps.calendarAdminPassword) { await sleep(1000); fail("CAL_ADMIN_AUTH_FAILED"); }
+    // 活動照片：地區管理者貼的連結＝比對所有開放的社
+    if (action.startsWith("photo_admin_job_")) return await photoJobs(action.slice("photo_admin_job_".length), body, jobCtx(deps), undefined, "行事曆後台");
     const names = ((await loadState(deps, false)).divisionsData || []).flatMap((d: Any) => (d.clubs || []).map((c: Any) => String(c.name)));
     return await photoAdmin(action, body, photoCtx(deps), names);
+  }
+
+  // 運算程式（GitHub）比對完成後呼叫：通知系統管理者去按「發送通知」。用排程密碼（calendar_settings.cron_secret）把關
+  if (action === "photo_job_done") {
+    const { data, error } = await deps.admin.from("calendar_settings").select("value").eq("key", "cron_secret").maybeSingle();
+    const secret = !error && data ? String(data.value || "") : "";
+    if (!secret || String(body.secret || "") !== secret) { await sleep(1000); fail("CAL_CRON_AUTH_FAILED"); }
+    return await photoJobDone(jobCtx(deps), body.id);
   }
 
   // ---------- 執秘：社友改名後，把他名下的紀錄（LINE 綁定、行事曆身分、私人行程、出席…）搬到新名字 ----------
@@ -515,6 +538,13 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
       };
       return await calMember(action, body, deps.admin, b ? { club: b.club, key: b.key, name: b.name, nickname: b.nickname } : null, reg);
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
+  }
+
+  // 社友在 LINE 看自己的活動照片（只有自己與沒綁 LINE 的寶尊眷）、回答「這是您嗎」
+  if (action === "photo_my" || action === "photo_my_answer") {
+    const b = await getBinding(deps, user.sub);
+    if (!b) fail("NOT_BOUND");
+    return await photoMine(action, body, jobCtx(deps), { club: b!.club, key: b!.key, name: b!.name });
   }
 
   if (action === "init") {
