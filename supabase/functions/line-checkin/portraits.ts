@@ -58,7 +58,7 @@ async function addPhoto(ctx: PhotoCtx, club: string, key: string, image: unknown
   const bytes = decodeJpeg(ctx, image);
   if ((await rowsOf(ctx, club, key)).length >= PHOTO_MAX) ctx.fail("PHOTO_TOO_MANY");
   const path = `${crypto.randomUUID()}.jpg`;                   // 檔名不含社名與姓名
-  const up = await ctx.admin.storage.from(PHOTO_BUCKET).upload(path, bytes, { contentType: "image/jpeg", upsert: false });
+  const up = await ctx.admin.storage.from(PHOTO_BUCKET).upload(path, bytes, { contentType: "image/jpeg", upsert: false, cacheControl: "0" });   // 不快取：刪除後，先前發出的簽名網址才會立刻失效
   if (up.error) dbFail(ctx, up.error);
   const at = new Date(ctx.now || Date.now()).toISOString();
   const ins = await ctx.admin.from("member_portraits").insert({ club_name: club, person_key: key, path, consent_by: by.slice(0, 80), consent_at: at, created_at: at });
