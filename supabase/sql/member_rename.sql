@@ -149,6 +149,12 @@ begin
          where club_name = p_club and data->'members' ? p_old and not (data->'members' ? p_new);
     end if;
 
+    -- ---------- 活動照片找人：大頭照（檔名是亂數，所以只要改這一欄，檔案不用搬） ----------
+    if to_regclass('public.member_portraits') is not null then
+        update member_portraits set person_key = p_new where club_name = p_club and person_key = p_old;
+        get diagnostics n = row_count; out := out || jsonb_build_object('portraits', n);
+    end if;
+
     return out;
 end $$;
 

@@ -112,6 +112,18 @@
         </section>
 
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h2 class="font-black text-lg">⑦ 活動照片找人（允許使用的社）</h2>
+            <p class="text-sm text-slate-600 mt-1 leading-relaxed">開放後，該社的社友可以在 LINE 上傳自己的<b>大頭照</b>（本人按同意），執秘可以在報名系統的社友庫看到誰已經上傳、並在取得本人同意後代為上傳。之後活動結束，系統會用大頭照找出每位社友的活動照片。<b>預設全部關閉</b>；大頭照存在不公開的空間，執秘也看不到照片本身。關閉某一社後，已上傳的大頭照會保留但不再使用，社友仍可自行刪除。</p>
+            <div id="phList" class="mt-3"><span class="text-sm text-slate-500">讀取中…</span></div>
+            <div class="mt-4 text-sm font-bold">開放新的社</div>
+            <div class="mt-2 flex flex-wrap gap-2">
+                <select id="phClub" class="min-w-0 flex-1 border border-slate-300 rounded-lg px-3 py-2.5 text-base"></select>
+                <button type="button" id="phAdd" onclick="phAdd()" class="bg-blue-700 text-white font-bold rounded-lg px-4 py-2.5">開放</button>
+            </div>
+            <div id="phMsg" class="mt-2 text-sm font-bold"></div>
+        </section>
+
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
             <h2 class="font-black text-lg">⑤ 活動類型</h2>
             <p class="text-sm text-slate-600 mt-1">刪除某個類型後，使用它的行程會變成「未分類」。</p>
             <div id="typeList" class="mt-3 space-y-2"></div>
@@ -168,6 +180,7 @@
         if (!svLoaded) svLoad();
         if (!bnLoaded) bnLoad();
         if (!cpLoaded) cpLoad(); else cpRender();
+        if (!phLoaded) phLoad(); else phRender();
         $('roleList').innerHTML = state.roles.length ? `<table class="w-full text-sm"><thead><tr class="text-left text-slate-500 border-b"><th class="py-2">姓名</th><th>所屬社</th><th>角色</th><th>管理範圍</th><th></th></tr></thead><tbody>${state.roles.map(r => `<tr class="border-b border-slate-100"><td class="py-2 font-bold">${E(r.name)}${r.nickname ? `<span class="ml-1 font-normal text-slate-500">${E(r.nickname)}</span>` : ''}</td><td>${E(clubLabel(r.club))}</td><td>${E(ROLE_NAME[r.role] || r.role)}</td><td>${E(r.role === 'club_editor' ? clubLabel(r.managedClub) : r.role === 'district_editor' ? '全地區' : '')}</td><td class="text-right"><button type="button" onclick="revoke(${Number(r.id)})" class="text-rose-700 font-bold">移除</button></td></tr>`).join('')}</tbody></table>` : '<div class="text-slate-500 text-sm">還沒有指定任何管理者。</div>';
         $('noEditorCount').textContent = state.clubsWithoutEditor.length;
         // 依分區分組，社名前面加社代號，方便對照找人
@@ -392,6 +405,43 @@
         bnSel.forEach(p => { if (st[bnKeyOf(p)]) p.status = st[bnKeyOf(p)]; });
         bnRenderChips();
         const m = $('bnMsg'); m.className = 'self-center text-sm font-bold text-emerald-700'; m.textContent = `已發送 ${r.sent} 人`;
+    }
+
+    // ---------- ⑦ 活動照片找人：逐社開放（預設關閉） ----------
+    let ph = [], phLoaded = false;
+    function phErr(code) { return code === 'PHOTO_TABLE_MISSING' ? '資料表還沒建立：請先在 Supabase 執行 supabase/sql/member_portraits.sql。' : errText(code); }
+    function phSay(text, bad) { const m = $('phMsg'); m.className = 'mt-2 text-sm font-bold ' + (bad ? 'text-rose-700' : 'text-emerald-700'); m.textContent = text || ''; }
+    function phRender() {
+        window.__phClubs = ph.map(c => c.club);
+        $('phList').innerHTML = ph.length ? `<div class="border border-slate-200 rounded-lg divide-y divide-slate-100">${ph.map((c, i) => `<div class="flex flex-wrap items-center gap-2 px-3 py-2">
+            <span class="font-bold flex-1 min-w-0">${E(clubLabel(c.club))}</span>
+            <span class="text-sm text-slate-600">已有大頭照 ${Number(c.people) || 0} 人</span>
+            <button type="button" onclick="phOff(${i})" class="text-rose-700 font-bold text-sm px-2">關閉</button>
+        </div>`).join('')}</div>` : '<div class="text-sm text-slate-500">目前沒有開放任何一社。</div>';
+        const on = new Set(ph.map(c => c.club)), groups = [];
+        (state && state.clubInfos || []).forEach(c => { if (on.has(c.name)) return; let g = groups.find(x => x.division === c.division); if (!g) { g = { division: c.division, clubs: [] }; groups.push(g); } g.clubs.push(c); });
+        $('phClub').innerHTML = '<option value="">— 請選擇社 —</option>' + groups.map(g => `<optgroup label="${E(g.division)}">${g.clubs.map(c => `<option value="${E(c.name)}">${E(c.code ? c.code + ' ' : '')}${E(c.name)}</option>`).join('')}</optgroup>`).join('');
+    }
+    async function phLoad() {
+        const r = await api('photo_admin_get');
+        if (!r.ok) { $('phList').innerHTML = `<div class="text-sm font-bold text-rose-700">${E(phErr(r.code))}</div>`; return; }
+        phLoaded = true; ph = r.clubs || []; phRender();
+    }
+    async function phSave(club, enabled, okText) {
+        const r = await api('photo_admin_save', { club: club, enabled: enabled });
+        if (!r.ok) { phSay(phErr(r.code), true); return; }
+        phLoaded = true; ph = r.clubs || []; phRender(); phSay(okText);
+    }
+    async function phAdd() {
+        const club = $('phClub').value;
+        if (!club) { phSay('請先選擇要開放的社。', true); return; }
+        if (!confirm(`要開放「${club}」使用活動照片找人嗎？\n\n開放後，該社社友可以在 LINE 上傳大頭照，執秘可以代為上傳。`)) return;
+        await phSave(club, true, `已開放：${club}`);
+    }
+    async function phOff(i) {
+        const club = (window.__phClubs || [])[i]; if (!club) return;
+        if (!confirm(`要關閉「${club}」嗎？\n\n關閉後不能再上傳，已上傳的大頭照會保留但不再使用；社友仍可在 LINE 自行刪除。`)) return;
+        await phSave(club, false, `已關閉：${club}`);
     }
 
     // ---------- ④-2 各社活動提醒推播：逐社開放（預設關閉）、前一天幾點推 ----------

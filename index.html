@@ -21,6 +21,7 @@
     <script src="./calendar-desk.js"></script>
     <script src="./club-dues.js?v=20261120"></script>
     <script src="./global-grants.js?v=20261121"></script>
+    <script src="./member-portraits.js?v=20261122"></script>
     <script>
         if (!window.DISTRICT) {
             console.error('找不到 district-config.js，請執行 node scripts/build-config.js');
@@ -520,6 +521,9 @@
                         <div class="flex items-center gap-2 flex-wrap">
                             <button id="lineBindingsBtn" onclick="openLineBindingsModal()" class="hidden px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm whitespace-nowrap transition active:scale-95" title="查看本社哪些社友已經綁定 LINE（自助報到用），或解除綁定">
                                 📱 LINE 綁定名單
+                            </button>
+                            <button id="memberPortraitBtn" onclick="openMemberPortraits()" class="hidden px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm whitespace-nowrap transition active:scale-95" title="查看本社哪些社友已經上傳大頭照（活動結束後用來找出每位社友的活動照片），或代為上傳（需由地區系統管理者開放）">
+                                📷 大頭照
                             </button>
                             <button onclick="openLineRelayModal()" class="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm whitespace-nowrap transition active:scale-95" title="把 LINE 群組的報名接龍整段貼上，系統自動勾選名單">
                                 💬 貼上 LINE 接龍
@@ -3000,6 +3004,7 @@
             if (typeof renderPelsInsuranceSection === 'function') renderPelsInsuranceSection(); // 社長當選人研討會：出席方式總覽與旅平險名單
             if (typeof renderArchivePanel === 'function') renderArchivePanel(); // 歷屆備份面板（同樣只用已抓到的資料重畫）
             if (typeof duesRefreshButton === 'function') duesRefreshButton(); // 「💰 推播社費」按鈕：行事曆後台 ④-2 有開放的社才顯示（同一社 5 分鐘內只問一次雲端）
+            if (typeof mpRefreshButton === 'function') mpRefreshButton(); // 「📷 大頭照」按鈕：地區設定檔 photoEnabled 且行事曆後台 ⑦ 有開放的社才顯示
             if (typeof renderCheckinPanel === 'function') renderCheckinPanel(); // 活動報到面板（只用已抓到的資料重畫；換了活動才重新抓）
             if (typeof renderLinePushPanel === 'function') renderLinePushPanel(); // LINE 推播面板（只切換顯示；換了活動才重設對象清單，不會洗掉正在打的訊息）
             // 主選單與子活動的增刪只開放給最高管理員（活動主委、執秘都看不到）
@@ -5003,6 +5008,8 @@
                 });
             }
             clubMemberDatabase[selectedClubName] = members.filter(m => m.id !== memberId);
+            // 活動照片找人：社友離社，他的大頭照一起刪掉（社裡還有另一位同名同 Nick Name 的人就不刪）
+            if (typeof mpForgetMember === 'function' && !clubMemberDatabase[selectedClubName].some(m => m.name === target.name && (m.nickname || '') === (target.nickname || ''))) mpForgetMember(selectedClubName, target);
             // Also remove from current form if selected
             currentFormSelectedMembers = currentFormSelectedMembers.filter(sm => !(sm.name === target.name && sm.nickname === target.nickname));
             const saved = await saveToStorage();

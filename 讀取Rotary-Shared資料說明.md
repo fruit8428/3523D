@@ -492,7 +492,9 @@ alter table public.grant_notes enable row level security;   -- 不建 policy：�
 
 ## 8. 資料多久更新一次
 
-- 資料**不是自動更新**的。來源網站變動不頻繁，由管理者在需要時手動執行爬蟲。
+- 資料**每週自動更新一次**：每週一早上約 9:17（台灣時間）由爬蟲專案的 GitHub Actions 在雲端執行（2026-11-21 啟用），
+  管理者也可以隨時手動執行。資料**不是即時**的，最多會比來源網站晚一週。
+- 報名系統這邊不用做任何事：資料庫更新後，下次查詢就是新資料。
 - 每次執行會更新狀態、金額、認捐明細，並加入新計畫；已存在的計畫不會重複。
 - 畫面上建議顯示「資料更新於 YYYY-MM-DD」，讓使用者知道資料的新舊。取得方式：
 
@@ -501,7 +503,7 @@ alter table public.grant_notes enable row level security;   -- 不建 policy：�
     .select("updated_at").order("updated_at", { ascending: false }).limit(1);
   ```
 
-- 需要最新資料時，請聯絡系統管理者執行更新。
+- 等不及每週更新時，請聯絡系統管理者手動執行一次。
 
 ---
 

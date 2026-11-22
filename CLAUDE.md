@@ -106,6 +106,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 | `line.html` | LINE 自助報到頁（LIFF 的 Endpoint，社友在 LINE 裡開啟）。不直接碰資料庫，全部透過雲端小程式 `line-checkin`。 |
 | `club-dues.js` | 社費推播的填寫畫面（執秘用，見「社費推播」）。 |
 | `global-grants.js` | 全球獎助金查詢畫面（見「全球獎助金查詢」）。 |
+| `member-portraits.js` | 活動照片找人的大頭照畫面，`line.html` 與 `index.html` 共用（見「活動照片找人」）。 |
 | `checkin-core.js` | 報到的純函式（應到名單、合併報到紀錄、統計），`index.html` 與 `checkin.html` 共用，可用 node 直接測。 |
 | `stub.js` | 在 node 裡 require `test.js` 用的 DOM/Supabase 假物件。 |
 
@@ -203,6 +204,18 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - **畫面** `global-grants.js`（全域名稱 `gg*`，視窗 `#globalGrantsOverlay` 動態建立）：資料只放記憶體 `gg`（同一社 10 分鐘內重開沿用），**不可存 `localStorage`／`app_storage`，不呼叫 `saveToStorage()`**。篩選列（`ggRenderFilters`）與結果（`ggRenderResults`）分開畫，才不會打斷輸入；關鍵字停止輸入 0.5 秒才查，`gg.seq` 丟棄過期結果。外部文字一律 `ggE()`；Email 格式正常才做 `mailto:`（`ggMail`）、來源網址要 http(s) 開頭才做連結。服務重點下拉是固定的七大重點 `GG_FOCUS`（資料裡的中文名稱固定，名稱本身含頓號所以不能用頓號拆）。匯出 `ggExport()` 用已載入的 SheetJS，欄位 `GG_XLSX_COLS`（順序比照爬蟲的 Excel）、金額寫數字、認捐明細一筆一行、超過 32,000 字截斷；SheetJS 社群版寫不出凍結窗格，改加自動篩選。
 - 沒做：地區自己的收藏／洽談備註（說明檔第 7 節 `grant_notes`）、一鍵寄信給所有聯絡人（要做前先問使用者）。
 - 測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/global_grants.ts`（假的 `deps.shared`，37 項）、`node check_grants.js`（需 8000 埠，37 項）。
+
+### 活動照片找人・第一步：大頭照（2026-11-22）
+
+整體規格與使用者的決定在相片專案的 `/Users/fruit/Documents/AI Agent/相片scripling/交接_3523報名系統.md`（人臉比對核心在那個專案，GitHub `fruit8428/photo-finder`）。三步：① 大頭照（已做）→ ② 貼 Google 雲端硬碟連結、找照片、執秘確認 → ③ LINE 通知。**大頭照與之後的臉部特徵、比對結果都是敏感個資，絕不可進 `app_storage`／`localStorage`**；`member-portraits.js` 的任何操作都不呼叫 `saveToStorage()`。
+- **開關**：畫面＝地區設定檔 `photoEnabled`（3521 開、3523 尚未開）；雲端＝表 `photo_club_enabled`（有那一列＝該社開放，預設全部關閉），由 `admin-calendar.html`「⑦ 活動照片找人」逐社開關（`ph*` 函式，動作 `photo_admin_get`／`photo_admin_save`，行事曆後台密碼）。先不收費（使用者決定）。
+- **資料**（`supabase/sql/member_portraits.sql`）：表 `member_portraits`（一張照片一列：`club_name`、`person_key`＝`姓名|Nick Name`、`path`、`consent_by`＝`self` 或 `報名系統（社名）`、`consent_at`），RLS 開啟、無 policy、anon 無權限；檔案在**不公開**的 Storage bucket `member-portraits`（沒有任何 storage policy；檔名是亂數 uuid，不含姓名）。**沒有任何一列＝沒有同意、不比對；刪光＝收回同意。** 每人最多 `PHOTO_MAX`＝3 張。`member_rename_move` 已加上 `member_portraits`（檔名是亂數所以只改 `person_key`）；**第二步新增以人為索引的表時也要加進去**。
+- **雲端** `supabase/functions/line-checkin/portraits.ts`（由 `lib.ts` 轉送）：
+  - 社友本人（LINE idToken → 綁定）：`photo_me`／`photo_me_upload`（要 `consent:true`）／`photo_me_delete`（`id` 或 `all:true`）。回傳自己的照片＝10 分鐘有效的簽名網址。社關閉後仍可看與刪（收回同意不該被擋），只是不能上傳。
+  - 執秘（社密碼）：`photo_desk_status`／`photo_desk_list`（只回 `people:[{key,count,self,at}]` 與 `bound`，**不回照片、檔名、LINE 代碼**）／`photo_desk_upload`（只收社友庫裡的人、要 `consent:true`；本人有綁 LINE 就用官方帳號 token 通知，一小時內只通知一次）／`photo_desk_delete`（整個人刪掉；關閉後仍可刪）。**刻意沒有「用社密碼看大頭照」的動作**（`clubPasswords` 公開可讀）；第二步的「不太確定」確認畫面會並排顯示大頭照，使用者 2026-11-22 決定照社密碼模式、不另設密碼。
+  - 圖片：前端 `portraitPrepare()` 先縮到最長邊 1600、轉 JPEG（PNG 補白底；讀不了的檔案如電腦上的 HEIC 會提示換一張），以 base64 放在 JSON 傳；雲端只收 JPEG 檔頭、3KB～1.5MB。
+- **畫面** `member-portraits.js`：LINE 部分 `lp*`（`line.html?p=photo` → `photoStart()`，畫面 `#viewPhoto`；`viewHome` 有入口按鈕 `#homePhotoBtn`）；報名系統部分 `mp*`（社友庫的 `#memberPortraitBtn`，`mpRefreshButton()` 由 `updateRolePermissionsUI()` 呼叫、同一社 5 分鐘只問一次；視窗 `#memberPortraitOverlay`；「已不在社友庫的人」另列可刪）。`deleteMember()` 會呼叫 `mpForgetMember()` 順便刪大頭照。
+- 測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/member_portraits.ts`（33 項，假資料庫與假儲存空間）、`node check_portraits.js`（需 8000 埠，39 項）。
 
 ### 刪除社友與已送出的報名表（2026-11-14）
 

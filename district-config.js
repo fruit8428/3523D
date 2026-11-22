@@ -15,6 +15,7 @@ window.DISTRICT = {
   "linePushEnabled": true,
   "calendarEnabled": true,
   "grantsEnabled": true,
+  "photoEnabled": false,
   "emailDomain": "rotary3523.org",
   "divisions": [
     {

@@ -10,6 +10,7 @@
 // =====================================================================
 import "./checkin-core.js";
 import { handleDues } from "./dues.ts";
+import { photoAdmin, photoDesk, photoMember } from "./portraits.ts";
 import { handleGrants } from "./grants.ts";
 import { agendaReply, backupReminder, CalError, governorDigest, clubReminder, parseAgendaKeyword, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
 // deno-lint-ignore no-explicit-any
@@ -153,6 +154,9 @@ async function eventView(deps: Deps, state: Any, eventKey: string, binding: Any)
   }
   return { out, roster, mine, rows: rows || [] };
 }
+
+const photoCtx = (deps: Deps) => ({ admin: deps.admin, fail, liffId: deps.liffId || "",
+  send: deps.push && deps.push.token && deps.push.sendMessages ? deps.push.sendMessages : undefined });
 
 function checkClubPassword(deps: Deps, state: Any, club: string, password: string) {
   const stored = ((state.auth || {}).clubPasswords || {})[club];
@@ -372,6 +376,22 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
     return await handleGrants(action, body, { shared: deps.shared || null, fail });
   }
 
+  // ---------- 活動照片找人・大頭照 ----------
+  // 執秘（社的登入密碼）：只看得到誰有、誰還沒有，可以代傳與刪除，看不到照片。
+  if (action.startsWith("photo_desk_")) {
+    const club = String(body.club || "");
+    const state = await loadState(deps, true);
+    checkClubPassword(deps, state, club, body.clubPassword);
+    return await photoDesk(action, body, photoCtx(deps), club, Array.isArray((state.members || {})[club]) ? state.members[club] : []);
+  }
+  // 行事曆後台（後台密碼）：逐社開放，預設全部關閉。
+  if (action.startsWith("photo_admin_")) {
+    if (!deps.calendarAdminPassword) fail("CAL_ADMIN_DISABLED");
+    if (String(body.adminPassword || "") !== deps.calendarAdminPassword) { await sleep(1000); fail("CAL_ADMIN_AUTH_FAILED"); }
+    const names = ((await loadState(deps, false)).divisionsData || []).flatMap((d: Any) => (d.clubs || []).map((c: Any) => String(c.name)));
+    return await photoAdmin(action, body, photoCtx(deps), names);
+  }
+
   // ---------- 執秘：社友改名後，把他名下的紀錄（LINE 綁定、行事曆身分、私人行程、出席…）搬到新名字 ----------
   // 用社的登入密碼確認（與上面的綁定名單同一做法）。把關：新名字要真的在社友庫、舊名字要已經不在社友庫、
   // 兩個名字不能各自都綁了 LINE（那是兩個不同的人）。真正的搬移在資料庫函式 member_rename_move（一筆交易）。
@@ -496,6 +516,13 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
       };
       return await calMember(action, body, deps.admin, b ? { club: b.club, key: b.key, name: b.name, nickname: b.nickname } : null, reg);
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
+  }
+
+  // 社友本人的大頭照（LINE 驗證過的身分）：看、上傳、刪除
+  if (action === "photo_me" || action === "photo_me_upload" || action === "photo_me_delete") {
+    const b = await getBinding(deps, user.sub);
+    if (!b) fail("NOT_BOUND");
+    return await photoMember(action, body, photoCtx(deps), { club: b!.club, key: b!.key, name: b!.name, nickname: b!.nickname || "" });
   }
 
   if (action === "init") {

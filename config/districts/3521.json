@@ -16,6 +16,7 @@
   "linePushEnabled": true,
   "calendarEnabled": true,
   "grantsEnabled": true,
+  "photoEnabled": true,
   "emailDomain": "rotary3521.org",
   "divisions": [
     {
