@@ -79,13 +79,12 @@ ok("不是 JPEG（PNG 檔頭）：擋下", (await desk("photo_desk_upload", { pe
 ok("亂碼／太小：擋下", (await desk("photo_desk_upload", { personKey: "李大華|David", image: "<script>", consent: true })).code === "PHOTO_BAD_IMAGE" && (await desk("photo_desk_upload", { personKey: "李大華|David", image: jpeg(100), consent: true })).code === "PHOTO_BAD_IMAGE");
 ok("太大（超過 1.5MB）：擋下", (await desk("photo_desk_upload", { personKey: "李大華|David", image: jpeg(1_600_000), consent: true })).code === "PHOTO_TOO_LARGE" && files.size === 0);
 r = await desk("photo_desk_upload", { personKey: "李太太|Amy", image: "data:image/jpeg;base64," + IMG, consent: true });
-ok("上傳（寶尊眷、沒綁 LINE）：成功、沒有通知、名單多一人", r.ok && r.notified === false && sent.length === 0 && r.people.length === 1 && r.people[0].key === "李太太|Amy" && r.people[0].count === 1 && files.size === 1);
+ok("上傳（寶尊眷）：成功、名單多一人", r.ok && sent.length === 0 && r.people.length === 1 && r.people[0].key === "李太太|Amy" && r.people[0].count === 1 && files.size === 1);
 const row = T.member_portraits[0];
 ok("紀錄：社名、姓名|Nick Name、記下是哪一社確認同意、有同意時間；檔名是亂數（不含姓名與社名）", row.club_name === "松山社" && row.person_key === "李太太|Amy" && row.consent_by === "報名系統（松山社）" && !!row.consent_at && /^[0-9a-f-]{36}\.jpg$/.test(row.path));
 r = await desk("photo_desk_upload", { personKey: "王小明|Tony", image: IMG, consent: true });
-ok("上傳（有綁 LINE）：通知本人，說明用途、不公開、要更換或刪除找執秘；不含任何連結", r.ok && r.notified === true && sent.length === 1 && sent[0].to === "U王" && J(sent[0].m).includes("松山社") && J(sent[0].m).includes("貴社執秘已經幫您建立大頭照") && J(sent[0].m).includes("不會公開") && J(sent[0].m).includes("請告訴貴社執秘") && !J(sent[0].m).includes("http"));
-r = await desk("photo_desk_upload", { personKey: "王小明|Tony", image: IMG, consent: true });
-ok("一小時內再傳第二張：不重複通知", r.ok && r.notified === false && sent.length === 1);
+await desk("photo_desk_upload", { personKey: "王小明|Tony", image: IMG, consent: true });
+ok("上傳（有綁 LINE 的人）：不發任何 LINE 通知", r.ok && !("notified" in r) && sent.length === 0);
 await desk("photo_desk_upload", { personKey: "王小明|Tony", image: IMG, consent: true });
 ok("最多 3 張：第 4 張擋下", (await desk("photo_desk_upload", { personKey: "王小明|Tony", image: IMG, consent: true })).code === "PHOTO_TOO_MANY" && T.member_portraits.filter((x) => x.person_key === "王小明|Tony").length === 3 && files.size === 4);
 r = await desk("photo_desk_list");

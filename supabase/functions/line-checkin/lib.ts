@@ -155,8 +155,7 @@ async function eventView(deps: Deps, state: Any, eventKey: string, binding: Any)
   return { out, roster, mine, rows: rows || [] };
 }
 
-const photoCtx = (deps: Deps) => ({ admin: deps.admin, fail,
-  send: deps.push && deps.push.token && deps.push.sendMessages ? deps.push.sendMessages : undefined });
+const photoCtx = (deps: Deps) => ({ admin: deps.admin, fail });
 
 function checkClubPassword(deps: Deps, state: Any, club: string, password: string) {
   const stored = ((state.auth || {}).clubPasswords || {})[club];
@@ -377,7 +376,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
   }
 
   // ---------- 活動照片找人・大頭照 ----------
-  // 由執秘統一建置（社的登入密碼）：名單、上傳（要確認已取得本人同意）、看某一個人的照片、刪除。社友不在 LINE 自己上傳。
+  // 由執秘統一建置（社的登入密碼）：名單、上傳（要確認已取得本人同意；不通知本人）、看某一個人的照片、刪除。社友不在 LINE 自己上傳。
   if (action.startsWith("photo_desk_")) {
     const club = String(body.club || "");
     const state = await loadState(deps, true);

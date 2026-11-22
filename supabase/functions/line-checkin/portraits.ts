@@ -2,7 +2,7 @@
 //   - 開放方式：行事曆後台「⑦ 活動照片找人」逐社開放（photo_club_enabled 有那一列＝開放），預設全部關閉。
 //   - 大頭照是敏感個資：檔案放在不公開的儲存空間（檔名是亂數），紀錄放在前端讀不到的資料表；絕不進 app_storage。
 //   - 由執秘統一建置（使用者 2026-11-22 決定：社友把照片傳給執秘，不在 LINE 自己上傳）：
-//     執秘用社的登入密碼，上傳時要勾「已取得本人同意」；本人有綁 LINE 就通知他（讓本人知情）。
+//     執秘用社的登入密碼，上傳時要確認「已取得本人同意」。上傳時不通知本人（使用者決定）。
 //   - 執秘要看照片（確認有沒有傳錯、要刪哪一張）時，一次只取「一個人」的簽名網址（10 分鐘失效）；名單本身不含照片。
 //     社密碼的保護力有限（clubPasswords 公開可讀），使用者已知並決定照這個模式、不另設密碼。
 //   - 這個人沒有任何一張大頭照＝沒有同意、之後不比對。刪光＝收回同意。
@@ -12,7 +12,6 @@ type Any = any;
 export interface PhotoCtx {
   admin: Any;
   fail: (code: string, message?: string) => never;
-  send?: (to: string, messages: Any[]) => Promise<void>;       // 沒有＝這個地區沒有官方帳號 token，上傳時就不通知
   now?: number;
 }
 export const PHOTO_BUCKET = "member-portraits";
@@ -20,7 +19,6 @@ export const PHOTO_MAX = 3;                    // 每人最多幾張
 const MAX_BYTES = 1_500_000;                   // 單張上限（畫面會先縮到最長邊 1600 再傳，通常只有幾百 KB）
 const MIN_BYTES = 3_000;
 const SIGN_SECONDS = 600;                      // 簽名網址 10 分鐘後失效
-const NOTIFY_QUIET_MS = 3600_000;              // 執秘一次代傳好幾張時，一小時內只通知本人一次
 
 const personKey = (p: Any) => `${(p && p.name) || ""}|${(p && p.nickname) || ""}`;
 const missing = (error: Any) => /does not exist|schema cache|could not find|PGRST20[25]|42P01|bucket not found/i.test(((error && error.message) || "") + " " + ((error && error.code) || ""));
@@ -88,23 +86,8 @@ export async function photoDesk(action: string, body: Any, ctx: PhotoCtx, club: 
     const m = list.find((x) => personKey(x) === key);
     if (!m) ctx.fail("MEMBER_NOT_FOUND");                       // 只能幫社友庫裡的人傳
     if (body.consent !== true) ctx.fail("PHOTO_NO_CONSENT");    // 執秘要確認「已取得本人同意」
-    const before = await rowsOf(ctx, club, key);
-    const now = ctx.now || Date.now();
-    const recentProxy = before.some((r) => now - Date.parse(r.created_at) < NOTIFY_QUIET_MS);
-    await addPhoto(ctx, club, key, body.image, `報名系統（${club}）`);
-    // 讓本人知情：他有綁 LINE 就通知（一小時內只通知一次；通知失敗不影響上傳）
-    let notified = false;
-    if (ctx.send && !recentProxy) {
-      try {
-        const b = await ctx.admin.from("line_bindings").select("line_user_id").eq("club_name", club).eq("person_key", key).maybeSingle();
-        const uid = b && b.data ? String(b.data.line_user_id || "") : "";
-        if (uid) {
-          await ctx.send(uid, [{ type: "text", text: `【${club}】${m.name} 您好：\n貴社執秘已經幫您建立大頭照，之後用來比對扶輪活動照片、找出有您的照片再通知您。\n\n大頭照不會公開。如果您沒有同意，或想更換、刪除，請告訴貴社執秘。` }]);
-          notified = true;
-        }
-      } catch (e) { console.error("代傳大頭照通知失敗", String((e && (e as Any).message) || "").slice(0, 80)); }
-    }
-    return { ...(await deskList(ctx, club, list, enabled)), notified };
+    await addPhoto(ctx, club, key, body.image, `報名系統（${club}）`);     // 上傳時不通知本人（使用者決定）；之後找到活動照片才推播
+    return await deskList(ctx, club, list, enabled);
   }
   if (action === "photo_desk_delete") {
     // 關閉後仍然可以刪（社友要求刪除、社友離社都不應該被擋）。有帶 id＝只刪那一張；沒帶＝這個人全部刪掉
@@ -140,7 +123,7 @@ async function deskList(ctx: PhotoCtx, club: string, _members: Any[], enabled: b
     p.count++; if (String(r.created_at) > p.at) p.at = String(r.created_at);
     by.set(r.person_key, p);
   });
-  // 誰綁了 LINE（上傳後會收到通知）：只回傳名字的索引，不回傳 LINE 使用者代碼
+  // 誰綁了 LINE（之後找到活動照片時收得到推播）：只回傳名字的索引，不回傳 LINE 使用者代碼
   const lb = await ctx.admin.from("line_bindings").select("person_key").eq("club_name", club);
   const bound = lb.error ? [] : (lb.data || []).map((r: Any) => String(r.person_key));
   return { ok: true, enabled, max: PHOTO_MAX, people: [...by.values()], bound };

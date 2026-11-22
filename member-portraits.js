@@ -148,7 +148,7 @@ function mpRender() {
         + (!mp.loaded ? (mp.msg ? '' : '<div class="text-slate-500 py-8 text-center">讀取中…</div>')
             : '<div class="flex flex-wrap items-center justify-between gap-2"><div id="mpSummary" class="font-bold">已有大頭照：<span class="text-emerald-700">' + have + '</span>／' + members.length + ' 人</div>'
             + '<button type="button" onclick="mpCopyAsk()" class="text-sm font-bold text-green-800 border border-green-300 bg-green-50 hover:bg-green-100 rounded-lg px-3 py-1.5">📋 複製「請社友傳大頭照給我」的訊息</button></div>'
-            + '<p class="text-xs text-slate-500 mt-1.5 leading-relaxed">每人最多 ' + mp.max + ' 張，可以一次選好幾張。' + PORTRAIT_TIPS + '上傳前請先取得本人同意；有綁定 LINE 的社友會收到一則通知。大頭照不會公開。</p>'
+            + '<p class="text-xs text-slate-500 mt-1.5 leading-relaxed">每人最多 ' + mp.max + ' 張，可以一次選好幾張。' + PORTRAIT_TIPS + '上傳前請先取得本人同意。大頭照不會公開。標「已綁 LINE」的社友，之後找到活動照片時才收得到 LINE 通知。</p>'
             + '<input type="file" id="mpFile" accept="image/*" multiple class="hidden" onchange="mpPicked(this)">'
             + '<div class="mt-3 border border-slate-200 rounded-xl overflow-hidden"><table class="w-full"><tbody id="mpRows">' + (members.length ? members.map(row).join('') : '<tr><td class="py-6 text-center text-slate-500">社友庫還沒有名單。</td></tr>') + '</tbody></table></div>'
             + (orphans.length ? '<div class="mt-4 text-sm font-bold text-amber-800">已不在社友庫的人（' + orphans.length + '）</div><p class="text-xs text-slate-500 mt-0.5">這些人已經從社友庫移除（或改了名字），大頭照還留著。確定不需要請刪除。</p><div id="mpOrphans" class="mt-2 border border-amber-200 rounded-xl divide-y divide-amber-100">'
@@ -169,9 +169,9 @@ async function mpPicked(input) {
     var room = mp.max - ((mp.people[key] || {}).count || 0), skipped = Math.max(0, files.length - room);
     files = files.slice(0, Math.max(0, room));
     if (!files.length) { mpSay(PORTRAIT_ERR.PHOTO_TOO_MANY, true); mpRender(); return; }
-    if (!confirm('要幫「' + name + '」上傳 ' + files.length + ' 張大頭照嗎？\n\n請確認：您已經取得「' + name + '」本人同意，用大頭照比對扶輪活動照片。\n\n按「確定」＝已取得本人同意並上傳。' + (mp.bound[key] ? '他有綁定 LINE，會收到一則通知。' : ''))) return;
+    if (!confirm('要幫「' + name + '」上傳 ' + files.length + ' 張大頭照嗎？\n\n請確認：您已經取得「' + name + '」本人同意，用大頭照比對扶輪活動照片。\n\n按「確定」＝已取得本人同意並上傳。')) return;
     mp.busy = true;
-    var done = 0, notified = false, err = '';
+    var done = 0, err = '';
     for (var n = 0; n < files.length; n++) {
         mpSay('上傳中…（' + (n + 1) + '／' + files.length + '）'); mpRender();
         var data = null, r = null;
@@ -179,12 +179,12 @@ async function mpPicked(input) {
         r = await lineBindingsApi('photo_desk_upload', { personKey: key, image: data, consent: true });
         if (!mp || mp.club !== club) return;
         if (!r.ok) { err = '第 ' + (n + 1) + ' 張：' + portraitErr(r.code); if (r.code !== 'PHOTO_BAD_IMAGE' && r.code !== 'PHOTO_TOO_LARGE') break; continue; }
-        done++; if (r.notified) notified = true; mpApply(r);
+        done++; mpApply(r);
     }
     if (!mp || mp.club !== club) return;
     mp.busy = false;
     if (mp.open === key) { mp.photos = null; mpLoadPhotos(key); }
-    var text = done ? '已幫「' + name + '」上傳 ' + done + ' 張。' + (notified ? '已用 LINE 通知本人。' : (mp.bound[key] ? '' : '（他沒有綁定 LINE，所以沒有通知。）')) : '';
+    var text = done ? '已幫「' + name + '」上傳 ' + done + ' 張。' : '';
     if (skipped) text += '（超過 ' + mp.max + ' 張上限，有 ' + skipped + ' 張沒有上傳。）';
     mpSay((text + (err ? '　' + err : '')).trim(), !done);
     mpRender();
