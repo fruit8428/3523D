@@ -230,7 +230,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
   - `photo_job_done`（`{secret,id}`，`calendar_settings.cron_secret` 把關，運算程式結束時呼叫）：地區的工作用 LINE 通知 `backup_notify`（後台 ⑥）的人去按發送／告知失敗原因；社的工作不通知。
   - `portraits.ts` 的 `photo_desk_delete` 把某人大頭照**全部**刪掉時，連同他的 `photo_matches` 一起刪（收回同意）。
 - **畫面**：`admin-calendar.html` ⑦ 下半「地區活動的照片」（`pj*`）；`member-portraits.js` 的「② 活動照片」分頁（`mpTab`／`mpj*`；自動更新只重畫 `#mpjList` 與訊息，不動輸入框；有 queued／running 時每 10 秒重讀）；`my-photos.js`（`myp*`，`line.html?p=photos` → `photosStart()`，`#viewPhotos`；`viewHome` 的 `#homePhotosBtn`）。**LINE 只能看照片，不能上傳大頭照。**
-- **照片顯示用 Google 網頁的網址，不是官方 API**（2026-11-22 用攝影師的公開資料夾實測可用，但 Google 改版可能失效）：縮圖／大圖 `https://drive.google.com/thumbnail?id=<file>&sz=w400|w1600`、下載原圖 `https://drive.google.com/uc?export=download&id=<file>`（LINE 內用 `liff.openWindow({external:true})`）。臉部特寫＝`mypCrop()` 用 `face` 比例把大圖移到只露出那張臉。檔案代號先過 `mypOk()` 才組網址。
+- **照片顯示用 Google 網頁的網址，不是官方 API**（2026-11-22 用攝影師的公開資料夾實測可用，但 Google 改版可能失效）：縮圖／大圖 `https://drive.google.com/thumbnail?id=<file>&sz=w400|w1600`、原圖 `…/thumbnail?id=<file>&sz=s0`（直接顯示）或 `https://drive.google.com/uc?export=download&id=<file>`（下載檔案）。**手機存原圖的做法**（使用者 2026-11-22 回報「下載的照片畫質很差」後改的）：放大檢視為了快只載 1600 的圖，長按存下來就是縮小版；所以手機上的按鈕是「載入原圖」（`mypDownload()` 把畫面上的圖換成 `sz=s0` 的原圖，再提示長按儲存；`mypOpenOutside()` 是長按沒反應時改用外部瀏覽器開啟），電腦才是直接下載。`mypIsMobile()` 判斷。臉部特寫＝`mypCrop()` 用 `face` 比例把大圖移到只露出那張臉。檔案代號先過 `mypOk()` 才組網址。
 - 測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/photo_jobs.ts`（40 項，假資料庫、假 LINE、假 GitHub）、`node check_photo_jobs.js`（需 8000 埠，38 項）。**尚未有真實比對結果跑過整個流程**（運算程式還沒寫）。
 
 ### 刪除社友與已送出的報名表（2026-11-14）

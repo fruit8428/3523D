@@ -1,7 +1,8 @@
 // 活動照片找人・社友在 LINE 看自己的活動照片（line.html?p=photos，畫面 #viewPhotos）。
 //   - 只看得到自己、以及沒綁 LINE 的寶尊眷的照片（雲端用 LINE 驗證過的身分把關）。
 //   - 程式「確定」的直接列出；「不太確定」的列在「這幾張是您嗎？」，由本人按是／不是（旁邊放那張臉的特寫，比較好認）。
-//   - 照片留在攝影師的 Google 雲端硬碟：這裡只拿到檔案代號，用 Google 的網址顯示縮圖、大圖與下載原圖。
+//   - 照片留在攝影師的 Google 雲端硬碟：這裡只拿到檔案代號，用 Google 的網址顯示縮圖、大圖與原圖。
+//     清單與放大檢視為了快，用的是縮小過的圖（400／1600）；要存檔時才載入原圖（手機：載入後長按儲存；電腦：直接下載）。
 //     攝影師若關閉分享，圖片會顯示不出來（畫面會提示）。
 //   - 不存任何東西到 localStorage。全域名稱以 myp 開頭；用到 line.html 的 api()、show()、toast()、E()、binding。
 var myp = null;               // 雲端回傳的 { enabled, jobs:[{id,title,at,people:[{key,name,me,photos:[{id,file,name}],ask:[{id,file,name,face}]}]}] }
@@ -10,6 +11,9 @@ var mypView = null;           // 放大檢視中：{ j, p, i }
 function mypOk(file) { return /^[A-Za-z0-9_-]{10,80}$/.test(String(file || '')); }
 function mypThumb(file, w) { return mypOk(file) ? 'https://drive.google.com/thumbnail?id=' + file + '&sz=w' + w : ''; }
 function mypDownloadUrl(file) { return mypOk(file) ? 'https://drive.google.com/uc?export=download&id=' + file : ''; }
+// 原始尺寸、直接顯示在畫面上的網址（sz=s0＝不縮小）。手機上要把照片存進相簿，得先讓畫面上的那張圖就是原圖，再長按儲存
+function mypOriginalUrl(file) { return mypOk(file) ? 'https://drive.google.com/thumbnail?id=' + file + '&sz=s0' : ''; }
+function mypIsMobile() { try { if (window.liff && liff.isInClient && liff.isInClient()) return true; } catch (e) { /* 忽略 */ } return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || ''); }
 function mypDate(ts) { try { return new Date(ts).toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: 'numeric', day: 'numeric' }); } catch (e) { return ''; } }
 function mypBroken(img) { var d = document.createElement('div'); d.className = 'w-full h-full flex items-center justify-center text-[11px] text-slate-400 text-center p-1 bg-slate-100'; d.textContent = '照片無法顯示'; if (img.parentNode) img.parentNode.replaceChild(d, img); }
 
@@ -43,7 +47,7 @@ function mypRender() {
                 if (!p.photos.length && !p.ask.length) return '';
                 var who = p.me ? '您' : p.name;
                 return '<div class="mt-4">'
-                    + (p.photos.length ? '<div class="font-bold text-slate-800">' + E(p.me ? '您的照片' : p.name + ' 的照片') + '<span class="ml-1 text-sm font-normal text-slate-500">（' + p.photos.length + ' 張，點一下可以放大、下載）</span></div>'
+                    + (p.photos.length ? '<div class="font-bold text-slate-800">' + E(p.me ? '您的照片' : p.name + ' 的照片') + '<span class="ml-1 text-sm font-normal text-slate-500">（' + p.photos.length + ' 張，點一下放大，再存原圖）</span></div>'
                         + '<div class="grid grid-cols-3 gap-1.5 mt-2">' + p.photos.map(function (ph, i) {
                             return '<button type="button" onclick="mypOpen(' + j + ',' + pi + ',' + i + ')" class="myp-thumb aspect-square rounded-lg overflow-hidden bg-slate-100 border border-slate-200">' + (mypOk(ph.file) ? '<img loading="lazy" src="' + mypThumb(ph.file, 400) + '" alt="" class="w-full h-full object-cover" onerror="mypBroken(this)">' : '') + '</button>';
                         }).join('') + '</div>' : '')
@@ -96,7 +100,8 @@ function mypShow() {
     ov.innerHTML = '<div class="flex items-center justify-between gap-2 px-3 py-2 text-white">'
         + '<button type="button" onclick="mypCloseView()" class="font-bold px-3 py-2">✕ 關閉</button>'
         + '<span class="text-sm opacity-80">' + (v.i + 1) + '／' + list.length + '</span>'
-        + '<button type="button" onclick="mypDownload()" class="myp-dl bg-white text-slate-900 font-bold rounded-lg px-3 py-2 text-sm">⬇️ 下載原圖</button></div>'
+        + '<button type="button" onclick="mypDownload()" class="myp-dl bg-white text-slate-900 font-bold rounded-lg px-3 py-2 text-sm">⬇️ ' + (mypIsMobile() ? '載入原圖' : '下載原圖') + '</button></div>'
+        + '<div id="mypHint" class="hidden px-3 pb-2 text-center text-sm text-amber-200 leading-relaxed"></div>'
         + '<div class="flex-1 min-h-0 flex items-center justify-center relative">'
         + '<img id="mypBig" src="' + mypThumb(ph.file, 1600) + '" alt="" class="max-w-full max-h-full object-contain" onerror="mypBroken(this)">'
         + (v.i > 0 ? '<button type="button" onclick="mypStep(-1)" class="absolute left-1 top-1/2 -translate-y-1/2 bg-black/50 text-white text-2xl rounded-full w-11 h-11">‹</button>' : '')
@@ -107,9 +112,34 @@ function mypShow() {
 function mypStep(d) { mypView.i += d; mypShow(); }
 function mypCloseView() { var ov = document.getElementById('mypViewer'); if (ov) { ov.classList.add('hidden'); ov.innerHTML = ''; } mypView = null; }
 function mypDownload() {
-    var v = mypView, p = myp.jobs[v.j].people[v.p], ph = (v.ask ? p.ask : p.photos)[v.i], url = ph ? mypDownloadUrl(ph.file) : '';
+    var v = mypView, p = myp.jobs[v.j].people[v.p], ph = (v.ask ? p.ask : p.photos)[v.i];
+    if (!ph || !mypOk(ph.file)) return;
+    // 電腦：直接下載原始檔
+    if (!mypIsMobile()) { window.open(mypDownloadUrl(ph.file), '_blank'); return; }
+    // 手機：畫面上原本是縮小過的圖（比較快），長按存下來畫質會差。先把原圖載入到畫面上，再請社友長按儲存
+    var img = document.getElementById('mypBig'), hint = document.getElementById('mypHint'), btn = document.querySelector('#mypViewer .myp-dl');
+    if (!img || !hint) return;
+    hint.classList.remove('hidden');
+    hint.textContent = '正在載入原圖（檔案比較大，請稍候）…';
+    if (btn) btn.disabled = true;
+    var full = new Image();
+    full.onload = function () {
+        if (!mypView || mypView !== v || document.getElementById('mypBig') !== img) return;      // 已經換張或關掉了
+        img.src = full.src;
+        if (btn) { btn.disabled = false; btn.textContent = '✓ 已是原圖'; }
+        hint.innerHTML = '已載入原圖（' + full.naturalWidth + '×' + full.naturalHeight + '）。<b>長按照片</b>，選「儲存影像」就能存進手機相簿。<br><a href="#" onclick="mypOpenOutside();return false" class="underline">長按沒有反應？改用瀏覽器開啟</a>';
+    };
+    full.onerror = function () {
+        if (btn) btn.disabled = false;
+        hint.innerHTML = '原圖載入失敗。<a href="#" onclick="mypOpenOutside();return false" class="underline">改用瀏覽器開啟</a>';
+    };
+    full.src = mypOriginalUrl(ph.file);
+}
+// 用手機的瀏覽器開啟原圖（LINE 內建的畫面有時不能長按儲存）
+function mypOpenOutside() {
+    var v = mypView; if (!v) return;
+    var p = myp.jobs[v.j].people[v.p], ph = (v.ask ? p.ask : p.photos)[v.i], url = ph ? mypOriginalUrl(ph.file) : '';
     if (!url) return;
-    // 在 LINE 裡要用外部瀏覽器開，才下載得了
     try { if (window.liff && liff.isInClient && liff.isInClient() && liff.openWindow) { liff.openWindow({ url: url, external: true }); return; } } catch (e) { /* 改用一般方式 */ }
     window.open(url, '_blank');
 }

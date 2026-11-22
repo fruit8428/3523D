@@ -63,7 +63,16 @@ async function api(a,x){window.__calls.push([a,x]); if(S.fail)return{ok:false,co
     ok('LINE：點照片放大（用大圖），顯示第 1／4 張', await p.$eval('#mypBig', e => e.src) === 'https://drive.google.com/thumbnail?id=file_id_0000002&sz=w1600' && (await p.$eval('#mypViewer', e => e.innerText)).includes('1／4'));
     await p.evaluate(() => mypStep(1)); await wait(100);
     await p.click('.myp-dl');
-    ok('LINE：下一張、下載原圖用 Google 的下載網址', (await p.$eval('#mypViewer', e => e.innerText)).includes('2／4') && await p.evaluate(() => __opened[0] === 'https://drive.google.com/uc?export=download&id=file_id_0000003'));
+    ok('LINE：下一張；電腦上按「下載原圖」＝直接下載原始檔', (await p.$eval('#mypViewer', e => e.innerText)).includes('2／4') && await p.evaluate(() => __opened[0] === 'https://drive.google.com/uc?export=download&id=file_id_0000003'));
+    // 手機：先把原圖載入到畫面上，再請社友長按儲存
+    await p.evaluate(() => { window.mypIsMobile = () => true; mypShow(); }); await wait(200);
+    ok('LINE（手機）：放大時先顯示 1600 的圖，按鈕是「載入原圖」', await p.$eval('#mypBig', e => e.src.endsWith('sz=w1600')) && (await p.$eval('.myp-dl', e => e.innerText)).includes('載入原圖'));
+    const nOpen = await p.evaluate(() => __opened.length);
+    await p.click('.myp-dl'); await p.waitForFunction(() => /已載入原圖/.test(document.getElementById('mypHint').innerText), { timeout: 8000 }).catch(() => {});
+    ok('LINE（手機）：按了之後畫面換成原圖（sz=s0），並提示長按儲存；不會另開下載', await p.$eval('#mypBig', e => e.src === 'https://drive.google.com/thumbnail?id=file_id_0000003&sz=s0') && (await p.$eval('#mypHint', e => e.innerText)).includes('長按照片') && (await p.$eval('#mypHint', e => e.innerText)).includes('1000×800') && (await p.$eval('.myp-dl', e => e.innerText)).includes('已是原圖') && await p.evaluate(n => __opened.length === n, nOpen));
+    await p.evaluate(() => mypOpenOutside());
+    ok('LINE（手機）：長按沒反應時可以改用瀏覽器開啟原圖', await p.evaluate(() => __opened[__opened.length - 1] === 'https://drive.google.com/thumbnail?id=file_id_0000003&sz=s0'));
+    await p.evaluate(() => { window.mypIsMobile = () => false; mypShow(); }); await wait(200);
     accept = false; await p.click('.myp-notme'); await wait(200); accept = true;
     const nAns = await p.evaluate(() => __calls.filter(c => c[0] === 'photo_my_answer').length);
     await p.click('.myp-notme'); await wait(300);
