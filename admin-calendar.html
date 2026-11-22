@@ -113,7 +113,7 @@
 
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
             <h2 class="font-black text-lg">⑦ 活動照片找人（允許使用的社）</h2>
-            <p class="text-sm text-slate-600 mt-1 leading-relaxed">開放後，該社的社友可以在 LINE 上傳自己的<b>大頭照</b>（本人按同意），執秘可以在報名系統的社友庫看到誰已經上傳、並在取得本人同意後代為上傳。之後活動結束，系統會用大頭照找出每位社友的活動照片。<b>預設全部關閉</b>；大頭照存在不公開的空間，執秘也看不到照片本身。關閉某一社後，已上傳的大頭照會保留但不再使用，社友仍可自行刪除。</p>
+            <p class="text-sm text-slate-600 mt-1 leading-relaxed">開放後，該社的執秘可以在報名系統的社友庫按「📷 大頭照」，幫社友上傳<b>大頭照</b>（社友把照片傳給執秘，執秘取得本人同意後上傳；有綁定 LINE 的社友會收到通知）。之後活動結束，系統會用大頭照找出每位社友的活動照片。<b>預設全部關閉</b>；大頭照存在不公開的空間。關閉某一社後，已上傳的大頭照會保留但不再使用，執秘仍可刪除。</p>
             <div id="phList" class="mt-3"><span class="text-sm text-slate-500">讀取中…</span></div>
             <div class="mt-4 text-sm font-bold">開放新的社</div>
             <div class="mt-2 flex flex-wrap gap-2">
@@ -435,12 +435,12 @@
     async function phAdd() {
         const club = $('phClub').value;
         if (!club) { phSay('請先選擇要開放的社。', true); return; }
-        if (!confirm(`要開放「${club}」使用活動照片找人嗎？\n\n開放後，該社社友可以在 LINE 上傳大頭照，執秘可以代為上傳。`)) return;
+        if (!confirm(`要開放「${club}」使用活動照片找人嗎？\n\n開放後，該社執秘可以在報名系統幫社友上傳大頭照。`)) return;
         await phSave(club, true, `已開放：${club}`);
     }
     async function phOff(i) {
         const club = (window.__phClubs || [])[i]; if (!club) return;
-        if (!confirm(`要關閉「${club}」嗎？\n\n關閉後不能再上傳，已上傳的大頭照會保留但不再使用；社友仍可在 LINE 自行刪除。`)) return;
+        if (!confirm(`要關閉「${club}」嗎？\n\n關閉後不能再上傳，已上傳的大頭照會保留但不再使用；執秘仍可刪除。`)) return;
         await phSave(club, false, `已關閉：${club}`);
     }
 

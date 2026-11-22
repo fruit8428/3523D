@@ -22,7 +22,7 @@ create table if not exists public.member_portraits (
     club_name  text not null,
     person_key text not null,                    -- 姓名|Nick Name
     path       text not null unique,             -- 儲存空間裡的檔名（亂數）
-    consent_by text not null default 'self',     -- self＝本人在 LINE 上傳並按同意；其他＝代傳的人（例如「報名系統（某某社）」）
+    consent_by text not null default 'self',     -- 誰確認已取得本人同意並上傳（例如「報名系統（某某社）」；目前都由執秘上傳）
     consent_at timestamptz not null default now(),
     created_at timestamptz not null default now()
 );

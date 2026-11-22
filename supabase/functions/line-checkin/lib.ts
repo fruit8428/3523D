@@ -10,7 +10,7 @@
 // =====================================================================
 import "./checkin-core.js";
 import { handleDues } from "./dues.ts";
-import { photoAdmin, photoDesk, photoMember } from "./portraits.ts";
+import { photoAdmin, photoDesk } from "./portraits.ts";
 import { handleGrants } from "./grants.ts";
 import { agendaReply, backupReminder, CalError, governorDigest, clubReminder, parseAgendaKeyword, handleAdmin as calAdmin, handleDesk as calDesk, handleMember as calMember } from "./calendar.ts";
 // deno-lint-ignore no-explicit-any
@@ -155,7 +155,7 @@ async function eventView(deps: Deps, state: Any, eventKey: string, binding: Any)
   return { out, roster, mine, rows: rows || [] };
 }
 
-const photoCtx = (deps: Deps) => ({ admin: deps.admin, fail, liffId: deps.liffId || "",
+const photoCtx = (deps: Deps) => ({ admin: deps.admin, fail,
   send: deps.push && deps.push.token && deps.push.sendMessages ? deps.push.sendMessages : undefined });
 
 function checkClubPassword(deps: Deps, state: Any, club: string, password: string) {
@@ -377,7 +377,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
   }
 
   // ---------- 活動照片找人・大頭照 ----------
-  // 執秘（社的登入密碼）：只看得到誰有、誰還沒有，可以代傳與刪除，看不到照片。
+  // 由執秘統一建置（社的登入密碼）：名單、上傳（要確認已取得本人同意）、看某一個人的照片、刪除。社友不在 LINE 自己上傳。
   if (action.startsWith("photo_desk_")) {
     const club = String(body.club || "");
     const state = await loadState(deps, true);
@@ -516,13 +516,6 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
       };
       return await calMember(action, body, deps.admin, b ? { club: b.club, key: b.key, name: b.name, nickname: b.nickname } : null, reg);
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }
-  }
-
-  // 社友本人的大頭照（LINE 驗證過的身分）：看、上傳、刪除
-  if (action === "photo_me" || action === "photo_me_upload" || action === "photo_me_delete") {
-    const b = await getBinding(deps, user.sub);
-    if (!b) fail("NOT_BOUND");
-    return await photoMember(action, body, photoCtx(deps), { club: b!.club, key: b!.key, name: b!.name, nickname: b!.nickname || "" });
   }
 
   if (action === "init") {
