@@ -23,10 +23,11 @@ async function api(a,x){window.__calls.push([a,x]);
  if(a==='cal_list')return{ok:true,events:store};
  if(a==='cal_save'){const e=x.event;const n=Object.assign({id:e.id||'n'+store.length,layer:e.layer||'private',club:e.club||'',status:'confirmed',canEdit:true},e);if(e.id)store=store.map(s=>s.id===e.id?n:s);else store.push(n);return{ok:true,event:n};}
  if(a==='cal_rsvp_status'||a==='cal_rsvp_set'){
-   if(a==='cal_rsvp_set'){__rs.mine=x.join?'interested':null; __rs.guests=x.join?(x.guestKeys||[]):[];}
+   if(a==='cal_rsvp_set'){__rs.mine=x.join?(x.id==='meet'?'interested':'registered'):null; __rs.guests=x.join?(x.guestKeys||[]):[]; if(x.join&&x.parts)__rs.parts=x.parts;}
    const isMeet = x.id==='meet';
    const people=(isMeet?[]:[{key:'趙|',name:'趙',nickname:'',status:'registered',guestOf:'',role:''}]).concat(__rs.others).concat(__rs.mine?[{key:binding.key,name:'王小明',nickname:'',status:__rs.mine,guestOf:'',role:''}]:[]).concat((__rs.guests||[]).map(k=>({key:k,name:'王太太',nickname:'',status:'interested',guestOf:binding.key,role:'寶(尊)眷'})));
    const out={ok:true,linked:true,title:isMeet?'甲社例會':'高球賽',open:true,mine:__rs.mine,people,registeredCount:isMeet?0:1,interestedCount:people.filter(p=>p.status==='interested').length,myGuests:__rs.guests||[]};
+   if(!isMeet) out.self={allowed:true,sports:true,perHead:true,fees:{compete:2000,mealOnly:800},locked:!!__rs.locked,parts:__rs.mine?(__rs.parts||{}):{}};
    if(!x.poll) out.family=[{key:'妻|',name:'王太太',nickname:'',role:'寶(尊)眷',registered:false}];
    return out; }
  if(a==='cal_attend_report'){ if(x.scope==='club'&&!__arCan) return {ok:false,code:'CAL_FORBIDDEN'};
@@ -69,18 +70,26 @@ window.confirm=()=>true; const FN_URL='https://x.supabase.co/functions/v1/line-c
   ok('詳細頁：地圖、電話、編輯按鈕', s.includes('在 Google 地圖開啟') && s.includes('0912-345-678') && s.includes('編輯') && s.includes('複製'));
   ok('電話連結 tel:', await p.evaluate(() => !!document.querySelector('a[href="tel:0912345678"]')));
   await p.evaluate(() => calBack()); await p.evaluate(() => calOpenDetail('1')); await new Promise(r => setTimeout(r, 300)); s = await t();
-  ok('有對應報名的行程：顯示社內報名狀況、已報名的人與「我要參加」', s.includes('報名狀況') && s.includes('趙') && s.includes('我要參加'));
+  ok('有對應報名的行程：顯示社內報名狀況、已報名的人與「我要報名」', s.includes('報名狀況') && s.includes('趙') && s.includes('我要報名') && !s.includes('表示'));
+  ok('運動賽事：有「我的參加方式」可選參賽／只用餐，並顯示費用', s.includes('我的參加方式') && s.includes('只用餐') && s.includes('$2,000') && s.includes('$800'));
+  await p.evaluate(() => calPartPick(binding.key, '只用餐'));
   await p.evaluate(() => calRsvp(true)); await new Promise(r => setTimeout(r, 300)); s = await t();
-  ok('按「我要參加」後：名單出現自己（我）、顯示已表示參加與取消按鈕', s.includes('您已表示要參加') && s.includes('王小明') && s.includes('（我）') && s.includes('取消參加'));
+  ok('按「我要報名」後：名單出現自己（我）、顯示「您已報名」與取消按鈕，沒有「已表示要參加」', s.includes('您已報名') && !s.includes('表示要參加') && s.includes('王小明') && s.includes('（我）') && s.includes('取消報名'));
+  ok('送出時帶上我選的參加方式（只用餐）', await p.evaluate(() => { const c = window.__calls.filter(c => c[0] === 'cal_rsvp_set').pop(); return c[1].join === true && c[1].parts && c[1].parts[binding.key] === '只用餐'; }));
+  await p.evaluate(() => { __rs.locked = true; return calLoadReg('1'); }); await new Promise(r => setTimeout(r, 300)); s = await t();
+  ok('貴社已繳費：顯示請洽執秘，沒有取消與更新按鈕', s.includes('您已報名') && s.includes('已經繳費') && !s.includes('取消報名') && !s.includes('更新報名'));
+  await p.evaluate(() => { __rs.locked = false; calRegRender('1', { ok: true, linked: true, title: 'PELS', open: true, mine: null, people: [], registeredCount: 0, interestedCount: 0, myGuests: [], self: { allowed: false, reason: 'pels' } }); }); s = await t();
+  ok('PELS：不顯示報名按鈕，請洽執秘報名', s.includes('請洽貴社執秘報名') && !s.includes('我要報名'));
+  await p.evaluate(() => calLoadReg('1')); await new Promise(r => setTimeout(r, 300));
   await p.evaluate(() => calRsvp(false)); await new Promise(r => setTimeout(r, 300)); s = await t();
-  ok('取消參加後回到「我要參加」', s.includes('我要參加') && !s.includes('您已表示要參加'));
+  ok('取消報名後回到「我要報名」', s.includes('我要報名') && !s.includes('您已報名'));
   // 我參加的活動 → 私人頁
   await p.evaluate(() => { calBack(); calSetRange('week'); calSetLayer('private'); }); await new Promise(r => setTimeout(r, 300)); s = await t();
   ok('私人頁：還沒參加的地區行程不會出現', !s.includes('地區大會'));
   await p.evaluate(() => { calSetLayer('all'); calOpenDetail('1'); }); await new Promise(r => setTimeout(r, 300));
   await p.evaluate(() => calRsvp(true)); await new Promise(r => setTimeout(r, 300));
   await p.evaluate(() => { calBack(); calSetLayer('private'); }); await new Promise(r => setTimeout(r, 300)); s = await t();
-  ok('按了「我要參加」後：私人頁看得到這個地區活動，標 🔗 與「已表示參加」', s.includes('地區大會') && s.includes('🔗') && s.includes('已表示參加'));
+  ok('報名後：私人頁看得到這個地區活動，標 🔗 與「已報名」', s.includes('地區大會') && s.includes('🔗') && s.includes('已報名') && !s.includes('表示參加'));
   ok('私人頁的地區活動保留原層級顏色（藍色）', await p.evaluate(() => { const bar = document.querySelector('#calBody button span[style*="background"]'); return !!bar && /rgb\(23, 69, 143\)|#17458f/i.test(bar.style.background); }));
   await p.evaluate(() => { calOpenDetail('1'); }); await new Promise(r => setTimeout(r, 300));
   await p.evaluate(() => calRsvp(false)); await new Promise(r => setTimeout(r, 300));
@@ -99,20 +108,20 @@ window.confirm=()=>true; const FN_URL='https://x.supabase.co/functions/v1/line-c
   // 社內例會：開放參加（沒有對應報名活動）＋ 寶尊眷
   await p.evaluate(() => { calBack(); calSetLayer('all'); calSetRange('today'); }); await new Promise(r => setTimeout(r, 300));
   await p.evaluate(() => calOpenDetail('meet')); await new Promise(r => setTimeout(r, 400)); s = await t();
-  ok('例會（開放參加、沒有對應報名活動）：有「參加狀況」與「我要參加」', s.includes('參加狀況') && s.includes('我要參加') && !s.includes('報名狀況'));
+  ok('例會（開放參加、沒有對應報名活動）：有報名狀況與「我要報名」，不用選參加方式', s.includes('報名狀況') && s.includes('我要報名') && !s.includes('我的參加方式'));
   ok('顯示社友庫帶出的寶尊眷選項（王太太）', s.includes('寶尊眷一起參加') && s.includes('王太太'));
   await p.evaluate(() => { const c = document.querySelector('#calReg input[type=checkbox][data-key="妻|"]'); c.checked = true; calGuestToggle('妻|', true); });
   await p.evaluate(() => calRsvp(true)); await new Promise(r => setTimeout(r, 400)); s = await t();
   const gk = await p.evaluate(() => window.__calls.filter(c => c[0] === 'cal_rsvp_set').pop()[1].guestKeys);
   ok('勾選寶眷後送出：guestKeys 含該寶眷', gk.length === 1 && gk[0] === '妻|');
-  ok('參加後：名單有本人與「王太太（寶尊眷）」，人數含寶尊眷，並有「更新寶尊眷」「取消參加」', s.includes('您已表示要參加') && s.includes('王太太') && s.includes('寶尊眷）') && s.includes('表示參加 2 人') && s.includes('更新寶尊眷') && s.includes('取消參加'));
+  ok('報名後：名單有本人與「王太太（寶尊眷）」，人數含寶尊眷，並有「更新報名」「取消報名」', s.includes('您已報名') && !s.includes('表示') && s.includes('王太太') && s.includes('寶尊眷）') && s.includes('已報名 2 人') && s.includes('更新報名') && s.includes('取消報名'));
   await p.evaluate(() => { document.getElementById('calReg').scrollIntoView(); }); await p.screenshot({ path: require('os').tmpdir() + '/cal_guest.png' });
   ok('寶眷的勾選保持勾選', await p.evaluate(() => document.querySelector('#calReg input[data-key="妻|"]').checked));
   // 自動更新（不含家人名單）時，寶尊眷選項仍在；使用者正在改的勾選不被洗掉
   await p.evaluate(() => { calGuestToggle('妻|', false); __rs.others = [{ key: '甲|', name: '甲社友', nickname: '', status: 'interested', guestOf: '', role: '' }]; }); await p.evaluate(() => calRegPoll()); await new Promise(r => setTimeout(r, 300));
   ok('自動更新後：新名單出現、寶尊眷選項仍在、使用者取消勾選的狀態保留', (await t()).includes('甲社友') && await p.evaluate(() => { const c = document.querySelector('#calReg input[data-key="妻|"]'); return !!c && c.checked === false; }));
   await p.evaluate(() => { __rs.others = []; calRsvp(false); }); await new Promise(r => setTimeout(r, 400)); s = await t();
-  ok('取消參加：本人與寶尊眷都消失，回到「我要參加」', s.includes('我要參加') && !s.includes('王太太（') && !s.includes('您已表示要參加'));
+  ok('取消報名：本人與寶尊眷都消失，回到「我要報名」', s.includes('我要報名') && !s.includes('王太太（') && !s.includes('您已報名'));
   // 表單：開放參加
   await p.evaluate(() => { calBack(); calOpenForm(); });
   await p.evaluate(() => { document.getElementById('cfLayer').value = 'club'; calFormLayerChanged(); });
@@ -219,18 +228,18 @@ window.confirm=()=>true; const FN_URL='https://x.supabase.co/functions/v1/line-c
   ok('秘書看活動：出現「同時加入總監行事曆」且預設勾選', await p.evaluate(() => { const c = document.getElementById('calGovSync'); return !!c && c.checked && !c.disabled && document.getElementById('calReg').innerText.includes('同時加入總監 DG Gov 的行事曆'); }));
   await p.evaluate(() => { window.__calls.length = 0; return calRsvp(true); }); await new Promise(r => setTimeout(r, 300));
   ok('按我要參加：送出時帶 withGov＝true', await p.evaluate(() => { const c = window.__calls.find(c => c[0] === 'cal_rsvp_set'); return !!c && c[1].join === true && c[1].withGov === true; }));
-  ok('參加後：勾選仍在（已同步），並有「更新總監同步」按鈕', await p.evaluate(() => document.getElementById('calGovSync').checked && document.getElementById('calReg').innerText.includes('更新總監同步')));
+  ok('報名後：勾選仍在（已同步），並有「更新報名」按鈕', await p.evaluate(() => document.getElementById('calGovSync').checked && document.getElementById('calReg').innerText.includes('更新報名')));
   await p.evaluate(() => { const c = document.getElementById('calGovSync'); c.checked = false; c.onchange(); window.__calls.length = 0; return calRsvp(true); }); await new Promise(r => setTimeout(r, 300));
   ok('取消勾選後按更新：帶 withGov＝false', await p.evaluate(() => { const c = window.__calls.find(c => c[0] === 'cal_rsvp_set'); return !!c && c[1].withGov === false && !document.getElementById('calGovSync').checked; }));
   await p.evaluate(() => { window.__gov = { name: 'DG Gov', joined: true, byMe: false }; return calLoadReg('meet'); }); await new Promise(r => setTimeout(r, 300));
-  ok('總監自己已登記：勾選鎖住並說明', await p.evaluate(() => { const c = document.getElementById('calGovSync'); return c.checked && c.disabled && document.getElementById('calReg').innerText.includes('總監已經登記參加'); }));
+  ok('總監自己已登記：勾選鎖住並說明', await p.evaluate(() => { const c = document.getElementById('calGovSync'); return c.checked && c.disabled && document.getElementById('calReg').innerText.includes('總監已經報名這個活動'); }));
   await p.evaluate(() => { calBack(); calSetGov(0); }); await new Promise(r => setTimeout(r, 200));
   // 代管總監行事曆：看得到總監參加的活動，並可直接幫總監登記
   await p.evaluate(() => { const o = api; api = async (a, x) => { if (a === 'cal_gov_rsvp') { window.__calls.push([a, x]); const e = store.find(s => s.id === x.id); e.joined = x.join ? 'interested' : null; return { ok: true, joined: e.joined }; } return o(a, x); }; store.find(s => s.id === 'meet').joined = null; calSetGov(0); });
   await new Promise(r => setTimeout(r, 300)); await p.evaluate(() => calOpenDetail('meet'));
-  ok('總監行事曆的活動詳細頁：出現「幫總監登記參加」', await p.evaluate(() => !!document.getElementById('calGovReg') && document.getElementById('calGovReg').innerText.includes('幫總監登記參加') && !document.getElementById('calReg')));
+  ok('總監行事曆的活動詳細頁：出現「幫總監報名」', await p.evaluate(() => !!document.getElementById('calGovReg') && document.getElementById('calGovReg').innerText.includes('幫總監報名') && !document.getElementById('calReg')));
   await p.evaluate(() => { window.__calls.length = 0; return calGovRsvp(true); }); await new Promise(r => setTimeout(r, 300));
-  ok('按下後：帶上代管的總監，畫面改成「總監已表示要參加」', await p.evaluate(() => { const c = window.__calls.find(c => c[0] === 'cal_gov_rsvp'); return !!c && c[1].join === true && c[1].forGov.key === '陳|Gov' && document.getElementById('calGovReg').innerText.includes('總監已表示要參加'); }));
+  ok('按下後：帶上代管的總監，畫面改成「總監已報名」並可取消', await p.evaluate(() => { const c = window.__calls.find(c => c[0] === 'cal_gov_rsvp'); const tx = document.getElementById('calGovReg').innerText; return !!c && c[1].join === true && c[1].forGov.key === '陳|Gov' && tx.includes('總監已報名') && tx.includes('取消總監的報名'); }));
   await p.evaluate(() => { calBack(); calSetLayer('private'); }); await new Promise(r => setTimeout(r, 200));
   ok('「總監私人」頁列出總監參加的活動', (await p.evaluate(() => document.getElementById('calBody').innerText)).includes('甲社例會'));
   await p.evaluate(() => { calSetLayer('all'); calSetGov(-1); }); await new Promise(r => setTimeout(r, 200));

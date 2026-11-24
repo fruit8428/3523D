@@ -117,6 +117,14 @@ const deps: Deps = {
     }
     return { sub: String(j.sub), name: String(j.name || "") };
   },
+  // 通知開著報名系統的電腦「報名資料變了」（社友在 LINE 自己報名／取消後；頻道與事件名稱同 index.html 的 notifyLiveSyncPeers）
+  async liveSync() {
+    await fetch(`${SUPABASE_URL}/realtime/v1/api/broadcast`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
+      body: JSON.stringify({ messages: [{ topic: "rotary-live-sync", event: "changed", payload: { kind: "line" } }] }),
+    });
+  },
   // 通知櫃台報到頁（Realtime 廣播頻道 rotary-checkin）
   async broadcast(eventKey: string) {
     await fetch(`${SUPABASE_URL}/realtime/v1/api/broadcast`, {

@@ -17,7 +17,7 @@
     <!-- 地區設定：由 scripts/build-config.js 從 config/districts/<代號>.json 產生，所有地區專屬內容都從這裡來 -->
     <script src="./district-config.js"></script>
     <!-- 報到系統共用邏輯（應到名單與統計的算法，與櫃台報到頁 checkin.html 共用） -->
-    <script src="./checkin-core.js?v=20261121"></script>
+    <script src="./checkin-core.js?v=20261124"></script>
     <script src="./calendar-desk.js?v=20261124"></script>
     <script src="./club-dues.js?v=20261120"></script>
     <script src="./global-grants.js?v=20261121"></script>
@@ -2845,6 +2845,7 @@
                     const applied = await loadFromStorage(guard);
                     if (applied === false) return false;
                     await loadPaymentRecords(guard);
+                    mergeRemoteOrderIntoForm();   // 社友在 LINE 報名／取消的人，併進執秘正在看的這張報名表
                     const after = liveSyncOrderSnapshot();
                     const changedClubs = keyBefore !== getActivePaymentKey() ? [] : Object.keys(after).filter(c => after[c] !== before[c] && c !== selectedClubName);
                     // 主委剛改了這個活動的費用：執秘開著的報名表立刻換成新金額（正在填欄位時先不重畫，避免打斷輸入）
@@ -3221,6 +3222,7 @@
                     secAppInput.value = 3000;
                 }
             }
+            setFormOrderBase();   // 記下「載入當下報名表裡有誰」，之後社友在 LINE 報名／取消時才能併進這張表單
 
             // Sync radio button
             const radios = document.getElementsByName('sponsorTier');
@@ -4300,6 +4302,65 @@
             updateLinePreviewText();
         }
 
+        // ===== 社友在 LINE 自己報名／取消 → 併進執秘正在看的報名表（2026-11-24） =====
+        // 社友在手機按「我要報名」會直接改雲端的報名表（registrationOrders）。但畫面上這張表單（currentFormSelectedMembers）
+        // 是載入當下複製出來的，執秘若直接按送出，會用舊名單蓋掉剛在 LINE 報名的人。所以每次抓到雲端新資料時做三方比對：
+        //   base＝上次同步時報名表裡的人；remote＝雲端現在的報名表；form＝畫面上的表單
+        //   remote 有、base 沒有 → 別人（LINE）新加的 → 加進表單；base 有、remote 沒有 → 別人（LINE）取消的 → 從表單拿掉；
+        //   執秘自己在表單上勾選或取消、還沒送出的變更不受影響。運動賽事的「參賽／只用餐」被改時也跟著改。
+        let formOrderBase = null;     // { key, parts: { '姓名|Nick Name': 參加方式 } }
+        function formOrderKeyNow() {
+            const cat = categoriesData.find(c => c.id === currentCatId);
+            const sub = cat && cat.subEvents ? cat.subEvents[currentSubEventIndex] : null;
+            return (sub && selectedClubName) ? { key: `${cat.id}::${sub}::${selectedClubName}`, sub: sub } : null;
+        }
+        function formOrderRemoteItems(sub) {
+            return (((registrationOrders[sub] || []).find(o => o && o.clubName === selectedClubName) || {}).items) || [];
+        }
+        function formItemKey(m) { return `${(m && m.name) || ''}|${(m && m.nickname) || ''}`; }
+        function setFormOrderBase() {
+            const k = formOrderKeyNow();
+            if (!k) { formOrderBase = null; return; }
+            const parts = {};
+            formOrderRemoteItems(k.sub).forEach(it => { parts[formItemKey(it)] = it.participation || '參賽'; });
+            formOrderBase = { key: k.key, parts: parts };
+        }
+        function mergeRemoteOrderIntoForm() {
+            const k = formOrderKeyNow();
+            if (!k || !loggedInUser) return;
+            if (!formOrderBase || formOrderBase.key !== k.key) return;   // 還沒載入這張表單（切換活動時 loadCategoryView 會重新設定）
+            const remote = formOrderRemoteItems(k.sub), base = formOrderBase.parts;
+            const remoteKeys = new Set(remote.map(formItemKey));
+            const added = [], removed = [];
+            let changed = false;
+            remote.forEach(it => {
+                const key = formItemKey(it), inForm = currentFormSelectedMembers.find(m => formItemKey(m) === key);
+                if (!(key in base)) {
+                    if (!inForm) { const c = JSON.parse(JSON.stringify(it)); if (!c.participation) c.participation = '參賽'; currentFormSelectedMembers.push(c); added.push(it.name || it.nickname); }
+                } else if (inForm && (it.participation || '參賽') !== base[key] && (inForm.participation || '參賽') === base[key]) {
+                    inForm.participation = it.participation || '參賽'; inForm.fee = it.fee; changed = true;     // 社友在手機改了參賽／只用餐
+                }
+            });
+            Object.keys(base).forEach(key => {
+                if (remoteKeys.has(key)) return;
+                const i = currentFormSelectedMembers.findIndex(m => formItemKey(m) === key);
+                if (i > -1) { removed.push(currentFormSelectedMembers[i].name || currentFormSelectedMembers[i].nickname); currentFormSelectedMembers.splice(i, 1); }
+            });
+            setFormOrderBase();
+            if (!added.length && !removed.length && !changed) return;
+            // 執秘正在表格裡打字（例如差點）時先不重畫，等他離開輸入框再畫，避免打到一半被洗掉
+            const redraw = () => {
+                const ae = document.activeElement;
+                if (ae && ['INPUT', 'TEXTAREA', 'SELECT'].includes(ae.tagName) && ae.closest('#viewSecretary')) { setTimeout(redraw, 2000); return; }
+                try { renderMemberMasterTable(); renderSelectedMembersTable(); updateLinePreviewText(); } catch (e) { /* 畫面還沒準備好就略過 */ }
+            };
+            redraw();
+            const msg = [];
+            if (added.length) msg.push(`${added.slice(0, 3).join('、')}${added.length > 3 ? ` 等 ${added.length} 位` : ''} 已報名`);
+            if (removed.length) msg.push(`${removed.slice(0, 3).join('、')}${removed.length > 3 ? ` 等 ${removed.length} 位` : ''} 已取消報名`);
+            if (msg.length) showToast(`報名表有更新：${msg.join('；')}（社友在 LINE 操作，或其他裝置送出）`, '🔔');
+        }
+
         let registrationSubmitting = false;
         async function submitRegistration() {
             if (registrationSubmitting) return; // 防止連點重複送出
@@ -4408,6 +4469,7 @@
                 alert('⚠️ 報名表沒有成功存到雲端（可能是網路不穩）。\n\n您勾選的內容還在畫面上，請確認網路後再按一次「送出本社報名表」。');
                 return;
             }
+            setFormOrderBase();
             showToast(`✅ ${selectedClubName} 成功送出《${subEventName}》報名表！`);
             updateLinePreviewText();
             // 本機畫面直接更新，不需重新整理

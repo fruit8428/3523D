@@ -30,6 +30,7 @@ export interface Deps {
   calendarAdminPassword?: string;                      // 行事曆後台密碼（secret CALENDAR_ADMIN_PASSWORD；空字串＝後台關閉）
   reply?: (replyToken: string, messages: Any[]) => Promise<void>;   // LINE 聊天室回覆（Webhook 用；不算推播額度）
   liffId?: string;                                     // 地區的 LIFF ID（secret LINE_LIFF_ID；聊天室回覆的連結用）
+  liveSync?: () => Promise<void>;                      // 通知開著報名系統的電腦「報名資料變了」（Realtime 廣播 rotary-live-sync；失敗沒關係，15 秒內會自己發現）
   photoDispatch?: (inputs: Record<string, string>) => Promise<void>;   // 啟動相片專案放在 GitHub 的人臉比對程式（secret PHOTO_GITHUB_TOKEN；沒設定＝工作只會排著）
   shared?: Any;                                        // supabase-js（共用專案 Rotary-Shared，全球獎助金；公開唯讀的 publishable 金鑰；null＝這個地區關閉）
 }
@@ -70,6 +71,45 @@ function statDeps(deps: Deps) {
     events: async () => Core.listStatEvents((await load()).state).map((e: Any) => ({ key: e.key, catName: e.catName, subName: e.subName })),
     // date＝主委在「活動設定」填的活動日期（沒填是空字串；分攤金沒有日期）
     of: async (eventKey: string) => { const x = await load(); const st = Core.eventStats(x.state, x.payments, eventKey); const d = ((x.state.chairConfig.eventDates || {})[eventKey] || {}).date; return st && st.ok ? { ...st, date: /^\d{4}-\d{2}-\d{2}$/.test(String(d || "")) ? d : "" } : st; },
+  };
+}
+
+// 社友在 LINE 自己報名：直接改「這一社、這個活動」的報名表（算法在 checkin-core.js 的 selfRegInfo／selfRegApply，
+// 寫入走資料庫函式 registration_order_apply：只換那一張、整列鎖定，不會蓋掉別社同時送出的報名）。
+// 還沒在資料庫執行 supabase/sql/registration_self.sql 時，apply 會回 REG_SELF_NOT_READY。
+function selfDeps(deps: Deps, onChange: () => void) {
+  const load = async () => {
+    const [a, b] = await Promise.all([
+      deps.admin.from("app_storage").select("cats:value->categoriesData,orders:value->registrationOrders,cfg:value->chairConfig,members:value->clubMemberDatabase").eq("key", MAIN_KEY).maybeSingle(),
+      deps.admin.from("app_storage").select("value").eq("key", PAYMENT_KEY).maybeSingle(),
+    ]);
+    if (a.error) fail("SERVER_ERROR", a.error.message);
+    if (b.error) fail("SERVER_ERROR", b.error.message);
+    const d = a.data || {};
+    return { state: { categoriesData: d.cats || [], registrationOrders: d.orders || {}, chairConfig: d.cfg || {} }, members: d.members || {}, payments: (b.data && b.data.value) || {} };
+  };
+  let cache: Any = null;
+  return {
+    info: async (eventKey: string, club: string) => { cache = cache || await load(); return Core.selfRegInfo(cache.state, cache.payments, eventKey, club); },
+    apply: async (eventKey: string, club: string, change: Any) => {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const x = await load(); cache = null;
+        const info = Core.selfRegInfo(x.state, x.payments, eventKey, club);
+        const now = new Date(Date.now() + 8 * 3600_000).toISOString().replace("T", " ").substring(0, 16);      // 與報名系統的 taiwanNowStr 相同
+        const r = Core.selfRegApply(info, Array.isArray(x.members[club]) ? x.members[club] : [], club, change, now);
+        if (!r.ok || !r.changed) return r;
+        const q = await deps.admin.rpc("registration_order_apply", { p_sub: info.subName, p_club: club, p_before: r.before, p_after: r.after });
+        if (q.error) { console.error("registration_order_apply", q.error.code || ""); return { ok: false, code: "REG_SELF_NOT_READY" }; }
+        if (q.data === "OK") {
+          onChange();
+          if (deps.liveSync) { try { await deps.liveSync(); } catch (_e) { /* 電腦端 15 秒內會自己發現 */ } }
+          return r;
+        }
+        if (q.data !== "CONFLICT") return { ok: false, code: "REG_UNAVAILABLE" };
+        await sleep(120 * (attempt + 1));       // 同一時間有人也在改這一社的報名表：重讀再算
+      }
+      return { ok: false, code: "REG_BUSY" };
+    },
   };
 }
 
@@ -449,7 +489,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
       const liffId = String(body.liffId || "");
       if (!/^[\w-]{5,80}$/.test(liffId)) fail("BAD_REQUEST");
       let st: Any = null;      // 判斷總監是否已被正式報名：同一次推播只讀一次報名資料
-      const reg = { roster: async (eventKey: string) => { if (!st) st = await loadState(deps, false); const ro = Core.buildRoster(st, eventKey); return { ok: !!ro.ok, title: ro.title || "", persons: ro.persons || [] }; } };
+      const reg = { roster: async (eventKey: string) => { if (!st) st = await loadState(deps, false); const ro = Core.buildRoster(st, eventKey); return { ok: !!ro.ok, title: ro.title || "", persons: ro.persons || [], isPels: !!ro.isPels }; } };
       const r = await governorDigest(deps.admin, { liffId, send: send!, reg });
       // 順便檢查有沒有「結束滿一週、還沒備份」的活動，提醒系統管理者（失敗不影響總監推播）
       try { const br = await backupReminder(deps.admin, { stats: statDeps(deps), send: send! }); (r as Any).backup = { due: br.due.length, sent: br.sent }; if (br.due.length) console.log("備份提醒", JSON.stringify({ due: br.due.map((e: Any) => e.subName), sent: br.sent })); }
@@ -470,7 +510,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
       const liffId = String(body.liffId || "");
       if (!/^[\w-]{5,80}$/.test(liffId)) fail("BAD_REQUEST");
       let st: Any = null;
-      const reg = { roster: async (eventKey: string) => { if (!st) st = await loadState(deps, false); const ro = Core.buildRoster(st, eventKey); return { ok: !!ro.ok, title: ro.title || "", persons: ro.persons || [] }; } };
+      const reg = { roster: async (eventKey: string) => { if (!st) st = await loadState(deps, false); const ro = Core.buildRoster(st, eventKey); return { ok: !!ro.ok, title: ro.title || "", persons: ro.persons || [], isPels: !!ro.isPels }; } };
       const r = await clubReminder(deps.admin, { liffId, send: send!, reg });
       if (r.clubs.length) console.log("各社活動提醒", JSON.stringify({ day: r.day, hour: r.hour, sent: r.sent, clubs: r.clubs.map((c: Any) => ({ club: c.club, events: c.events.length, status: c.recipients.map((x: Any) => x.status) })) }));
       return { ok: true, day: r.day, hour: r.hour, sent: r.sent, clubs: r.clubs.length };
@@ -482,7 +522,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
         admin: deps.admin, password: deps.calendarAdminPassword || "",
         sendLine: deps.push && deps.push.token && deps.push.sendMessages ? deps.push.sendMessages : undefined,
         members: async () => (await loadState(deps, true)).members,
-        reg: { roster: async (eventKey: string) => { const ro = Core.buildRoster(await loadState(deps, false), eventKey); return { ok: !!ro.ok, title: ro.title || "", persons: ro.persons || [] }; }, stats: statDeps(deps) },
+        reg: { roster: async (eventKey: string) => { const ro = Core.buildRoster(await loadState(deps, false), eventKey); return { ok: !!ro.ok, title: ro.title || "", persons: ro.persons || [], isPels: !!ro.isPels }; }, stats: statDeps(deps) },
         statEvents: () => statDeps(deps).events(),
         clubInfos: async () => ((await loadState(deps, false)).divisionsData || []).flatMap((d: Any) => (d.clubs || []).map((c: Any) => ({ name: c.name, division: d.name || `第 ${d.id} 分區`, code: c.code || "" }))),
       });
@@ -499,7 +539,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
         },
         roster: async (eventKey: string) => {
           const roster = Core.buildRoster(await loadState(deps, false), eventKey);
-          return { ok: !!roster.ok, title: roster.title || "", persons: roster.persons || [] };
+          return { ok: !!roster.ok, title: roster.title || "", persons: roster.persons || [], isPels: !!roster.isPels };
         },
         members: async (club: string) => { const all = (await loadState(deps, true)).members || {}; return Array.isArray(all[club]) ? all[club] : []; },
         // 主委：appAuthData.eventChairs 以「大類id」（整個大類）或「大類id::子活動名稱」（單一子活動）為 key，值是社名陣列
@@ -521,7 +561,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
         roster: async (eventKey: string) => {
           if (!cached) cached = await loadState(deps, false);
           const roster = Core.buildRoster(cached, eventKey);
-          return { ok: !!roster.ok, title: roster.title || "", persons: roster.persons || [] };
+          return { ok: !!roster.ok, title: roster.title || "", persons: roster.persons || [], isPels: !!roster.isPels };
         },
         // 家人＝社友庫裡互為寶(尊)眷的人（與 LINE 報到的同行家人同一套規則，見 familyKeys）
         family: async (club: string, key: string, name: string) => {
@@ -535,6 +575,7 @@ export async function handle(body: Any, deps: Deps): Promise<Any> {
           return Array.isArray(cachedFull.members[club]) ? cachedFull.members[club] : [];
         },
         stats: statDeps(deps),
+        self: selfDeps(deps, () => { cached = null; cachedFull = null; }),       // 寫入後，這次請求稍後再讀名單要讀新的
       };
       return await calMember(action, body, deps.admin, b ? { club: b.club, key: b.key, name: b.name, nickname: b.nickname } : null, reg);
     } catch (e) { if (e instanceof CalError) fail(e.code); throw e; }

@@ -355,10 +355,11 @@ function cdRsvpAddMany(keys) {
     cdToast(`已加入 ${added} 位到報名名單，請確認欄位後按「送出本社報名表」` + (missing.length ? `（${missing.join('、')} 不在社友庫，請先新增）` : ''));
 }
 
-// ---------- 執秘把人從已送出的報名表移除後：問要不要一併取消他在 LINE 按的「我要參加」 ----------
+// ---------- 執秘把人從已送出的報名表移除後：他在行事曆上留下的舊登記一併清掉 ----------
 // 由 index.html 的 submitRegistrationInner()（重新送出時少了誰）與 deleteMember()（刪除社友並一併移除報名）在存檔成功後呼叫。
-// 報名表（正式報名）與 LINE 的「我要參加」（意願）是兩筆紀錄；不清掉的話，社友手機上會一直顯示「已表示參加」。
-// 沒有人按過「我要參加」就不問；連不上雲端也不打擾（報名表已經存好）。
+// 2026-11-24 起，社友在 LINE 報名＝直接進報名表，所以執秘把人拿掉後手機就不再顯示已報名（手機只看報名表）。
+// 這裡只是把更早以前留下的「表示參加」紀錄（或 PELS 的舊紀錄）順手清掉，才不會又出現在報名表上方的提示裡。
+// 使用者要求同步、不必再問執秘；沒有舊紀錄就什麼都不做，連不上雲端也不打擾（報名表已經存好）。
 async function cdRsvpCall(action, key, club, extra) {
     try {
         const res = await fetch(SUPABASE_URL + '/functions/v1/line-checkin', {
@@ -377,12 +378,8 @@ async function cdRsvpOfferCancel(key, club, removed, eventName) {
     if (!r.ok || !(r.people || []).length) return;
     const hit = r.people.filter(p => removed.some(m => (m.name || '') === p.name && (m.nickname || '') === (p.nickname || '')));
     if (!hit.length) return;
-    const names = hit.map(p => '・' + p.name + (p.nickname ? ' ' + p.nickname : '')).join('\n');
-    const yes = window.confirm(`以下社友已從《${eventName || key.split('::')[1] || ''}》的報名表移除，但他在 LINE 行事曆按過「我要參加」：\n\n${names}\n\n要一併取消他在 LINE 的「我要參加」嗎？\n\n按「確定」＝一併取消，他的手機行事曆不會再顯示「已表示參加」（他帶的寶尊眷也一起取消；系統不會另外通知他）。\n按「取消」＝保留，他的手機仍顯示「已表示參加」，報名表上方也會繼續把他列在「想參加但尚未進報名表」。`);
-    if (!yes) return;
     const c = await cdRsvpCall('cal_desk_rsvp_cancel', key, club, { keys: hit.map(p => p.key) });
-    if (c.ok) cdToast(c.removed ? `已取消 ${hit.length} 位在 LINE 的「我要參加」` : '沒有需要取消的紀錄');
-    else alert('⚠️ 報名表已經更新，但 LINE 的「我要參加」沒有取消成功（' + (c.code === 'NETWORK' ? '網路不穩' : c.code === 'CLUB_AUTH_FAILED' ? '無法確認貴社身分' : '雲端暫時無法處理') + '）。\n\n可以請社友自己在 LINE 行事曆按「取消參加」。');
+    if (c.ok && c.removed) cdToast(`已同步取消 ${hit.length} 位在 LINE 行事曆上的登記`);
     if (cdRsvp.key === key && cdRsvp.club === club) cdRsvpFetch(true);
 }
 

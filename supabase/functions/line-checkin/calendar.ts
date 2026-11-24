@@ -134,7 +134,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // ---------- 社友動作 ----------
 // 報名系統的名單（由 lib.ts 以 CheckinCore.buildRoster 算出，與報到、推播同一套算法）
 export interface RegDeps {
-  roster: (eventKey: string) => Promise<{ ok: boolean; title: string; persons: Any[] }>;
+  roster: (eventKey: string) => Promise<{ ok: boolean; title: string; persons: Any[]; isPels?: boolean }>;
+  // 社友在 LINE 自己報名＝直接寫進報名表（使用者 2026-11-24 決定，不再有「表示參加、待執秘確認」這一層）。
+  // info：這一社這個活動的報名表與費用（算法在 checkin-core.js 的 selfRegInfo）；apply：加人／移除／改參加方式（寫入由 lib.ts 負責）
+  self?: { info: (eventKey: string, club: string) => Promise<Any>; apply: (eventKey: string, club: string, change: Any) => Promise<Any> };
   // 這位社友的「家人」（社友庫裡互為寶尊眷的人）。每個社的社友庫都在同一包資料裡，比較大，所以只有需要時才讀（自動更新時不讀）
   family?: (club: string, personKey: string, name: string) => Promise<{ key: string; name: string; nickname: string; role: string }[]>;
   members?: (club: string) => Promise<Any[]>;          // 該社的社友庫（出席率報表用）
@@ -346,16 +349,30 @@ export async function attendanceReport(admin: Any, club: string, periodsIn: Any,
   return { ok: true, club, manual: manual.filter((x) => out.some((p) => p.key === x.key)), periods: periods.map((p) => ({ id: p.id, from: new Date(p.from).toISOString(), to: new Date(p.to).toISOString(), held: meetings.filter((m: Any) => m.recorded && inP(m.start, p)).length })), meetings, district: distList, people: out };
 }
 
+// 這個行程是不是「手機報名直接進報名表」：有對應報名活動、不是 PELS、而且雲端有接上寫入功能
+function isSelfReg(roster: { ok: boolean; isPels?: boolean }, reg: RegDeps | undefined): boolean {
+  return !!(roster && roster.ok && !roster.isPels && reg && reg.self);
+}
+const SELF_ERR: Record<string, string> = { REG_PAID_LOCKED: "CAL_RSVP_PAID_LOCKED", REG_SECRETARY_ONLY: "CAL_REG_SECRETARY_ONLY", REG_SELF_NOT_READY: "CAL_REG_NOT_READY", REG_BUSY: "CAL_REG_BUSY" };
+const selfFail = (code: string): never => fail(SELF_ERR[code] || "CAL_REG_UNAVAILABLE");
+const partOf = (v: Any) => v === "只用餐" ? "只用餐" : v === "參賽" ? "參賽" : undefined;
+
 // 目前這個行程裡「我們社」有哪些人報名／表示參加
 async function rsvpStatus(admin: Any, ev: Any, me: CalMe, reg: RegDeps | undefined, withFamily = false) {
   const key = String(ev.registration_key || "");
-  let roster: { ok: boolean; title: string; persons: Any[] } = { ok: false, title: "", persons: [] };
+  let roster: { ok: boolean; title: string; persons: Any[]; isPels?: boolean } = { ok: false, title: "", persons: [] };
   if (key && reg) roster = await reg.roster(key);
   // 可以按「我要參加」的條件：有對應到報名系統的活動，或行程本身開放參加（社內例會等不需要報名的活動）
   if (!roster.ok && !ev.rsvp_enabled) return { linked: false };
   const formal = roster.ok ? roster.persons.filter((p: Any) => p.club === me.club) : [];
-  const { data, error } = await admin.from("calendar_rsvp").select("person_key,full_name,nickname,guest_of,guest_role,proxy_by,created_at").eq("event_id", ev.id).eq("club_name", me.club).order("created_at");
-  if (error) dbFail(error);
+  // 對應報名活動（PELS 除外）：手機報名＝直接進報名表，名單只看報名表；舊的「表示參加」紀錄不再顯示
+  const selfMode = isSelfReg(roster, reg);
+  let data: Any[] = [];
+  if (!selfMode) {
+    const q = await admin.from("calendar_rsvp").select("person_key,full_name,nickname,guest_of,guest_role,proxy_by,created_at").eq("event_id", ev.id).eq("club_name", me.club).order("created_at");
+    if (q.error) dbFail(q.error);
+    data = q.data || [];
+  }
   const formalKeys = new Set(formal.map((p: Any) => p.key));
   const people = [
     ...formal.map((p: Any) => ({ key: p.key, name: p.name || p.nickname, nickname: p.name ? p.nickname : "", status: "registered", guestOf: "", role: p.role || "" })),
@@ -365,11 +382,20 @@ async function rsvpStatus(admin: Any, ev: Any, me: CalMe, reg: RegDeps | undefin
   const out: Any = {
     linked: true, title: roster.title || ev.title, open: ev.status !== "cancelled", mine: mine ? mine.status : null, people,
     registeredCount: formal.length, interestedCount: people.length - formal.length,
-    myGuests: (data || []).filter((r: Any) => r.guest_of === me.key && !r.proxy_by).map((r: Any) => r.person_key),   // 執秘代登記的同行者不算（社友在 LINE 改寶尊眷時不會刪掉）    // 我已經幫哪些寶尊眷登記
+    myGuests: data.filter((r: Any) => r.guest_of === me.key && !r.proxy_by).map((r: Any) => r.person_key),   // 執秘代登記的同行者不算（社友在 LINE 改寶尊眷時不會刪掉）    // 我已經幫哪些寶尊眷登記
   };
+  if (selfMode) {
+    const info = await reg!.self!.info(key, me.club);
+    const items: Any[] = (info.order && info.order.items) || [];
+    out.myGuests = items.filter((it: Any) => it.lineGuestOf === me.key).map(personKey);
+    const parts: Record<string, string> = {};
+    for (const it of items) parts[personKey(it)] = it.participation === "只用餐" ? "只用餐" : "參賽";
+    // sports＝要選「參賽／只用餐」；locked＝該社已繳費且這個活動收人頭費，手機不能再增減（請洽執秘）
+    out.self = { allowed: true, sports: !!info.sports, perHead: !!info.perHead, fees: info.sports ? { compete: info.fees.compete, mealOnly: info.fees.mealOnly } : info.anniv ? { meal: info.fees.meal } : null, locked: !!(info.perHead && info.paid), parts };
+  } else if (roster.ok) out.self = { allowed: false, reason: roster.isPels ? "pels" : "" };      // PELS：要選出席方式並填旅平險個資，只能由執秘報名
   // listed＝已經在名單上、但不是我帶的（例如執秘代為登記）：前端顯示「已登記」，不能再勾
   const listedKeys = new Set<string>((data || []).filter((r: Any) => r.guest_of !== me.key).map((r: Any) => r.person_key));
-  if (withFamily && reg && reg.family) out.family = (await reg.family(me.club, me.key, me.name)).map((f) => ({ ...f, registered: formalKeys.has(f.key), listed: !formalKeys.has(f.key) && listedKeys.has(f.key) }));
+  if (withFamily && reg && reg.family) out.family = (await reg.family(me.club, me.key, me.name)).map((f) => ({ ...f, registered: formalKeys.has(f.key) && !(selfMode && (out.myGuests || []).includes(f.key)), listed: !formalKeys.has(f.key) && listedKeys.has(f.key) }));      // 直接進報名表的活動：我帶的寶尊眷仍可取消勾選
   return out;
 }
 
@@ -377,9 +403,15 @@ async function rsvpStatus(admin: Any, ev: Any, me: CalMe, reg: RegDeps | undefin
 // 總監秘書與總監一定同社（後台指定時會檢查），所以秘書看得到的地區／社內行程總監也都看得到：
 // 直接幫總監寫一筆參加紀錄（proxy_by＝秘書；秘書取消時只收回自己代登記的，總監自己登記的不動）。
 const secProxy = (me: CalMe) => `總監秘書 ${me.name}（${me.club}）`;
-async function govSyncState(admin: Any, ev: Any, me: CalMe, roles: CalRoles): Promise<Any | null> {
+async function govSyncState(admin: Any, ev: Any, me: CalMe, roles: CalRoles, reg?: RegDeps): Promise<Any | null> {
   const g = roles.secretary ? (roles.govs || [])[0] : null;
   if (!g) return null;
+  const key = String(ev.registration_key || "");
+  if (key && reg && reg.self && isSelfReg(await reg.roster(key), reg)) {       // 直接進報名表的活動：看報名表裡有沒有總監
+    const info = await reg.self.info(key, g.club);
+    const it = ((info.order && info.order.items) || []).find((x: Any) => personKey(x) === g.key);
+    return { name: g.nickname || g.name, joined: !!it, byMe: !!it && it.lineBy === secProxy(me) };
+  }
   const { data, error } = await admin.from("calendar_rsvp").select("proxy_by").eq("event_id", ev.id).eq("club_name", g.club).eq("person_key", g.key).maybeSingle();
   if (error) dbFail(error);
   return { name: g.nickname || g.name, joined: !!data, byMe: !!data && data.proxy_by === secProxy(me) };
@@ -408,12 +440,17 @@ async function joinedMap(admin: Any, rows: Any[], me: CalMe, reg: RegDeps | unde
   if (error) dbFail(error);
   for (const x of data || []) out.set(x.event_id, "interested");
   if (reg) {
-    const formal = new Map<string, boolean>();
+    const formal = new Map<string, boolean>(), selfKeys = new Set<string>();
     for (const key of new Set<string>(shared.map((r: Any) => String(r.registration_key || "")).filter(Boolean))) {
       const roster = await reg.roster(key);
       formal.set(key, !!roster.ok && roster.persons.some((p: Any) => p.club === me.club && (p.key === me.key || p.name === me.name)));
+      if (isSelfReg(roster, reg)) selfKeys.add(key);
     }
-    for (const r of shared) if (r.registration_key && formal.get(String(r.registration_key))) out.set(r.id, "registered");     // 正式報名優先於意願
+    for (const r of shared) {
+      const k = String(r.registration_key || "");
+      if (k && formal.get(k)) out.set(r.id, "registered");     // 正式報名優先於意願
+      else if (k && selfKeys.has(k)) out.delete(r.id);          // 直接進報名表的活動：不在報名表就不算參加（舊的「表示參加」紀錄不看）
+    }
   }
   return out;
 }
@@ -537,6 +574,19 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
     if (!ev || ev.layer === "private" || (ev.layer === "club" && ev.club_name !== g.club)) fail("CAL_NOT_FOUND");
     if (!ev.rsvp_enabled && !ev.registration_key) fail("CAL_REG_UNAVAILABLE");
     const gme = { club: g.club, key: g.key, name: g.name, nickname: g.nickname };
+    const gkey = String(ev.registration_key || "");
+    const gro = gkey && reg ? await reg.roster(gkey) : { ok: false, isPels: false };
+    if (isSelfReg(gro, reg)) {       // 直接進報名表：幫總監報名／取消（總監與秘書同社）
+      if (body.join === true && ev.status === "cancelled") fail("CAL_EVENT_CANCELLED");
+      const ginfo = await reg!.self!.info(gkey, g.club);
+      if (body.join === true && ginfo.sports && !partOf(body.participation)) fail("CAL_REG_NEED_PART");      // 運動賽事要先問「參賽／只用餐」
+      const gr = await reg!.self!.apply(gkey, g.club, body.join === true ? { ensure: [{ key: g.key, participation: partOf(body.participation), by: secProxy(me) }] } : { remove: [g.key] });
+      if (!gr.ok) selfFail(gr.code);
+      if (body.join === true && !((gr.after && gr.after.items) || []).some((x: Any) => personKey(x) === g.key)) fail("CAL_REG_NOT_MEMBER");
+      await admin.from("calendar_rsvp").delete().eq("event_id", ev.id).eq("club_name", g.club).eq("person_key", g.key);      // 舊的「表示參加」紀錄一併清掉
+      return { ok: true, joined: (await joinedMap(admin, [ev], gme, reg)).get(ev.id) || null };
+    }
+    if (gro.ok && gro.isPels && body.join === true) fail("CAL_REG_SECRETARY_ONLY");
     if (body.join === true) {
       if (ev.status === "cancelled") fail("CAL_EVENT_CANCELLED");
       const { error: e1 } = await admin.from("calendar_rsvp").upsert(
@@ -559,8 +609,43 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
     if (!ev || ev.layer === "private" || (ev.layer === "club" && ev.club_name !== me.club)) fail("CAL_NOT_FOUND");
     if (action === "cal_rsvp_status") {
       // 自動更新（poll）時不需要家人名單，省掉讀取整包社友庫
-      return { ok: true, ...(await rsvpStatus(admin, ev, me, reg, body.poll !== true)), gov: await govSyncState(admin, ev, me, roles) };
+      return { ok: true, ...(await rsvpStatus(admin, ev, me, reg, body.poll !== true)), gov: await govSyncState(admin, ev, me, roles, reg) };
     }
+    const skey = String(ev.registration_key || "");
+    const sro = skey && reg ? await reg.roster(skey) : { ok: false, isPels: false };
+    if (isSelfReg(sro, reg)) {
+      // ---------- 直接進報名表（不再只是「表示參加」） ----------
+      const info = await reg!.self!.info(skey, me.club);
+      const items: Any[] = (info.order && info.order.items) || [];
+      const sp = secProxy(me), govs = roles.secretary ? roles.govs || [] : [];
+      const mineGuests = items.filter((it: Any) => it.lineGuestOf === me.key).map(personKey);
+      const govByMe = govs.filter((gv) => items.some((it: Any) => personKey(it) === gv.key && it.lineBy === sp)).map((gv) => gv.key);
+      const parts = (body.parts && typeof body.parts === "object") ? body.parts : {};
+      let change: Any, touched: string[] = [me.key];
+      if (body.join === true) {
+        if (ev.status === "cancelled") fail("CAL_EVENT_CANCELLED");
+        // 寶尊眷：只接受社友庫裡「我的家人」；結果＝「我帶的寶尊眷」就是勾選的那些（多退少補）
+        const fam = reg!.family ? await reg!.family(me.club, me.key, me.name) : [];
+        const famKeys = new Set(fam.map((f) => f.key));
+        const wanted = [...new Set<string>((Array.isArray(body.guestKeys) ? body.guestKeys : []).map(String))].filter((k) => famKeys.has(k) && k !== me.key);
+        const ensure: Any[] = [{ key: me.key, participation: partOf(parts[me.key]), by: `LINE ${me.name}` }];
+        for (const k of wanted) ensure.push({ key: k, participation: partOf(parts[k]), guestOf: me.key, by: `LINE ${me.name}` });
+        const remove = mineGuests.filter((k) => !wanted.includes(k));
+        // 總監秘書：withGov＝true 同時幫總監報名；false 收回我代總監報的；沒帶＝不動
+        if (body.withGov === true) for (const gv of govs) ensure.push({ key: gv.key, participation: partOf(parts[me.key]), by: sp });
+        else if (body.withGov === false) remove.push(...govByMe);
+        change = { ensure, remove }; touched = [me.key, ...wanted, ...govs.map((gv) => gv.key)];
+      } else {
+        change = { remove: [me.key, ...mineGuests, ...govByMe] };      // 我帶的寶尊眷、我代總監報的一併取消
+        touched = [me.key, ...mineGuests];
+      }
+      const r = await reg!.self!.apply(skey, me.club, change);
+      if (!r.ok) selfFail(r.code);
+      if (body.join === true && !((r.after && r.after.items) || []).some((x: Any) => personKey(x) === me.key)) fail("CAL_REG_NOT_MEMBER");     // 綁定的名字已不在社友庫
+      await admin.from("calendar_rsvp").delete().eq("event_id", ev.id).eq("club_name", me.club).in("person_key", touched);      // 舊的「表示參加」紀錄一併清掉
+      return { ok: true, ...(await rsvpStatus(admin, ev, me, reg, true)), gov: await govSyncState(admin, ev, me, roles, reg) };
+    }
+    if (sro.ok && sro.isPels && body.join === true) fail("CAL_REG_SECRETARY_ONLY");
     const st0: Any = await rsvpStatus(admin, ev, me, reg, true);
     if (!st0.linked) fail("CAL_REG_UNAVAILABLE");
     const rsvpTable = () => admin.from("calendar_rsvp");
@@ -600,7 +685,7 @@ export async function handleMember(action: string, body: Any, admin: Any, me: Ca
       if (e5) dbFail(e5);
       await govSyncSet(admin, ev, me, roles, false);      // 我代總監登記的一併收回（總監自己登記的不動）
     }
-    return { ok: true, ...(await rsvpStatus(admin, ev, me, reg, true)), gov: await govSyncState(admin, ev, me, roles) };
+    return { ok: true, ...(await rsvpStatus(admin, ev, me, reg, true)), gov: await govSyncState(admin, ev, me, roles, reg) };
   }
 
   // ---------- 出席率：本人；可看全社的人＝後台設定的名單，沒設定時是社長（P）、秘書（S） ----------

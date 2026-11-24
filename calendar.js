@@ -22,6 +22,11 @@ const CAL_ERR = {
     CAL_REG_UNAVAILABLE: '這個行程目前不能報名，請洽執秘。',
     CAL_EVENT_CANCELLED: '這個行程已取消，無法再報名。',
     CAL_RSVP_LOCKED: '執秘已經幫您送出正式報名，如要取消請洽執秘。',
+    CAL_RSVP_PAID_LOCKED: '貴社這個活動已經繳費，如要加報、變更或取消，請洽執秘。',
+    CAL_REG_SECRETARY_ONLY: '這個活動要選出席方式並填寫旅平險資料，請洽貴社執秘報名。',
+    CAL_REG_NOT_MEMBER: '在貴社的社友庫找不到您的名字（可能改過姓名或 Nick Name），請洽執秘。',
+    CAL_REG_NOT_READY: '手機報名尚未啟用，請洽執秘報名。',
+    CAL_REG_BUSY: '同一時間有其他人也在報名，請再按一次。',
     CAL_TABLE_MISSING: '行事曆尚未啟用（雲端資料表未建立），請洽地區辦公室。'
 };
 
@@ -243,7 +248,7 @@ function calCard(e, day) {
     return `<button type="button" onclick="calOpenDetail('${E(e.id)}')" class="w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm active:bg-slate-50 flex overflow-hidden">
         <span class="shrink-0 w-2" style="background:${L.color}"></span>
         <span class="min-w-0 flex-1 px-3 py-3">
-            <span class="block text-sm font-bold text-slate-500">${E(calTimeText(e, day))}　<span class="font-black" style="color:${L.text}">${calPrefs.layer === 'private' && e.layer !== 'private' ? '🔗 ' : ''}${E(calLayerLabel(e))}</span>${e.withGov ? '　<span class="text-amber-700">🤝 與總監同步</span>' : ''}${e.joined === 'registered' ? '　<span class="text-emerald-700">✅ 已報名</span>' : e.joined === 'interested' ? '　<span class="text-amber-700">🙋 已表示參加</span>' : ''}${cancelled ? '　<span class="text-rose-600">已取消</span>' : ''}</span>
+            <span class="block text-sm font-bold text-slate-500">${E(calTimeText(e, day))}　<span class="font-black" style="color:${L.text}">${calPrefs.layer === 'private' && e.layer !== 'private' ? '🔗 ' : ''}${E(calLayerLabel(e))}</span>${e.withGov ? '　<span class="text-amber-700">🤝 與總監同步</span>' : ''}${e.joined ? '　<span class="text-emerald-700">✅ 已報名</span>' : ''}${cancelled ? '　<span class="text-rose-600">已取消</span>' : ''}</span>
             <span class="block font-black text-lg leading-snug mt-0.5 ${cancelled ? 'line-through text-slate-400' : ''}">${E(e.title)}</span>
             ${e.location ? `<span class="block text-sm text-slate-600 mt-0.5 truncate">📍 ${E(e.location)}</span>` : ''}
         </span></button>`;
@@ -313,9 +318,8 @@ function calOpenDetail(id) {
         ${e.withGov && !calGov ? '<div class="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5">🤝 這筆行程與總監同步：總監的行事曆上也有，您或總監修改、取消、刪除，兩邊會一起變。</div>' : ''}
         ${calGov && e.layer !== 'private' && (e.registrationKey || e.rsvpEnabled) ? `<div id="calGovReg" class="mt-4 bg-white rounded-2xl border-2 border-amber-400 shadow-sm p-4"><div class="font-black text-lg">👔 總監 ${E(calGovName(calGov))} 的參加狀況</div>${
             cancelled ? '<div class="mt-2 text-slate-500 font-bold">行程已取消。</div>'
-            : e.joined === 'registered' ? '<div class="mt-3 text-center bg-emerald-50 border border-emerald-300 text-emerald-800 font-black rounded-xl py-3">✅ 總監已由執秘正式報名</div>'
-            : e.joined === 'interested' ? '<div class="mt-3 text-center bg-amber-50 border border-amber-300 text-amber-900 font-black rounded-xl py-3">🙋 總監已表示要參加</div><div class="mt-1 text-xs text-slate-500 text-center">這個活動在總監的私人行事曆上，每晚的推播也會包含。</div><button type="button" onclick="calGovRsvp(false)" class="mt-2 w-full bg-white border border-slate-300 text-slate-700 font-bold rounded-xl py-3">取消總監的參加</button>'
-            : '<button type="button" onclick="calGovRsvp(true)" class="mt-3 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black text-xl rounded-xl py-4 shadow">🙋 幫總監登記參加</button><div class="mt-1 text-xs text-slate-500 text-center">登記後會出現在總監的私人行事曆，每晚的推播也會包含。</div>'}</div>` : ''}
+            : e.joined ? '<div class="mt-3 text-center bg-emerald-50 border border-emerald-300 text-emerald-800 font-black rounded-xl py-3">✅ 總監已報名</div><div class="mt-1 text-xs text-slate-500 text-center">這個活動在總監的私人行事曆上，每晚的推播也會包含。</div><button type="button" onclick="calGovRsvp(false)" class="mt-2 w-full bg-white border border-slate-300 text-slate-700 font-bold rounded-xl py-3">取消總監的報名</button>'
+            : '<button type="button" onclick="calGovRsvp(true)" class="mt-3 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black text-xl rounded-xl py-4 shadow">🙋 幫總監報名</button><div class="mt-1 text-xs text-slate-500 text-center">報名後會出現在總監的私人行事曆，每晚的推播也會包含；有對應報名表的活動，貴社執秘的報名表也會同步。</div>'}</div>` : ''}
         ${calGov && e.layer === 'private' ? `<div class="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5">這是總監 ${E(calGovName(calGov))} 的私人行程，只有總監本人與總監秘書看得到。</div>` : ''}
         ${e.canEdit ? `<div class="grid grid-cols-2 gap-2 mt-4">
             <button type="button" onclick="calOpenForm('edit')" class="bg-blue-700 active:bg-blue-800 text-white font-black text-base rounded-xl py-3.5">編輯</button>
@@ -327,17 +331,19 @@ function calOpenDetail(id) {
     if ($('calStatOne')) calLoadStatOne(e);
 }
 // ---------- 社內報名狀況、我要參加 ----------
-// 行程有對應報名活動時，顯示「本社」誰已報名（執秘送出的正式報名）或表示要參加（社友在這裡按的），
-// 讓社內的人都知道；別社的人看不到。社友按「我要參加」只是留下意願，正式報名由執秘在報名系統確認後送出。
+// 行程有對應報名活動時：顯示「本社」誰已報名（別社的人看不到）；社友按「我要報名」＝直接寫進貴社的報名表並送出，
+// 不需要執秘再確認（使用者 2026-11-24 決定，取代原本「只是表示意願、待執秘確認」的做法）；執秘把人拿掉，這裡也就不再顯示已報名。
+// 例外：PELS 只能由執秘報名；沒有對應報名表的行程（社內例會等）登記在行事曆上。畫面上一律寫「已報名」。
 let calRegTimer = null, calRegSig = '', calRegPolling = false;
 const CAL_REG_POLL_MS = 10000;      // 停在行程詳細頁時，每 10 秒自動更新一次社內報名名單
 let calFamily = [];            // 我的寶尊眷選項（社友庫帶出）；自動更新的回應不含這個欄位，沿用第一次讀到的
 let calGovSyncSel = null;      // 總監秘書正在勾的「同時加入總監行事曆」；null＝沒動過
+let calPartSel = null;         // 運動賽事：使用者正在選的參加方式 { 'key': '參賽'|'只用餐' }；null＝沒動過
 let calGuestSel = null;        // 使用者正在勾選的寶尊眷（Set）；null＝沒動過，以雲端記錄為準。避免自動更新時把正在勾的選項洗掉
 async function calLoadReg(id) {
     const box = $('calReg'); if (!box) return;
     box.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-4 text-center text-slate-500 font-bold">讀取參加狀況…</div>';
-    calFamily = []; calGuestSel = null; calGovSyncSel = null; calRegSig = '';
+    calFamily = []; calGuestSel = null; calGovSyncSel = null; calPartSel = null; calRegSig = '';
     const r = await api('cal_rsvp_status', { id: id });
     calRegRender(id, r);
     calRegStartPolling();
@@ -356,7 +362,7 @@ async function calRegPoll() {
     calRegPolling = true;
     try {
         const r = await api('cal_rsvp_status', { id: e.id, poll: true });       // poll：不用重讀家人名單
-        if (r.ok && calCurrent && calCurrent.id === e.id && JSON.stringify([r.mine, r.open, r.people]) !== calRegSig) calRegRender(e.id, r);
+        if (r.ok && calCurrent && calCurrent.id === e.id && JSON.stringify([r.mine, r.open, r.people, r.gov || null, r.self || null]) !== calRegSig) calRegRender(e.id, r);
     } finally { calRegPolling = false; }
 }
 function calGuestToggle(key, on) { if (!calGuestSel) calGuestSel = new Set(calGuestBase()); on ? calGuestSel.add(key) : calGuestSel.delete(key); }
@@ -365,61 +371,89 @@ function calRegRender(id, r) {
     const box = $('calReg'); if (!box || !calCurrent || calCurrent.id !== id) return;
     if (!r.ok) { box.innerHTML = `<div class="bg-white rounded-2xl border border-rose-200 p-4 text-center text-rose-700 font-bold">${E(r.code === 'NETWORK' ? '網路連線不穩，無法讀取參加狀況。' : calErrText(r.code))}</div>`; return; }
     if (!r.linked) { box.innerHTML = ''; calRegSig = ''; return; }
-    calRegSig = JSON.stringify([r.mine, r.open, r.people, r.gov || null]);     // 自動更新時用來判斷名單有沒有變
+    calRegSig = JSON.stringify([r.mine, r.open, r.people, r.gov || null, r.self || null]);     // 自動更新時用來判斷名單有沒有變
     if (r.family) calFamily = r.family;
     window.__calRegLast = r;
     const ce = calEvents.find(x => x.id === id); if (ce) ce.joined = r.mine || null;   // 返回列表／「私人」頁時，立刻反映我是否參加
+    // 三種行程：
+    //   self   ＝有對應報名活動：按報名就直接進報名表（執秘那邊同步），名單只看報名表
+    //   pels   ＝社長當選人研討會：要選出席方式並填旅平險個資，手機不能報名，請洽執秘
+    //   其餘   ＝沒有對應報名表（社內例會等）：登記在行事曆上
+    const sf = r.self && r.self.allowed ? r.self : null, pels = !!(r.self && !r.self.allowed);
     const reg = (r.people || []).filter(p => p.status === 'registered'), want = (r.people || []).filter(p => p.status === 'interested');
-    const withReg = !!(calCurrent.registrationKey);      // 有對應報名活動才有「已報名」，例會等只有「表示參加」
-    const chip = (p, cls) => `<span class="inline-block rounded-full px-3 py-1 text-base font-bold ${cls} ${p.key === binding.key ? 'ring-2 ring-offset-1 ring-blue-600' : ''}">${E(p.name)}${p.nickname ? `<span class="ml-1 text-sm font-normal opacity-80">${E(p.nickname)}</span>` : ''}${p.key === binding.key ? ' （我）' : ''}${p.guestOf ? `<span class="ml-1 text-xs font-bold opacity-80">（${E(p.role && /眷/.test(p.role) ? '寶尊眷' : (p.role || '眷屬'))}）</span>` : ''}${p.proxy ? '<span class="ml-1 text-xs font-normal opacity-80">（執秘代登記）</span>' : ''}</span>`;
-    // 寶尊眷：社友庫裡我的家人；已由執秘正式報名的不能再勾
+    const joinedList = pels ? reg : reg.concat(want);      // 畫面上不再分「已報名／表示參加」，一律是已報名（PELS 的舊紀錄除外）
+    const chip = (p, cls) => `<span class="inline-block rounded-full px-3 py-1 text-base font-bold ${cls} ${p.key === binding.key ? 'ring-2 ring-offset-1 ring-blue-600' : ''}">${E(p.name)}${p.nickname ? `<span class="ml-1 text-sm font-normal opacity-80">${E(p.nickname)}</span>` : ''}${p.key === binding.key ? ' （我）' : ''}${p.guestOf ? `<span class="ml-1 text-xs font-bold opacity-80">（${E(p.role && /眷/.test(p.role) ? '寶尊眷' : (p.role || '眷屬'))}）</span>` : ''}${p.proxy ? '<span class="ml-1 text-xs font-normal opacity-80">（執秘代登記）</span>' : ''}${sf && sf.sports && sf.parts && sf.parts[p.key] === '只用餐' ? '<span class="ml-1 text-xs font-normal opacity-80">（只用餐）</span>' : ''}</span>`;
+    const locked = !!(sf && sf.locked);       // 該社已繳費而且這個活動收人頭費：手機不能再增減
+    const money = n => '$' + Number(n || 0).toLocaleString();
+    // 運動賽事：每個人選「參賽／只用餐」（金額不同）。本人預設參賽，寶尊眷預設只用餐；已在報名表的以報名表為準
+    const partOf = (key, def) => (calPartSel && calPartSel[key]) || (sf && sf.parts && sf.parts[key]) || def;
+    const partPick = (key, def) => sf && sf.sports ? `<span class="inline-flex rounded-lg border border-slate-300 overflow-hidden text-sm font-bold shrink-0">${['參賽', '只用餐'].map(v => `<button type="button" data-key="${E(key)}" data-part="${v}" onclick="calPartPick(this.dataset.key, this.dataset.part)" class="px-3 py-1.5 ${partOf(key, def) === v ? 'bg-blue-700 text-white' : 'bg-white text-slate-600'}">${v}</button>`).join('')}</span>` : '';
+    const feeNote = !sf || !sf.fees ? '' : sf.sports ? `<div class="mt-2 text-sm text-slate-600 text-center">費用：參賽 <b>${money(sf.fees.compete)}</b>　只用餐 <b>${money(sf.fees.mealOnly)}</b>（由貴社統一繳交）</div>` : `<div class="mt-2 text-sm text-slate-600 text-center">費用：每人 <b>${money(sf.fees.meal)}</b>（由貴社統一繳交）</div>`;
+    const myPart = sf && sf.sports ? `<div class="mt-3 flex items-center justify-between gap-3 border border-slate-200 rounded-xl px-3 py-2.5"><span class="text-base font-bold">我的參加方式</span>${partPick(binding.key, '參賽')}</div>` : '';
+    // 寶尊眷：社友庫裡我的家人；已經在名單上、但不是我帶的不能再勾
     const selected = calGuestSel || new Set(r.myGuests || []);
-    const canEditGuests = r.open && calFamily.length > 0;
+    const canEditGuests = r.open && calFamily.length > 0 && !locked;
     const guestBox = canEditGuests ? `<div class="mt-3 text-left border border-slate-200 rounded-xl px-3 py-2.5">
             <div class="text-sm font-bold text-slate-700">👪 寶尊眷一起參加（可複選）</div>
-            ${calFamily.map(f => { const lock = f.registered || f.listed; return `<label class="flex items-center gap-3 py-2 ${lock ? 'opacity-60' : ''}"><input type="checkbox" class="w-6 h-6" ${selected.has(f.key) || lock ? 'checked' : ''} ${lock ? 'disabled' : ''} onchange="calGuestToggle(this.dataset.key, this.checked)" data-key="${E(f.key)}"><span class="text-base font-bold">${E(f.name)}${f.nickname ? `<span class="ml-1 text-sm font-normal text-slate-500">${E(f.nickname)}</span>` : ''}${f.registered ? '<span class="ml-2 text-xs text-emerald-700">已報名</span>' : f.listed ? '<span class="ml-2 text-xs text-amber-700">已登記</span>' : ''}</span></label>`; }).join('')}
+            ${calFamily.map(f => { const lock = f.registered || f.listed; return `<div class="flex items-center justify-between gap-2 py-2 ${lock ? 'opacity-60' : ''}"><label class="flex items-center gap-3 min-w-0"><input type="checkbox" class="w-6 h-6 shrink-0" ${selected.has(f.key) || lock ? 'checked' : ''} ${lock ? 'disabled' : ''} onchange="calGuestToggle(this.dataset.key, this.checked)" data-key="${E(f.key)}"><span class="text-base font-bold">${E(f.name)}${f.nickname ? `<span class="ml-1 text-sm font-normal text-slate-500">${E(f.nickname)}</span>` : ''}${lock ? '<span class="ml-2 text-xs text-emerald-700">已報名</span>' : ''}</span></label>${lock ? '' : partPick(f.key, '只用餐')}</div>`; }).join('')}
         </div>` : '';
-    // 總監秘書：按「我要參加」時同時幫總監登記（總監的私人行事曆與每日推播就會有這筆）
-    const g = r.gov && !calGov ? r.gov : null;
+    // 總監秘書：報名時同時幫總監報名（總監的私人行事曆與每日推播就會有這筆）
+    const g = r.gov && !calGov && !pels ? r.gov : null;
     const govOn = calGovSyncSel !== null ? calGovSyncSel : (r.mine ? !!(g && g.joined) : true);
-    const govSelf = !!(g && g.joined && !g.byMe);       // 總監自己已經登記（或執秘已代登記）
-    const govBox = g && r.open ? `<label class="mt-3 flex items-start gap-3 text-left border-2 border-amber-400 bg-amber-50 rounded-xl px-3 py-2.5 ${govSelf ? 'opacity-70' : ''}"><input id="calGovSync" type="checkbox" class="w-6 h-6 mt-0.5" ${govOn || govSelf ? 'checked' : ''} ${govSelf ? 'disabled' : ''} onchange="calGovSyncSel = this.checked"><span><span class="font-bold text-base">🤝 同時加入總監 ${E(g.name)} 的行事曆</span><span class="block text-sm text-slate-600">${govSelf ? '總監已經登記參加這個活動。' : '勾選後總監的私人行事曆也會有這筆，不用再到總監行事曆加一次。'}</span></span></label>` : '';
-    const govBtn = g && r.open && !govSelf ? '<button type="button" onclick="calRsvp(true)" class="mt-2 w-full bg-amber-500 active:bg-amber-600 text-white font-black rounded-xl py-3">更新總監同步</button>' : '';
+    const govSelf = !!(g && g.joined && !g.byMe);       // 總監自己已經報名（或執秘已幫他報名）
+    const govBox = g && r.open && !locked ? `<label class="mt-3 flex items-start gap-3 text-left border-2 border-amber-400 bg-amber-50 rounded-xl px-3 py-2.5 ${govSelf ? 'opacity-70' : ''}"><input id="calGovSync" type="checkbox" class="w-6 h-6 mt-0.5" ${govOn || govSelf ? 'checked' : ''} ${govSelf ? 'disabled' : ''} onchange="calGovSyncSel = this.checked"><span><span class="font-bold text-base">🤝 同時${sf ? '幫總監 ' + E(g.name) + ' 報名' : '加入總監 ' + E(g.name) + ' 的行事曆'}</span><span class="block text-sm text-slate-600">${govSelf ? '總監已經報名這個活動。' : sf ? '勾選後總監也會進報名表（參加方式與您相同），總監的行事曆也會有這筆。' : '勾選後總監的私人行事曆也會有這筆，不用再到總監行事曆加一次。'}</span></span></label>` : '';
+    const canUpdate = !locked && ((sf && sf.sports) || canEditGuests || (g && !govSelf));
+    const done = '<div class="mt-3 text-center bg-emerald-50 border border-emerald-300 text-emerald-800 font-black rounded-xl py-3">✅ 您已報名</div>';
     let action = '';
     if (!r.open) action = '<div class="mt-3 text-center text-slate-500 font-bold">行程已取消，無法報名</div>';
-    else if (r.mine === 'registered') action = `<div class="mt-3 text-center bg-emerald-50 border border-emerald-300 text-emerald-800 font-black rounded-xl py-3">✅ 您已報名</div>${canEditGuests ? guestBox + '<button type="button" onclick="calRsvp(true)" class="mt-2 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black rounded-xl py-3">更新寶尊眷</button>' : ''}${govBox}${govBtn}`;
-    else if (r.mine === 'interested') action = `<div class="mt-3 text-center bg-amber-50 border border-amber-300 text-amber-900 font-black rounded-xl py-3">🙋 您已表示要參加</div>${withReg ? '<div class="mt-1 text-xs text-slate-500 text-center">正式報名由貴社執秘確認後送出。</div>' : ''}${canEditGuests ? guestBox + '<button type="button" onclick="calRsvp(true)" class="mt-2 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black rounded-xl py-3">更新寶尊眷</button>' : ''}${govBox}${govBtn}<button type="button" onclick="calRsvp(false)" class="mt-2 w-full bg-white border border-slate-300 text-slate-700 font-bold rounded-xl py-3">取消參加</button>`;
-    else action = `${guestBox}${govBox}<button type="button" onclick="calRsvp(true)" class="mt-3 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black text-xl rounded-xl py-4 shadow">🙋 我要參加</button><div class="mt-1 text-xs text-slate-500 text-center">按下後，社內社友都看得到您要參加${withReg ? '；正式報名由貴社執秘確認後送出' : ''}。</div>`;
-    const people = want.length + reg.length;
+    else if (pels) action = (r.mine === 'registered' ? done : '') + '<div class="mt-3 text-center text-base text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-3">這個活動要選出席方式並填寫旅平險資料，<b>請洽貴社執秘報名</b>。</div>';
+    else if (r.mine) action = done
+        + (locked ? '<div class="mt-2 text-sm text-slate-600 text-center">貴社這個活動已經繳費，如要變更或取消請洽執秘。</div>'
+            : `${myPart}${guestBox}${govBox}${canUpdate ? '<button type="button" onclick="calRsvp(true)" class="mt-2 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black rounded-xl py-3">更新報名</button>' : ''}<button type="button" onclick="calRsvp(false)" class="mt-2 w-full bg-white border border-slate-300 text-slate-700 font-bold rounded-xl py-3">取消報名</button>${sf ? feeNote : ''}`);
+    else if (locked) action = '<div class="mt-3 text-center text-base text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-3">貴社這個活動已經繳費，要加報請洽執秘。</div>';
+    else action = `${myPart}${guestBox}${govBox}<button type="button" onclick="calRsvp(true)" class="mt-3 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black text-xl rounded-xl py-4 shadow">🙋 我要報名</button>${feeNote}<div class="mt-1 text-xs text-slate-500 text-center">${sf ? '按下後就完成報名，貴社執秘的報名表會同步更新。' : '按下後，社內社友都看得到您要參加。'}</div>`;
     box.innerHTML = `<div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-        <div class="font-black text-lg">📋 ${E(binding.club)} ${withReg ? '報名狀況' : '參加狀況'}</div>
-        <div class="text-sm text-slate-600 mt-0.5">${withReg ? `活動：${E(r.title)}　已報名 <b>${r.registeredCount}</b> 人${want.length ? `　表示參加 <b>${want.length}</b> 人` : ''}` : `表示參加 <b>${want.length}</b> 人（含寶尊眷）`}</div>
+        <div class="font-black text-lg">📋 ${E(binding.club)} 報名狀況</div>
+        <div class="text-sm text-slate-600 mt-0.5">${calCurrent.registrationKey ? `活動：${E(r.title)}　` : ''}已報名 <b>${joinedList.length}</b> 人${calCurrent.registrationKey ? '' : '（含寶尊眷）'}</div>
         ${action}
-        ${reg.length ? `<div class="mt-4 text-sm font-bold text-slate-700">✅ 已報名</div><div class="mt-1 flex flex-wrap gap-1.5">${reg.map(p => chip(p, 'bg-emerald-100 text-emerald-900')).join('')}</div>` : ''}
-        ${want.length ? `<div class="mt-3 text-sm font-bold text-slate-700">🙋 表示要參加${withReg ? '（待執秘確認）' : ''}</div><div class="mt-1 flex flex-wrap gap-1.5">${want.map(p => chip(p, 'bg-amber-100 text-amber-900')).join('')}</div>` : ''}
-        ${!people ? `<div class="mt-4 text-base text-slate-500 text-center py-2">目前社內還沒有人${withReg ? '報名' : '表示參加'}。</div>` : ''}
+        ${joinedList.length ? `<div class="mt-4 text-sm font-bold text-slate-700">✅ 已報名</div><div class="mt-1 flex flex-wrap gap-1.5">${joinedList.map(p => chip(p, 'bg-emerald-100 text-emerald-900')).join('')}</div>` : ''}
+        ${pels && want.length ? `<div class="mt-3 text-sm font-bold text-slate-700">🙋 想參加（待執秘報名）</div><div class="mt-1 flex flex-wrap gap-1.5">${want.map(p => chip(p, 'bg-amber-100 text-amber-900')).join('')}</div>` : ''}
+        ${!joinedList.length && !(pels && want.length) ? '<div class="mt-4 text-base text-slate-500 text-center py-2">目前社內還沒有人報名。</div>' : ''}
     </div>`;
+}
+// 參賽／只用餐：只改記憶體裡的選擇並重畫，按「我要報名／更新報名」才送出
+function calPartPick(key, part) {
+    calPartSel = calPartSel || {}; calPartSel[key] = part;
+    if (calCurrent && window.__calRegLast) calRegRender(calCurrent.id, window.__calRegLast);
 }
 async function calRsvp(join) {
     const e = calCurrent; if (!e || busy) return;
-    if (!join && !confirm('要取消「表示參加」嗎？\n您帶的寶尊眷也會一併取消。')) return;
+    const last = window.__calRegLast || {}, sf = last.self && last.self.allowed ? last.self : null;
+    if (!join && !confirm(sf ? '要取消報名嗎？\n您帶的寶尊眷也會一併取消，貴社執秘的報名表會同步更新。' : '要取消報名嗎？\n您帶的寶尊眷也會一併取消。')) return;
     const guests = join ? Array.from(calGuestSel || new Set(calGuestBase())) : [];
     const arg = { id: e.id, join: join, guestKeys: guests };
-    if (join && $('calGovSync') && !$('calGovSync').disabled) arg.withGov = $('calGovSync').checked;      // 總監秘書：是否同時幫總監登記
+    if (join && sf && sf.sports) {       // 運動賽事：帶上每個人的參加方式（本人預設參賽、寶尊眷預設只用餐；已報名的沿用原本的）
+        const pick = (k, def) => (calPartSel && calPartSel[k]) || (sf.parts && sf.parts[k]) || def;
+        arg.parts = {}; arg.parts[binding.key] = pick(binding.key, '參賽'); guests.forEach(k => { arg.parts[k] = pick(k, '只用餐'); });
+    }
+    if (join && $('calGovSync') && !$('calGovSync').disabled) arg.withGov = $('calGovSync').checked;      // 總監秘書：是否同時幫總監報名
     busy = true; const r = await api('cal_rsvp_set', arg); busy = false;
     if (!r.ok) { toast(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : calErrText(r.code)); return calLoadReg(e.id); }
-    calGuestSel = null; calGovSyncSel = null;
-    toast(join && arg.withGov ? '已表示要參加，並同步加入總監的行事曆' : join ? (guests.length ? `已表示要參加（含 ${guests.length} 位寶尊眷），社內社友都看得到` : '已表示要參加，社內社友都看得到') : '已取消參加');
+    calGuestSel = null; calGovSyncSel = null; calPartSel = null;
+    toast(!join ? '已取消報名' : arg.withGov ? '報名完成，並同步幫總監報名' : guests.length ? `報名完成（含 ${guests.length} 位寶尊眷）` : '報名完成');
     calRegRender(e.id, r);
 }
 // 總監秘書在「總監的行事曆」裡，直接幫總監登記／取消參加
-async function calGovRsvp(join) {
+async function calGovRsvp(join, part) {
     const e = calCurrent; if (!e || busy || !calGov) return;
-    if (!join && !confirm(`要取消總監參加「${e.title}」嗎？`)) return;
-    busy = true; const r = await api('cal_gov_rsvp', calGovArg({ id: e.id, join: join })); busy = false;
-    if (!r.ok) return toast(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : r.code === 'CAL_RSVP_LOCKED' ? '總監已由執秘正式報名，要取消請洽執秘。' : calErrText(r.code));
+    if (!join && !confirm(`要取消總監「${e.title}」的報名嗎？`)) return;
+    const arg = { id: e.id, join: join }; if (part) arg.participation = part;
+    busy = true; const r = await api('cal_gov_rsvp', calGovArg(arg)); busy = false;
+    // 運動賽事要先知道總監是「參賽」還是「只用餐」（金額不同）
+    if (!r.ok && r.code === 'CAL_REG_NEED_PART') return calGovRsvp(true, confirm('總監是「參賽」嗎？\n\n按「確定」＝參賽\n按「取消」＝只用餐') ? '參賽' : '只用餐');
+    if (!r.ok) return toast(r.code === 'NETWORK' ? '網路連線不穩，請再試一次。' : calErrText(r.code));
     e.joined = r.joined || null;
-    toast(join ? '已幫總監登記參加' : '已取消總監的參加');
+    toast(join ? '已幫總監報名' : '已取消總監的報名');
     calOpenDetail(e.id);
 }
 async function calToggleCancel() {

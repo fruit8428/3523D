@@ -328,6 +328,99 @@
         };
     }
 
+    // ---------- 社友在 LINE 自己報名：直接寫進報名表（2026-11-24） ----------
+    // 使用者決定：社友在手機按報名＝正式報名並送出，不需要執秘再確認；執秘把人從報名表拿掉，手機也就不再顯示已報名。
+    // 這裡只算「這一社的報名表會變成什麼」，不碰資料庫；雲端小程式（lib.ts）負責讀寫，與 index.html 的 submitRegistrationInner 用同一套金額規則。
+    // 不開放手機報名：分攤金／配合款（沒有人要到場）、社長當選人研討會 PELS（要選出席方式並填旅平險個資，仍由執秘報名）。
+    function subEventFeeOf(chairConfig, eventKey, field, fallback) {      // 與 index.html 的 getSubEventFee 相同：該子活動 → 舊的全域值 → 預設
+        const cfg = chairConfig || {}, e = (cfg.subEventFees || {})[eventKey];
+        const num = v => v !== undefined && v !== null && !isNaN(Number(v));
+        if (e && num(e[field])) return Number(e[field]);
+        if (num(cfg[field])) return Number(cfg[field]);
+        return fallback;
+    }
+    function isSportsLikeEvent(cat, subName) {     // 與 index.html 的 isCurrentEventSports 相同
+        const n = (cat && cat.name) || '', sub = String(subName || '');
+        return !!cat && (cat.id === 'sports' || hasWord(n, ['運動', '賽事', '體育', '球賽']) || hasWord(sub, ['球', '賽', '運動']));
+    }
+    function selfRegInfo(state, payments, eventKey, club) {
+        const st = state || {};
+        const { catId, subName } = parseEventKey(eventKey);
+        const cat = (st.categoriesData || []).find(c => c.id === catId);
+        const out = { ok: false, reason: '', key: eventKey, subName, sports: false, anniv: false, perHead: false, seminar: false, fees: { compete: 0, mealOnly: 0, meal: 0, club: 0 }, paid: false, order: null };
+        if (!cat || !subName || !(cat.subEvents || []).includes(subName)) { out.reason = 'no_event'; return out; }
+        if (isApportionEvent(cat.name, subName)) { out.reason = 'apportionment'; return out; }
+        if (isPelsEvent(subName)) { out.reason = 'pels'; return out; }
+        out.ok = true;
+        out.anniv = hasWord(cat.name, ['社慶']) || hasWord(subName, ['社慶']);
+        out.sports = !out.anniv && isSportsLikeEvent(cat, subName);       // 要選「參賽／只用餐」
+        out.perHead = out.sports || out.anniv;                              // 這個活動收人頭費（人數一變，該社應繳金額就變）
+        out.seminar = !cat.allowSponsors;                                   // 研討會／年會：每社固定金額
+        out.fees = {
+            compete: subEventFeeOf(st.chairConfig, eventKey, 'feeCompete', 1200), mealOnly: subEventFeeOf(st.chairConfig, eventKey, 'feeMealOnly', 1000),
+            meal: subEventFeeOf(st.chairConfig, eventKey, 'feeAnnivMeal', 1000), club: configuredClubFee(st.chairConfig, eventKey)
+        };
+        out.order = (((st.registrationOrders || {})[subName]) || []).find(o => o && o.clubName === club) || null;
+        out.paid = isPaidStatus(((((payments || {})[eventKey]) || {})[club] || {}).status);
+        return out;
+    }
+    function selfRegItemFee(info, participation) {
+        return info.anniv ? info.fees.meal : (participation === '只用餐' ? info.fees.mealOnly : info.fees.compete);
+    }
+    /**
+     * change＝{ ensure:[{ key, participation, guestOf, by }], remove:[key] }（key＝姓名|Nick Name）
+     *   ensure：不在報名表就加入（只收社友庫裡的人）；已經在，而且是運動賽事、參加方式不同，就改參加方式。
+     * 回傳 { ok, code, before, after, added, removed, updated, delta }；after＝null 代表整張報名表移除（沒有人也沒有贊助）。
+     * code：REG_UNAVAILABLE／REG_SECRETARY_ONLY（PELS）／REG_PAID_LOCKED（該社已繳費，而這次變動會改變應繳金額）
+     */
+    function selfRegApply(info, members, club, change, nowStr) {
+        if (!info || !info.ok) return { ok: false, code: info && info.reason === 'pels' ? 'REG_SECRETARY_ONLY' : 'REG_UNAVAILABLE' };
+        const list = Array.isArray(members) ? members : [];
+        const before = info.order ? JSON.parse(JSON.stringify(info.order)) : null;
+        const order = info.order ? JSON.parse(JSON.stringify(info.order)) : {
+            clubName: club, sponsorTier: 'PARTICIPANT', sponsorAmount: 0, participantFee: 0,
+            apportionmentFee: info.seminar ? info.fees.club : 0, grandTotal: 0, submittedAt: nowStr, prizeSponsors: [], items: []
+        };
+        if (!Array.isArray(order.items)) order.items = [];
+        const added = [], removed = [], updated = [];
+        let delta = 0;
+        const feeOf = it => Number(it.fee) || 0;
+        ((change && change.remove) || []).forEach(k => {
+            const i = order.items.findIndex(it => personKey(it) === k);
+            if (i < 0) return;
+            delta -= feeOf(order.items[i]); order.items.splice(i, 1); removed.push(k);
+        });
+        ((change && change.ensure) || []).forEach(w => {
+            if (!w || !w.key || removed.includes(w.key)) return;
+            const part = info.sports ? (w.participation === '只用餐' ? '只用餐' : '參賽') : '參賽';
+            const ex = order.items.find(it => personKey(it) === w.key);
+            if (ex) {
+                if (info.sports && (ex.participation || '參賽') !== part && w.participation) {
+                    const fee = selfRegItemFee(info, part);
+                    delta += fee - feeOf(ex); ex.participation = part; ex.fee = fee; updated.push(w.key);
+                }
+                return;
+            }
+            const m = list.find(x => x && personKey(x) === w.key);
+            if (!m) return;
+            const it = { role: m.role, nickname: m.nickname, name: m.name, diet: m.diet, veganNote: m.veganNote, handicap: m.handicap !== undefined ? m.handicap : '', participation: part, fee: selfRegItemFee(info, part), via: 'line', lineBy: String(w.by || '') };
+            if (w.guestOf) it.lineGuestOf = String(w.guestOf);
+            order.items.push(it); delta += feeOf(it); added.push(w.key);
+        });
+        if (!added.length && !removed.length && !updated.length) return { ok: true, before, after: before, added, removed, updated, delta: 0, changed: false };
+        if (!info.perHead) delta = 0;
+        if (info.perHead && info.paid && delta !== 0) return { ok: false, code: 'REG_PAID_LOCKED' };
+        if (info.perHead) {
+            order.participantFee = (Number(order.participantFee) || 0) + delta;
+            order.grandTotal = info.order ? (Number(order.grandTotal) || 0) + delta : (Number(order.sponsorAmount) || 0) + order.participantFee + (Number(order.apportionmentFee) || 0);
+        } else if (!info.order) {
+            order.grandTotal = (Number(order.sponsorAmount) || 0) + (Number(order.apportionmentFee) || 0);
+        }
+        order.submittedAt = nowStr;
+        const empty = !order.items.length && (!order.sponsorTier || order.sponsorTier === 'PARTICIPANT') && !(Number(order.sponsorAmount) > 0) && !((order.prizeSponsors || []).length);
+        return { ok: true, before, after: empty ? null : order, added, removed, updated, delta, changed: true };
+    }
+
     // ---------- 社費推播：執秘填的表單 → 每位社友的明細（報名系統畫面與雲端小程式共用同一套算法） ----------
     // form＝{ info:{period,due,method,note}, common:[{name,amount}], members:{ '姓名|Nick Name': { off:[共同品項的序號…], extra:[{name,amount}] } } }
     // 金額是整數、可以是負數（例：溢繳折抵）；金額為 0 或沒有名稱的品項不算。
@@ -382,6 +475,7 @@
 
     root.CheckinCore = {
         DUES_LIMITS, duesNormalize, duesCompute, duesMoney, duesPlainText,
+        subEventFeeOf, isSportsLikeEvent, selfRegInfo, selfRegItemFee, selfRegApply,
         isPaidStatus, isDistrictOfficeDivision, paymentDivisions, divisionPayRows, isPaymentTrackingCat, configuredClubFee, listStatEvents, eventStats,
         norm, personKey, makeEventKey, parseEventKey, isApportionEvent, isPelsEvent, PELS_SHORT,
         buildClubIndex, prizeMealGuests, buildRoster, mergeCheckins, computeStats, matchEntry,

@@ -108,7 +108,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 | `global-grants.js` | 全球獎助金查詢畫面（見「全球獎助金查詢」）。 |
 | `member-portraits.js` | 活動照片找人的執秘畫面：① 大頭照、② 活動照片（見「活動照片找人」）。 |
 | `my-photos.js` | 社友在 LINE 看自己的活動照片（`line.html?p=photos`，見「活動照片找人」）。 |
-| `checkin-core.js` | 報到的純函式（應到名單、合併報到紀錄、統計），`index.html` 與 `checkin.html` 共用，可用 node 直接測。 |
+| `checkin-core.js` | 報到的純函式（應到名單、合併報到紀錄、統計）與社友在 LINE 自己報名的算法（`selfReg*`），`index.html` 與 `checkin.html` 共用，可用 node 直接測。 |
 | `stub.js` | 在 node 裡 require `test.js` 用的 DOM/Supabase 假物件。 |
 
 ### `index.html` 內部結構
@@ -237,9 +237,19 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 
 已送出的報名表（`registrationOrders[子活動].items`）是送出當下的快照，**不會**隨社友庫變動；報到名單讀的是它。`deleteMember()` 會用 `findSubmittedRegistrationsOf()` 找出該社友（姓名＋Nick Name）在本社哪些報名表裡，**再問一次**要不要一併移除——不自動連動，因為社友離社後過去的紀錄通常要保留，而且會動到應繳金額。一併移除時：只有該張報名表「真的收人頭費」（`participantFee > 0` 且等於各人 `fee` 加總）才從 `participantFee`、`grandTotal` 扣掉他的 `fee`；**不可以直接加總 item.fee 重算**（研討會的 item 也帶著 `fee` 但不收費，會把金額算錯）。PELS 不自動移除（牽涉出席方式與旅平險個資），只提示。
 
-### 從報名表移除後，詢問是否一併取消 LINE 的「我要參加」（2026-11-24）
+### 社友在 LINE 自己報名＝直接進報名表（2026-11-24，取代「表示參加、待執秘確認」）
 
-正式報名（`registrationOrders`）與社友在 LINE 按的「我要參加」（`calendar_rsvp`）是兩筆紀錄；執秘把人從報名表拿掉後，社友手機仍顯示「已表示參加」（使用者 2026-11-24 回報後決定：連動，但**先問執秘**）。兩個入口在**存檔成功後**呼叫 `calendar-desk.js` 的 `cdRsvpOfferCancel(key, 社, 被移除的人, 活動名稱)`：`submitRegistrationInner()`（`removedFromOrder`＝舊報名表有、這次沒有的人）與 `deleteMember()`（選了「一併從報名表移除」時逐活動問）。流程：先讀 `cal_desk_rsvp`，被移除的人裡沒有人按過就不問；有就 `confirm` 列出姓名 → 確定才呼叫雲端 `cal_desk_rsvp_cancel`（`calendar.ts`，認證同 `cal_desk_rsvp`：社密碼只能動自己社）。雲端只刪該活動（`registration_key` 相同的地區／本社行程）裡該社這些人的列，連同他帶的寶尊眷／同行者（`guest_of`）；**仍在正式報名名單上的人不動**（回傳 `kept`）。不通知社友本人。失敗只提示，不影響已存好的報名表。測試：`calendar_permissions.ts`（206 項）、`node check_rsvp_cancel.js`（需 8000 埠，9 項）。
+使用者決定：社友在手機按「我要報名」就是正式報名並送出，**不需要執秘再確認**；執秘把人從報名表拿掉，手機也就不再顯示已報名；**手機畫面一律寫「已報名」，不再有「已表示要參加」**。下面行事曆章節裡提到「我要參加只是意願、不寫 `app_storage`」的段落，對「有對應報名活動的行程」已不適用。
+- **三種行程**：(1) 有 `registration_key` 且不是 PELS、不是分攤金 ＝ **直接進報名表**（`isSelfReg()`；名單與「我有沒有報名」只看 `registrationOrders`，`calendar_rsvp` 裡的舊紀錄不顯示、`joinedMap` 也不算）；(2) **PELS** ＝ 手機不能報名（要選出席方式、填旅平險個資），顯示「請洽貴社執秘報名」，`CAL_REG_SECRETARY_ONLY`；(3) 沒有對應報名表（社內例會等 `rsvp_enabled`）＝ 照舊寫 `calendar_rsvp`，只是畫面文字改成「已報名」。
+- **算法只有一份**：`checkin-core.js` 的 `selfRegInfo(state, payments, key, club)`（能不能報、`sports`＝要選參賽／只用餐、`perHead`＝收人頭費、費用、該社是否已繳）與 `selfRegApply(info, 社友庫, club, {ensure, remove}, now)`（算出這一社報名表的前後內容）。金額規則要與 `submitRegistrationInner`／`recalcSubmittedOrdersForCurrentEvent` 一致：運動賽事＝參賽 `feeCompete`／只用餐 `feeMealOnly`，社慶＝`feeAnnivMeal`，研討會／年會＝不收人頭費（新報名表帶每社應繳金額 `feeApportionment`）；既有報名表只加減人頭費，贊助金額不動。新加的 item 欄位與 `toggleMemberSelection` 相同，另帶 `via:'line'`、`lineBy`（`LINE 姓名` 或 `總監秘書 姓名（社）`）、`lineGuestOf`（帶他的社友 key）。最後一人取消且沒有贊助／贊助獎＝整張報名表移除。**改了要 `cp` 到小程式資料夾並重新部署，index.html 的 `checkin-core.js?v=` 也要換。**
+- **使用者定的規則**：運動賽事由社友自己選參賽／只用餐（本人預設參賽、寶尊眷預設只用餐）；手機可以自己取消，但**該社這個活動已繳費、而且收人頭費**時鎖住（`REG_PAID_LOCKED` → `CAL_RSVP_PAID_LOCKED`，加報、改參加方式、取消都請洽執秘；研討會不收人頭費所以不鎖）。
+- **寫入**：`lib.ts` 的 `selfDeps()` 讀最新資料 → 算 → 呼叫資料庫函式 `registration_order_apply(p_sub, p_club, p_before, p_after)`（`supabase/sql/registration_self.sql`，**要先在資料庫執行**；只開放 service_role；整列鎖定、只換那一社的那一張，`p_before` 與資料庫現況不同回 `CONFLICT` → 重讀再算，最多 4 次；順便更新 `lastUpdated`）→ `deps.liveSync()` 廣播 `rotary-live-sync`（`index.ts`）讓開著報名系統的電腦立刻重讀。沒建函式＝`CAL_REG_NOT_READY`（手機顯示「尚未啟用」）。這是雲端第一次寫 `app_storage` 主資料，所以**不可以改成整包讀出再寫回**（會蓋掉別社的報名）。
+- **雲端動作**（`calendar.ts`）：`cal_rsvp_status` 多回 `self:{allowed, sports, perHead, fees, locked, parts}`（PELS＝`{allowed:false, reason:'pels'}`；例會沒有這個欄位）；`cal_rsvp_set` 多收 `parts:{key: '參賽'|'只用餐'}`，`guestKeys`＝我帶的寶尊眷（多退少補，以 `lineGuestOf` 認），取消時連同我帶的寶尊眷與我代總監報的一起；總監秘書的 `withGov`＝幫總監也進報名表（參加方式與秘書相同，`lineBy`＝`secProxy`），`cal_gov_rsvp` 在運動賽事沒帶 `participation` 回 `CAL_REG_NEED_PART`（前端問一次再送）；綁定的名字不在社友庫＝`CAL_REG_NOT_MEMBER`。報名／取消時順手刪掉那個人在該行程的舊 `calendar_rsvp` 列。
+- **手機畫面**（`calendar.js` 的 `calRegRender`／`calRsvp`／`calPartPick`，`calPartSel` 保存正在選的參加方式）：按鈕「🙋 我要報名」→「✅ 您已報名」＋「更新報名」「取消報名」；已繳費鎖住時只顯示說明。`line.html` 的 `calendar.js?v=` 要跟著換（LINE 內建瀏覽器會快取）。
+- **執秘畫面要跟上**：表單（`currentFormSelectedMembers`）是載入當下的複本，執秘直接按送出會用舊名單蓋掉剛在 LINE 報名的人。所以 `pullRemoteState()` 每次抓到新資料都呼叫 `mergeRemoteOrderIntoForm()` 做三方比對（`formOrderBase`＝上次同步時報名表裡的人與參加方式，`setFormOrderBase()` 在 `loadCategoryView` 載入表單與送出成功後設定）：雲端新加的人加進表單、雲端取消的人從表單拿掉、參加方式跟著改；**執秘自己勾選或取消、還沒送出的變更不動**；正在表格裡打字時延後重畫。`submitRegistrationInner` 一開始就 `pullRemoteState(true)`，所以送出前一定併過。
+- **執秘移除時的舊紀錄**：`cdRsvpOfferCancel()`（`calendar-desk.js`，由 `submitRegistrationInner` 的 `removedFromOrder` 與 `deleteMember` 呼叫）現在**不詢問**，直接用 `cal_desk_rsvp_cancel` 清掉被移除者在行事曆上的舊登記（只動自己社、仍在報名表上的人不動）；沒有舊紀錄就不連第二次。
+- 已知限制：報名系統其他寫入路徑仍是整包覆寫，電腦端資料最多落後約 15 秒（收到廣播會立刻重讀），這段時間內別的裝置若存檔（例如主委改費用），理論上可能蓋掉剛在 LINE 報名的人——與既有的「最後寫入者獲勝」風險相同。`isEventLockedToday`（本機的唯讀開關）不影響手機報名。
+- 測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/self_register.ts`（42 項：算法＋LINE 動作）、`node check_calendar_ui.js`（95 項）、`node check_rsvp_cancel.js`（需 8000 埠，14 項：舊紀錄同步、三方比對）。資料庫函式的 jsonb 運算式在 3521 用唯讀查詢驗過；**整條路（真的 LINE → 寫入 → 電腦同步）要使用者用手機實測**。
 
 ### 貼上 LINE 接龍（2026-11-14）
 
