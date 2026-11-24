@@ -974,6 +974,31 @@ export async function handleDesk(action: string, body: Any, ctx: DeskCtx): Promi
     return { ok: true, linked: true, people };
   }
 
+  // 執秘把人從「已送出的報名表」移除後，順便取消他在 LINE 按的「我要參加」（畫面會先問過執秘）。
+  // 只動自己社的列；連同他帶的寶尊眷／同行者一起取消（與社友自己按「取消參加」相同）。
+  // 仍在正式報名名單上的人不動（避免畫面資料過期時誤刪）。
+  if (action === "cal_desk_rsvp_cancel") {
+    const key = String(body.key || ""), target = isAdmin ? String(body.targetClub || "") : club;
+    const want = Array.from(new Set((Array.isArray(body.keys) ? body.keys : []).map((k: Any) => String(k || "")).filter((k: string) => k && k.length <= 200 && !isExtGuestKey(k)))).slice(0, 300) as string[];
+    if (!key || !target || !want.length) fail("BAD_REQUEST");
+    const roster = ctx.roster ? await ctx.roster(key) : { ok: false, title: "", persons: [] };
+    const formal = new Set((roster.ok ? roster.persons : []).filter((p: Any) => p.club === target).map((p: Any) => String(p.key)));
+    const keys = want.filter((k) => !formal.has(k));
+    if (!keys.length) return { ok: true, removed: 0, kept: want.length };
+    const { data: evs, error } = await admin.from("calendar_events").select("id,layer,club_name").eq("registration_key", key);
+    if (error) dbFail(error);
+    const ids = (evs || []).filter((e: Any) => e.layer === "district" || (e.layer === "club" && e.club_name === target)).map((e: Any) => e.id);
+    if (!ids.length) return { ok: true, removed: 0, kept: want.length - keys.length };
+    const { data: rows, error: e2 } = await admin.from("calendar_rsvp").select("event_id,person_key,guest_of").in("event_id", ids).eq("club_name", target);
+    if (e2) dbFail(e2);
+    const hit = (rows || []).filter((r: Any) => keys.includes(r.person_key) || keys.includes(r.guest_of || ""));
+    for (const r of hit) {
+      const { error: e3 } = await admin.from("calendar_rsvp").delete().eq("event_id", r.event_id).eq("club_name", target).eq("person_key", r.person_key);
+      if (e3) dbFail(e3);
+    }
+    return { ok: true, removed: hit.length, kept: want.length - keys.length };
+  }
+
   // 主委在「活動設定與費用金額」填了活動日期 → 同步成一筆地區行程（對應該報名活動）。
   // 認證：後台密碼，或「這個活動的主委社」的社登入密碼。日期留空＝移除自動建立的那筆（手動建立的行程不動）。
   if (action === "cal_desk_sync") {

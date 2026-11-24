@@ -18,7 +18,7 @@
     <script src="./district-config.js"></script>
     <!-- 報到系統共用邏輯（應到名單與統計的算法，與櫃台報到頁 checkin.html 共用） -->
     <script src="./checkin-core.js?v=20261121"></script>
-    <script src="./calendar-desk.js"></script>
+    <script src="./calendar-desk.js?v=20261124"></script>
     <script src="./club-dues.js?v=20261120"></script>
     <script src="./global-grants.js?v=20261121"></script>
     <script src="./member-portraits.js?v=20261123"></script>
@@ -4392,6 +4392,8 @@
                 })) // Snapshot array containing handicap and fee
             };
 
+            // 這次重新送出後，原本在報名表、現在不在的人（存檔成功後詢問要不要一併取消他在 LINE 的「我要參加」）
+            const removedFromOrder = existingIdx > -1 ? ((registrationOrders[subEventName][existingIdx].items) || []).filter(o => !orderPayload.items.some(n => n.name === o.name && (n.nickname || '') === (o.nickname || ''))).map(o => ({ name: o.name || '', nickname: o.nickname || '' })) : [];
             if (existingIdx > -1) {
                 registrationOrders[subEventName][existingIdx] = orderPayload;
             } else {
@@ -4412,6 +4414,7 @@
             if (isPelsMode()) renderPelsDetailBox(); // 個資欄位改顯示「已送出」
             if (currentRole === 'chair' || currentRole === 'super_admin') updateChairDashboard();
             updateRolePermissionsUI();
+            if (removedFromOrder.length && typeof cdRsvpOfferCancel === 'function') await cdRsvpOfferCancel(`${cat.id}::${subEventName}`, selectedClubName, removedFromOrder, subEventName);
         }
 
         // ================= 貼上 LINE 接龍，自動勾選報名名單 =================
@@ -5024,6 +5027,10 @@
             if (removable.length && !alsoRemove) notes.push('已送出的報名表沒有更動，他仍會出現在這些活動的報名與報到名單上。之後要移除，請到該活動的報名表把他取消後重新送出。');
             if (pelsHits.length) notes.push(`他在「${pelsHits.map(h => h.sub).join('、')}」的報名沒有自動移除（這個活動牽涉出席方式與旅平險資料）。如需取消，請到該活動的報名表修改後重新送出。`);
             if (notes.length) alert(notes.join('\n\n'));
+            // 一併從報名表移除時：他在 LINE 按過「我要參加」的活動，逐一詢問要不要也取消
+            if (alsoRemove && typeof cdRsvpOfferCancel === 'function') {
+                for (const h of removable) await cdRsvpOfferCancel(`${h.cat.id}::${h.sub}`, selectedClubName, [{ name: target.name || '', nickname: target.nickname || '' }], h.sub);
+            }
         }
 
         // ================= CHAIR DASHBOARD & CHARTS =================

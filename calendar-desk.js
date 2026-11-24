@@ -355,6 +355,37 @@ function cdRsvpAddMany(keys) {
     cdToast(`已加入 ${added} 位到報名名單，請確認欄位後按「送出本社報名表」` + (missing.length ? `（${missing.join('、')} 不在社友庫，請先新增）` : ''));
 }
 
+// ---------- 執秘把人從已送出的報名表移除後：問要不要一併取消他在 LINE 按的「我要參加」 ----------
+// 由 index.html 的 submitRegistrationInner()（重新送出時少了誰）與 deleteMember()（刪除社友並一併移除報名）在存檔成功後呼叫。
+// 報名表（正式報名）與 LINE 的「我要參加」（意願）是兩筆紀錄；不清掉的話，社友手機上會一直顯示「已表示參加」。
+// 沒有人按過「我要參加」就不問；連不上雲端也不打擾（報名表已經存好）。
+async function cdRsvpCall(action, key, club, extra) {
+    try {
+        const res = await fetch(SUPABASE_URL + '/functions/v1/line-checkin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+            body: JSON.stringify(Object.assign({ action: action, key: key }, cdRsvpAuth(club), extra || {}))
+        });
+        if (res.status === 404) return { ok: false, code: 'NOT_DEPLOYED' };
+        const j = await res.json();
+        return j && typeof j.ok === 'boolean' ? j : { ok: false, code: 'SERVER_ERROR' };
+    } catch (e) { return { ok: false, code: 'NETWORK' }; }
+}
+async function cdRsvpOfferCancel(key, club, removed, eventName) {
+    if (!(typeof DISTRICT !== 'undefined' && DISTRICT && DISTRICT.calendarEnabled) || !key || !club || !removed || !removed.length) return;
+    const r = await cdRsvpCall('cal_desk_rsvp', key, club);
+    if (!r.ok || !(r.people || []).length) return;
+    const hit = r.people.filter(p => removed.some(m => (m.name || '') === p.name && (m.nickname || '') === (p.nickname || '')));
+    if (!hit.length) return;
+    const names = hit.map(p => '・' + p.name + (p.nickname ? ' ' + p.nickname : '')).join('\n');
+    const yes = window.confirm(`以下社友已從《${eventName || key.split('::')[1] || ''}》的報名表移除，但他在 LINE 行事曆按過「我要參加」：\n\n${names}\n\n要一併取消他在 LINE 的「我要參加」嗎？\n\n按「確定」＝一併取消，他的手機行事曆不會再顯示「已表示參加」（他帶的寶尊眷也一起取消；系統不會另外通知他）。\n按「取消」＝保留，他的手機仍顯示「已表示參加」，報名表上方也會繼續把他列在「想參加但尚未進報名表」。`);
+    if (!yes) return;
+    const c = await cdRsvpCall('cal_desk_rsvp_cancel', key, club, { keys: hit.map(p => p.key) });
+    if (c.ok) cdToast(c.removed ? `已取消 ${hit.length} 位在 LINE 的「我要參加」` : '沒有需要取消的紀錄');
+    else alert('⚠️ 報名表已經更新，但 LINE 的「我要參加」沒有取消成功（' + (c.code === 'NETWORK' ? '網路不穩' : c.code === 'CLUB_AUTH_FAILED' ? '無法確認貴社身分' : '雲端暫時無法處理') + '）。\n\n可以請社友自己在 LINE 行事曆按「取消參加」。');
+    if (cdRsvp.key === key && cdRsvp.club === club) cdRsvpFetch(true);
+}
+
 // ---------- 主委的「活動日期」→ 同步成行事曆的地區行程 ----------
 // 由 index.html 的 saveChairSettings() 在存檔後呼叫。只送「這個活動」的日期時間，不碰報名資料；
 // 失敗不影響主委設定的儲存（日期已經存進報名系統），只提示「尚未同步到行事曆」。

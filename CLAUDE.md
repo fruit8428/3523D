@@ -237,6 +237,10 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 
 已送出的報名表（`registrationOrders[子活動].items`）是送出當下的快照，**不會**隨社友庫變動；報到名單讀的是它。`deleteMember()` 會用 `findSubmittedRegistrationsOf()` 找出該社友（姓名＋Nick Name）在本社哪些報名表裡，**再問一次**要不要一併移除——不自動連動，因為社友離社後過去的紀錄通常要保留，而且會動到應繳金額。一併移除時：只有該張報名表「真的收人頭費」（`participantFee > 0` 且等於各人 `fee` 加總）才從 `participantFee`、`grandTotal` 扣掉他的 `fee`；**不可以直接加總 item.fee 重算**（研討會的 item 也帶著 `fee` 但不收費，會把金額算錯）。PELS 不自動移除（牽涉出席方式與旅平險個資），只提示。
 
+### 從報名表移除後，詢問是否一併取消 LINE 的「我要參加」（2026-11-24）
+
+正式報名（`registrationOrders`）與社友在 LINE 按的「我要參加」（`calendar_rsvp`）是兩筆紀錄；執秘把人從報名表拿掉後，社友手機仍顯示「已表示參加」（使用者 2026-11-24 回報後決定：連動，但**先問執秘**）。兩個入口在**存檔成功後**呼叫 `calendar-desk.js` 的 `cdRsvpOfferCancel(key, 社, 被移除的人, 活動名稱)`：`submitRegistrationInner()`（`removedFromOrder`＝舊報名表有、這次沒有的人）與 `deleteMember()`（選了「一併從報名表移除」時逐活動問）。流程：先讀 `cal_desk_rsvp`，被移除的人裡沒有人按過就不問；有就 `confirm` 列出姓名 → 確定才呼叫雲端 `cal_desk_rsvp_cancel`（`calendar.ts`，認證同 `cal_desk_rsvp`：社密碼只能動自己社）。雲端只刪該活動（`registration_key` 相同的地區／本社行程）裡該社這些人的列，連同他帶的寶尊眷／同行者（`guest_of`）；**仍在正式報名名單上的人不動**（回傳 `kept`）。不通知社友本人。失敗只提示，不影響已存好的報名表。測試：`calendar_permissions.ts`（206 項）、`node check_rsvp_cancel.js`（需 8000 埠，9 項）。
+
 ### 貼上 LINE 接龍（2026-11-14）
 
 社友庫右上角「💬 貼上 LINE 接龍」→ `#lineRelayModal`。`parseLineRelay(text, members)` 是純函式：逐行去掉編號後用 `relayNorm`（全形轉半形、小寫、去空白）比對社友的中文姓名／Nick Name／去掉扶輪職稱的 Nick Name（`relayNickBase`），長字串優先、英文要完整單字；回傳 `{matched, unmatched, skipped, ambiguous, notes}`。`applyLineRelay()` 只把人加進 `currentFormSelectedMembers`（欄位要與 `toggleMemberSelection` 新增時一致），**不會自動送出**。PELS 仍需逐人填出席方式與旅平險資料。

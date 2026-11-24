@@ -138,6 +138,17 @@ await handleMember("cal_rsvp_set", { id: rsvpEv.id, join: true }, db, { ...A, ke
 const dr = await desk("cal_desk_rsvp", { club: "甲社", clubPassword: "a123", key: "cat::高球賽" });
 ok("執秘讀到本社的意願名單（王、丙）", dr.people.map((p: any) => p.name).sort().join() === "丙,王");
 ok("執秘讀不到別社的意願", (await desk("cal_desk_rsvp", { club: "乙社", clubPassword: "b123", key: "cat::高球賽" })).people.length === 0);
+// 執秘把人從報名表移除後，取消他在 LINE 按的「我要參加」
+const deskR = (action: string, extra: any) => handleDesk(action, extra, { admin: db, password: "pw", roster: async () => ({ ok: true, title: "高球賽", persons: ROSTER }), checkClub: async (c: string, p: string) => { if (!(c === "甲社" && p === "a123") && !(c === "乙社" && p === "b123")) { const e: any = new Error("x"); e.code = "CLUB_AUTH_FAILED"; throw e; } } } as any);
+const rsvpNames = async () => (await desk("cal_desk_rsvp", { club: "甲社", clubPassword: "a123", key: "cat::高球賽" })).people.map((p: any) => p.name).sort().join();
+ok("取消意願：沒給名單被擋", await code(deskR("cal_desk_rsvp_cancel", { club: "甲社", clubPassword: "a123", key: "cat::高球賽", keys: [] })) === "BAD_REQUEST");
+ok("取消意願：別社的執秘動不到本社的人", (await deskR("cal_desk_rsvp_cancel", { club: "乙社", clubPassword: "b123", key: "cat::高球賽", keys: ["王|"] })).removed === 0 && await rsvpNames() === "丙,王");
+ROSTER.push({ club: "甲社", key: "王|", name: "王", nickname: "" });
+const keepR = await deskR("cal_desk_rsvp_cancel", { club: "甲社", clubPassword: "a123", key: "cat::高球賽", keys: ["王|"] });
+ok("取消意願：還在正式報名名單上的人不動", keepR.removed === 0 && keepR.kept === 1 && await rsvpNames() === "丙,王");
+ROSTER.pop();
+const cutR = await deskR("cal_desk_rsvp_cancel", { club: "甲社", clubPassword: "a123", key: "cat::高球賽", keys: ["王|"] });
+ok("取消意願：只取消指定的人，其他人保留", cutR.removed === 1 && await rsvpNames() === "丙");
 ok("LINE 手機版編輯行程不會清掉報名對應", (await handleMember("cal_save", { event: { ...ev({ title: "改標題" }), id: rsvpEv.id } }, db, B)).event.registrationKey === "cat::高球賽");
 ok("刪除行程後意願名單一併刪除（資料庫 cascade；此處驗證行程可刪）", (await handleMember("cal_delete", { id: rsvpEv.id }, db, B)).ok);
 
