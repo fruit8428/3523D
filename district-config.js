@@ -10,6 +10,7 @@ window.DISTRICT = {
   "supabaseUrl": "https://ncrvmhfggfczicpyebvn.supabase.co",
   "supabaseAnonKey": "sb_publishable_oTRCxVE73AYelSw9P-Zf4A_f_Ooj98u",
   "ragAssistantUrl": "https://agentic-rag-dusky.vercel.app",
+  "defaultClubPassword": "111111",
   "lineLiffId": "2012610534-bqToE4Jl",
   "lineOfficialId": "@628ouczd",
   "linePushEnabled": true,
