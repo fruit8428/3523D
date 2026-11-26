@@ -137,7 +137,7 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - 整個狀態打包成**一個 JSON**，以 key `rotary_3523_spa_data_v3` 存進 Supabase 資料表 `app_storage`（欄位 `key`、`value` jsonb），用 `upsert` 覆寫。
 - 另外三個獨立 key：`rotary_3523_event_emails_v1`、`rotary_3523_payment_records_v1`、`rotary_3523_email_inbox_logs_v1`，各有自己的 load/save 函式。其中活動信箱與對帳信件兩個 key 所屬的「Email 自動抓取/模擬匯款信」功能已整個移除（2026-10-31），變數與 load/save 仍保留只為相容舊資料，沒有任何 UI 會再寫入。
 - `chairPaymentRecords`（繳費紀錄）的 key 是 **`大類id::子活動名稱`**（由 `getActivePaymentKey()` 產生），每個研討會/年會子活動各自一張繳費表；舊的 `seminars` / `conference` 兩桶已不再讀取。
-- **示範資料不會自動生成**：`loadDemoPaymentRecords()`、`DEFAULT_MEMBERS_DB`、`DEFAULT_ORDERS` 只有最高管理員在「正式上線前資料歸零」卡片按「載入示範資料」才會寫入；`selectClub` 與新增社都只建立空名冊。**整批清空的功能（`adminClearPaymentData`／`adminClearRegistrationOrders`／`adminClearMemberDatabase`）已於 2026-11-20 依使用者要求全部移除，不要再加回來**；清空資料一律走「歷屆備份與清空單一活動」（逐活動、先備份）。卡片 `data-panel="adminReset"` 只剩「載入示範資料」。
+- **示範資料不會自動生成**：`loadDemoPaymentRecords()`、`DEFAULT_MEMBERS_DB`、`DEFAULT_ORDERS` 只有最高管理員在「正式上線前資料歸零」卡片按「載入示範資料」才會寫入；`selectClub` 與新增社都只建立空名冊。**整批清空的功能（`adminClearPaymentData`／`adminClearRegistrationOrders`／`adminClearMemberDatabase`）已於 2026-11-20 依使用者要求全部移除，不要再加回來**；清空資料一律走「歷屆備份與清空單一活動」（逐活動、先備份）。卡片 `data-panel="adminReset"` 只剩「載入示範資料」。「名冊／生命週期」頁（`viewArch`）STEP 4 的「🔄 模擬新年度重置」（`triggerLifecycleStep(4)`，不經備份把 `registrationOrders` 整個清空）也已於 2026-11-26 移除，同樣不要加回來。
 - 執秘送出研討會/年會報名表**不會**自動標記已繳費；繳費狀態只由主委在繳費表手動核訖或貼上銀行通知核對。繳費表的應繳金額一律用 `getApportionmentFee()`（各社應繳金額），不再寫死 10000/20000。
 - 整包覆寫代表「最後寫入者獲勝」，沒有合併邏輯。
 - **切換大類／子活動不可以存檔**：`applyCurrentEventMode` 以 `toggleSponsorConfig(mode, true)` 呼叫，`fromNavigation=true` 時不 `saveToStorage()`（2026-11-13 修正；以前每點一次選單就整包寫回，舊資料的裝置會蓋掉別人的報名）。新增「只是換畫面」的程式路徑時不要順手存檔。

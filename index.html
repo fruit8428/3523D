@@ -1561,10 +1561,7 @@
                     <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl relative">
                         <div class="text-xs font-bold text-emerald-700 mb-1">STEP 4 (換屆銜接)</div>
                         <h4 class="font-bold text-sm text-emerald-900">新年度主委重置</h4>
-                        <p class="text-[11px] text-slate-600 mt-1">舊報名歸檔，當屆名單歸零，<b>完全保留執秘社友庫（含高爾夫差點）</b>。</p>
-                        <button onclick="triggerLifecycleStep(4)" class="mt-3 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded shadow">
-                            🔄 模擬新年度重置
-                        </button>
+                        <p class="text-[11px] text-slate-600 mt-1">換屆時由最高管理員到各活動的「歷屆備份與清空單一活動」逐一<b>先備份再清空</b>，執秘社友庫（含高爾夫差點）完整保留。</p>
                     </div>
                 </div>
             </div>
@@ -6932,15 +6929,9 @@
         function triggerLifecycleStep(step) {
             if (step === 2) {
                 alert('🔒 報名截止由活動主委在「活動設定與費用金額」設定截止日期與時間。\n\n沒有設定時，活動當天 00:00 自動截止。截止後社友的手機與各社執秘都不能再變更，只有活動主委與最高管理員可以修改。');
-            } else if (step === 4) {
-                const confirmed = confirm('⚠️ 確定執行【來年新屆次主委啟動】？\n此動作將歸零當年度活動報名名單，但會【完整保留各社執秘的社友名冊庫與高爾夫差點】！');
-                if (confirmed) {
-                    registrationOrders = {};
-                    saveToStorage();
-                    updateSubEventContext();
-                    alert('🎉 新年度報名開跑！歷史名單已歸檔，各社執秘社友名冊庫（含差點）妥善留存。');
-                }
             }
+            // step 4「模擬新年度重置」已於 2026-11-26 依使用者要求移除：它會不經備份把所有活動的報名名單一次清空。
+            // 不要再加回來；換屆清空一律走「歷屆備份與清空單一活動」（逐活動、先備份）。
         }
 
         // ================= CATEGORY & SUB-EVENT CREATION & DELETION (主委專屬權限：增刪功能) =================
