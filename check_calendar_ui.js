@@ -78,6 +78,12 @@ window.confirm=()=>true; const FN_URL='https://x.supabase.co/functions/v1/line-c
   ok('送出時帶上我選的參加方式（只用餐）', await p.evaluate(() => { const c = window.__calls.filter(c => c[0] === 'cal_rsvp_set').pop(); return c[1].join === true && c[1].parts && c[1].parts[binding.key] === '只用餐'; }));
   await p.evaluate(() => { __rs.locked = true; return calLoadReg('1'); }); await new Promise(r => setTimeout(r, 300)); s = await t();
   ok('貴社已繳費：顯示請洽執秘，沒有取消與更新按鈕', s.includes('您已報名') && s.includes('已經繳費') && !s.includes('取消報名') && !s.includes('更新報名'));
+  await p.evaluate(() => { const r = Object.assign({}, window.__calRegLast); r.self = Object.assign({}, r.self, { locked: false, closed: true, deadline: '2026-12-03T10:00:00.000Z' }); calRegRender('1', r); }); s = await t();
+  ok('報名已截止（已報名的人）：顯示已截止，沒有取消與更新按鈕', s.includes('您已報名') && s.includes('報名已經截止') && !s.includes('取消報名') && !s.includes('更新報名'));
+  await p.evaluate(() => { const r = Object.assign({}, window.__calRegLast); r.mine = null; r.people = []; calRegRender('1', r); }); s = await t();
+  ok('報名已截止（還沒報名的人）：沒有報名按鈕，顯示截止時間', s.includes('報名已經截止') && s.includes('12/3（四）18:00') && !s.includes('我要報名'));
+  await p.evaluate(() => { const r = Object.assign({}, window.__calRegLast); r.self = Object.assign({}, r.self, { closed: false }); calRegRender('1', r); }); s = await t();
+  ok('還沒截止：報名按鈕下方顯示截止時間', s.includes('我要報名') && s.includes('報名截止：12/3（四）18:00'));
   await p.evaluate(() => { __rs.locked = false; calRegRender('1', { ok: true, linked: true, title: 'PELS', open: true, mine: null, people: [], registeredCount: 0, interestedCount: 0, myGuests: [], self: { allowed: false, reason: 'pels' } }); }); s = await t();
   ok('PELS：不顯示報名按鈕，請洽執秘報名', s.includes('請洽貴社執秘報名') && !s.includes('我要報名'));
   await p.evaluate(() => calLoadReg('1')); await new Promise(r => setTimeout(r, 300));

@@ -26,6 +26,7 @@ const CAL_ERR = {
     CAL_REG_SECRETARY_ONLY: '這個活動要選出席方式並填寫旅平險資料，請洽貴社執秘報名。',
     CAL_REG_NOT_MEMBER: '在貴社的社友庫找不到您的名字（可能改過姓名或 Nick Name），請洽執秘。',
     CAL_REG_NOT_READY: '手機報名尚未啟用，請洽執秘報名。',
+    CAL_REG_CLOSED: '報名已經截止，如要加報、變更或取消，請洽執秘。',
     CAL_REG_BUSY: '同一時間有其他人也在報名，請再按一次。',
     CAL_TABLE_MISSING: '行事曆尚未啟用（雲端資料表未建立），請洽地區辦公室。'
 };
@@ -383,7 +384,11 @@ function calRegRender(id, r) {
     const reg = (r.people || []).filter(p => p.status === 'registered'), want = (r.people || []).filter(p => p.status === 'interested');
     const joinedList = pels ? reg : reg.concat(want);      // 畫面上不再分「已報名／表示參加」，一律是已報名（PELS 的舊紀錄除外）
     const chip = (p, cls) => `<span class="inline-block rounded-full px-3 py-1 text-base font-bold ${cls} ${p.key === binding.key ? 'ring-2 ring-offset-1 ring-blue-600' : ''}">${E(p.name)}${p.nickname ? `<span class="ml-1 text-sm font-normal opacity-80">${E(p.nickname)}</span>` : ''}${p.key === binding.key ? ' （我）' : ''}${p.guestOf ? `<span class="ml-1 text-xs font-bold opacity-80">（${E(p.role && /眷/.test(p.role) ? '寶尊眷' : (p.role || '眷屬'))}）</span>` : ''}${p.proxy ? '<span class="ml-1 text-xs font-normal opacity-80">（執秘代登記）</span>' : ''}${sf && sf.sports && sf.parts && sf.parts[p.key] === '只用餐' ? '<span class="ml-1 text-xs font-normal opacity-80">（只用餐）</span>' : ''}</span>`;
-    const locked = !!(sf && sf.locked);       // 該社已繳費而且這個活動收人頭費：手機不能再增減
+    const closed = !!(sf && sf.closed);       // 報名已截止（主委設定的截止時間；沒設定時是活動當天 00:00）
+    const locked = !!(sf && (sf.locked || sf.closed));       // 已截止，或該社已繳費而且這個活動收人頭費：手機不能再增減
+    const dl = sf && sf.deadline ? Date.parse(sf.deadline) : NaN;
+    const dlText = Number.isFinite(dl) ? (() => { const t = new Date(dl + 8 * 3600000); return `${t.getUTCMonth() + 1}/${t.getUTCDate()}（${'日一二三四五六'[t.getUTCDay()]}）${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}`; })() : '';
+    const dlNote = dlText && !closed ? `<div class="mt-1 text-sm font-bold text-amber-800 text-center">⏰ 報名截止：${dlText}</div>` : '';
     const money = n => '$' + Number(n || 0).toLocaleString();
     // 運動賽事：每個人選「參賽／只用餐」（金額不同）。本人預設參賽，寶尊眷預設只用餐；已在報名表的以報名表為準
     const partOf = (key, def) => (calPartSel && calPartSel[key]) || (sf && sf.parts && sf.parts[key]) || def;
@@ -408,10 +413,10 @@ function calRegRender(id, r) {
     if (!r.open) action = '<div class="mt-3 text-center text-slate-500 font-bold">行程已取消，無法報名</div>';
     else if (pels) action = (r.mine === 'registered' ? done : '') + '<div class="mt-3 text-center text-base text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-3">這個活動要選出席方式並填寫旅平險資料，<b>請洽貴社執秘報名</b>。</div>';
     else if (r.mine) action = done
-        + (locked ? '<div class="mt-2 text-sm text-slate-600 text-center">貴社這個活動已經繳費，如要變更或取消請洽執秘。</div>'
-            : `${myPart}${guestBox}${govBox}${canUpdate ? '<button type="button" onclick="calRsvp(true)" class="mt-2 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black rounded-xl py-3">更新報名</button>' : ''}<button type="button" onclick="calRsvp(false)" class="mt-2 w-full bg-white border border-slate-300 text-slate-700 font-bold rounded-xl py-3">取消報名</button>${sf ? feeNote : ''}`);
-    else if (locked) action = '<div class="mt-3 text-center text-base text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-3">貴社這個活動已經繳費，要加報請洽執秘。</div>';
-    else action = `${myPart}${guestBox}${govBox}<button type="button" onclick="calRsvp(true)" class="mt-3 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black text-xl rounded-xl py-4 shadow">🙋 我要報名</button>${feeNote}<div class="mt-1 text-xs text-slate-500 text-center">${sf ? '按下後就完成報名，貴社執秘的報名表會同步更新。' : '按下後，社內社友都看得到您要參加。'}</div>`;
+        + (locked ? `<div class="mt-2 text-sm text-slate-600 text-center">${closed ? '🔒 報名已經截止，如要變更或取消請洽執秘（由活動主委處理）。' : '貴社這個活動已經繳費，如要變更或取消請洽執秘。'}</div>`
+            : `${myPart}${guestBox}${govBox}${canUpdate ? '<button type="button" onclick="calRsvp(true)" class="mt-2 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black rounded-xl py-3">更新報名</button>' : ''}<button type="button" onclick="calRsvp(false)" class="mt-2 w-full bg-white border border-slate-300 text-slate-700 font-bold rounded-xl py-3">取消報名</button>${sf ? feeNote + dlNote : ''}`);
+    else if (locked) action = `<div class="mt-3 text-center text-base text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-3">${closed ? '🔒 報名已經截止' + (dlText ? `（${dlText}）` : '') + '，要加報請洽執秘。' : '貴社這個活動已經繳費，要加報請洽執秘。'}</div>`;
+    else action = `${myPart}${guestBox}${govBox}<button type="button" onclick="calRsvp(true)" class="mt-3 w-full bg-emerald-600 active:bg-emerald-700 text-white font-black text-xl rounded-xl py-4 shadow">🙋 我要報名</button>${feeNote}${dlNote}<div class="mt-1 text-xs text-slate-500 text-center">${sf ? '按下後就完成報名，貴社執秘的報名表會同步更新。' : '按下後，社內社友都看得到您要參加。'}</div>`;
     box.innerHTML = `<div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
         <div class="font-black text-lg">📋 ${E(binding.club)} 報名狀況</div>
         <div class="text-sm text-slate-600 mt-0.5">${calCurrent.registrationKey ? `活動：${E(r.title)}　` : ''}已報名 <b>${joinedList.length}</b> 人${calCurrent.registrationKey ? '' : '（含寶尊眷）'}</div>

@@ -17,7 +17,7 @@
     <!-- 地區設定：由 scripts/build-config.js 從 config/districts/<代號>.json 產生，所有地區專屬內容都從這裡來 -->
     <script src="./district-config.js"></script>
     <!-- 報到系統共用邏輯（應到名單與統計的算法，與櫃台報到頁 checkin.html 共用） -->
-    <script src="./checkin-core.js?v=20261124"></script>
+    <script src="./checkin-core.js?v=20261126"></script>
     <script src="./calendar-desk.js?v=20261124"></script>
     <script src="./club-dues.js?v=20261120"></script>
     <script src="./global-grants.js?v=20261121"></script>
@@ -962,9 +962,6 @@
                         <h3 class="text-base sm:text-lg font-bold text-slate-900">當屆主委後台控制與跨系統資料彙整</h3>
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
-                        <button onclick="simulateEventDayLock()" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow transition active:scale-95">
-                            🔒 模擬「活動當日 00:00」封存
-                        </button>
                         <button onclick="exportReportCSV()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg shadow transition flex items-center gap-1 active:scale-95">
                             📥 匯出各系統相容 Excel (CSV)
                         </button>
@@ -1014,8 +1011,19 @@
                         <label class="block text-xs font-semibold text-slate-600 mb-1">結束時間（選填）：</label>
                         <input type="time" id="cfgEventEnd" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium">
                     </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">⏰ 報名截止日期：</label>
+                        <input type="date" id="cfgRegDeadlineDate" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">截止時間（選填，沒填＝當天 23:59）：</label>
+                        <input type="time" id="cfgRegDeadlineTime" class="w-full bg-slate-50 border border-slate-300 rounded-md p-1.5 text-xs font-medium">
+                    </div>
+                    <div class="sm:col-span-2 flex items-end">
+                        <p id="cfgRegDeadlineHint" class="text-[11px] text-slate-500 leading-relaxed">截止後，社友的手機與各社執秘都不能再報名、變更或取消，只有活動主委與最高管理員可以修改。沒填截止日期時，活動當天 00:00 自動截止。</p>
+                    </div>
                     <div class="flex items-end">
-                        <p id="cfgEventDateHint" class="text-[11px] text-slate-500 leading-relaxed">填了活動日期，按「儲存主委設定」後，會自動出現在 LINE 行事曆，社友可在那裡按「我要參加」。沒填開始時間＝全天。</p>
+                        <p id="cfgEventDateHint" class="text-[11px] text-slate-500 leading-relaxed">填了活動日期，按「儲存主委設定」後，會自動出現在 LINE 行事曆，社友可在那裡按「我要報名」。沒填開始時間＝全天。</p>
                     </div>
                 </div>
 
@@ -2743,6 +2751,7 @@
                     }
                     if (!chairConfig.eventDMs || typeof chairConfig.eventDMs !== 'object') chairConfig.eventDMs = {};
                     if (!chairConfig.eventDates || typeof chairConfig.eventDates !== 'object') chairConfig.eventDates = {};
+                    if (!chairConfig.regDeadlines || typeof chairConfig.regDeadlines !== 'object') chairConfig.regDeadlines = {};
                     chairConfig.bankAccount = Object.assign({ bankName: '上海商業儲蓄銀行', bankCode: '011', branch: '', accountName: '', accountNo: '' }, chairConfig.bankAccount || {});
                     if (parsed.appAuthData) {
                         appAuthData = parsed.appAuthData;
@@ -2999,6 +3008,7 @@
         }
 
         function updateRolePermissionsUI() {
+            try { refreshRegLock(); } catch (e) { /* 報名截止狀態：畫面還沒準備好就略過 */ }
             if (typeof renderEventDMList === 'function') renderEventDMList(); // 活動 DM 清單依子活動與角色重新渲染
             if (typeof renderRemitInfoBox === 'function') renderRemitInfoBox(); // 執秘端匯款資訊
             if (typeof renderChairBankMailSection === 'function') renderChairBankMailSection(); // 主委端帳號／信箱／入帳紀錄
@@ -3596,7 +3606,7 @@
 
         function toggleMemberSelection(memberId) {
             if (isEventLockedToday) {
-                alert('⚠️ 本活動今日已封存（唯讀狀態），無法增刪人員！');
+                alert('🔒 報名已經截止，無法增刪人員。如需變更請洽活動主委。');
                 renderMemberMasterTable();
                 return;
             }
@@ -3845,6 +3855,8 @@
             };
             const evDate = (chairConfig.eventDates || {})[currentSubEventFeeKey()] || {};
             setInput('cfgEventDate', evDate.date || ''); setInput('cfgEventStart', evDate.start || ''); setInput('cfgEventEnd', evDate.end || '');
+            const regDl = String((chairConfig.regDeadlines || {})[currentSubEventFeeKey()] || '');   // 'YYYY-MM-DDTHH:mm'（台灣時間）
+            setInput('cfgRegDeadlineDate', regDl.slice(0, 10)); setInput('cfgRegDeadlineTime', regDl.slice(11, 16) === '23:59' ? '' : regDl.slice(11, 16));
             const evRow = document.getElementById('cfgEventDateRow');   // 分攤金／配合款不是「活動」，不需要活動日期
             if (evRow) { const c = categoriesData.find(x => x.id === currentCatId); const sub = (c && c.subEvents && c.subEvents[currentSubEventIndex]) || ''; evRow.classList.toggle('hidden', !!(c && CheckinCore.isApportionEvent(c.name, sub))); }
             setInput('cfgFeeFlower', getFlowerFee());
@@ -4159,7 +4171,7 @@
             return document.body.getAttribute('data-mode') === 'sports';
         }
         function addPrizeSponsor() {
-            if (isEventLockedToday) { alert('⚠️ 本活動今日已封存唯讀，無法新增贊助獎！'); return; }
+            if (isEventLockedToday) { alert('🔒 報名已經截止，無法新增贊助獎。如需變更請洽活動主委。'); return; }
             currentFormPrizeSponsors.push({ memberId: '', role: '', nickname: '', name: '', type: 'cash', amount: '', giftName: '', meal: true });
             renderPrizeSponsorList();
             renderSelectedMembersTable();
@@ -4377,13 +4389,15 @@
 
         async function submitRegistrationInner() {
             if (isEventLockedToday) {
-                alert('⚠️ 本活動今日已封存唯讀，無法送出變更！');
+                alert('🔒 報名已經截止，無法送出變更。如需變更請洽活動主委。');
                 return;
             }
 
             // 整包資料是「最後寫入者獲勝」：送出前先抓一次雲端最新資料，
             // 才不會把其他社在這段時間剛送出的報名表蓋掉（表單勾選內容是另外存的，不受影響）
             await pullRemoteState(true);
+            refreshRegLock();      // 主委可能剛改了截止時間，或剛好過了截止時間
+            if (isEventLockedToday) { alert('🔒 報名已經截止，無法送出變更。\n\n如需加報、變更或取消，請洽活動主委。'); return; }
 
             const cat = categoriesData.find(c => c.id === currentCatId);
             const subEventName = cat && cat.subEvents ? cat.subEvents[currentSubEventIndex] : null;
@@ -4484,7 +4498,7 @@
         // → 預覽（找到／找不到／略過）→ applyLineRelay() 把找到的社友勾進報名表。不會自動送出，執秘確認後自己按送出。
         let lineRelayParsed = null;
         function openLineRelayModal() {
-            if (isEventLockedToday) { alert('⚠️ 本活動今日已封存（唯讀狀態），無法增刪人員！'); return; }
+            if (isEventLockedToday) { alert('🔒 報名已經截止，無法增刪人員。如需變更請洽活動主委。'); return; }
             document.getElementById('lineRelayClubName').innerText = selectedClubName;
             document.getElementById('lineRelayResult').innerHTML = '';
             lineRelayParsed = null;
@@ -4624,7 +4638,7 @@
         }
         function applyLineRelay() {
             if (!lineRelayParsed || lineRelayParsed.matched.length === 0) return;
-            if (isEventLockedToday) { alert('⚠️ 本活動今日已封存（唯讀狀態），無法增刪人員！'); return; }
+            if (isEventLockedToday) { alert('🔒 報名已經截止，無法增刪人員。如需變更請洽活動主委。'); return; }
             const replace = !!(document.getElementById('lineRelayReplace') || {}).checked;
             if (replace) currentFormSelectedMembers = [];
             const sports = isCurrentEventSports();
@@ -5046,7 +5060,10 @@
             target = members.find(m => m.id === memberId) || target;
 
             const hits = findSubmittedRegistrationsOf(selectedClubName, target);
-            const removable = hits.filter(h => !h.isPels);
+            // 報名已截止的活動：執秘不能再動報名表（主委／最高管理員可以）
+            const canOverrideDeadline = currentRole === 'chair' || currentRole === 'super_admin';
+            const closedHits = canOverrideDeadline ? [] : hits.filter(h => !h.isPels && CheckinCore.regClosed(chairConfig, `${h.cat.id}::${h.sub}`));
+            const removable = hits.filter(h => !h.isPels && !closedHits.includes(h));
             const pelsHits = hits.filter(h => h.isPels);
             let alsoRemove = false;
             if (removable.length) {
@@ -5087,6 +5104,7 @@
             const notes = [];
             if (paidEvents.length) notes.push(`以下活動貴社已繳費，移除後應繳金額變少，差額請與主委確認：\n${paidEvents.map(x => '・' + x).join('\n')}`);
             if (removable.length && !alsoRemove) notes.push('已送出的報名表沒有更動，他仍會出現在這些活動的報名與報到名單上。之後要移除，請到該活動的報名表把他取消後重新送出。');
+            if (closedHits.length) notes.push(`以下活動報名已截止，他在報名表上的紀錄沒有移除，如需移除請洽活動主委：\n${closedHits.map(h => '・' + h.sub).join('\n')}`);
             if (pelsHits.length) notes.push(`他在「${pelsHits.map(h => h.sub).join('、')}」的報名沒有自動移除（這個活動牽涉出席方式與旅平險資料）。如需取消，請到該活動的報名表修改後重新送出。`);
             if (notes.length) alert(notes.join('\n\n'));
             // 一併從報名表移除時：他在 LINE 按過「我要參加」的活動，逐一詢問要不要也取消
@@ -5219,9 +5237,15 @@
             const evNew = { date: (document.getElementById('cfgEventDate') || {}).value || '', start: (document.getElementById('cfgEventStart') || {}).value || '', end: (document.getElementById('cfgEventEnd') || {}).value || '' };
             const evHadDate = !!(chairConfig.eventDates[evKey] && chairConfig.eventDates[evKey].date);
             if (evNew.date) chairConfig.eventDates[evKey] = evNew; else delete chairConfig.eventDates[evKey];
+            // 報名截止（獨立存放，沒填活動日期也可以設定）；沒填時間＝當天 23:59
+            if (!chairConfig.regDeadlines || typeof chairConfig.regDeadlines !== 'object') chairConfig.regDeadlines = {};
+            const dlDate = (document.getElementById('cfgRegDeadlineDate') || {}).value || '', dlTime = (document.getElementById('cfgRegDeadlineTime') || {}).value || '';
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dlDate)) chairConfig.regDeadlines[evKey] = `${dlDate}T${/^\d{2}:\d{2}$/.test(dlTime) ? dlTime : '23:59'}`;
+            else delete chairConfig.regDeadlines[evKey];
 
             // 更新執秘端贊助門檻卡片上的金額
             refreshSubEventFeeInputs();
+            refreshRegLock();      // 截止時間剛改：狀態標籤與上鎖立刻跟著變
 
             // 費用有變時，把這個活動「已送出」的報名表金額一併重算，各社不必重新送出
             const recalc = recalcSubmittedOrdersForCurrentEvent();
@@ -5235,19 +5259,36 @@
             updateChairDashboard();
         }
 
-        function simulateEventDayLock() {
-            isEventLockedToday = !isEventLockedToday;
-            document.getElementById('eventStatusBadge').innerHTML = isEventLockedToday ? '🔒 今日已自動封存唯讀' : '🟢 開放報名中';
-            document.getElementById('regStatusLabel').innerText = isEventLockedToday ? '🔒 已封存唯讀' : '編輯中';
-            document.getElementById('regStatusLabel').className = isEventLockedToday ? 'font-bold text-amber-600' : 'font-bold text-emerald-600';
-            document.getElementById('submitRegBtn').disabled = isEventLockedToday;
-            document.getElementById('submitRegBtn').classList.toggle('opacity-50', isEventLockedToday);
-
-            alert(isEventLockedToday 
-                ? '⚡ 系統已模擬觸發【活動當日 00:00】自動封存機制！\n全體報名名冊與差點轉為唯讀快照，歷史資料受到固化保護。'
-                : '🔓 已解鎖狀態，回到正常編輯模式。');
-            if (currentRole === 'chair') updateChairDashboard();
+        // ===== 報名截止（2026-11-26，取代原本只在單一台電腦上生效的「模擬封存」按鈕） =====
+        // 規則在 checkin-core.js 的 regDeadlineOf：主委設定的截止時間（chairConfig.regDeadlines[key]）；沒設定但有活動日期＝活動當天 00:00。
+        // 截止後各社執秘不能再增刪人員或送出報名表（isEventLockedToday＝true，沿用原本各處的檢查）；
+        // 活動主委與最高管理員仍可修改。社友的手機由雲端小程式用同一套規則擋下。
+        function currentRegDeadline() {
+            let key = '';
+            try { key = getActivePaymentKey(); } catch (e) { key = ''; }
+            const d = key ? CheckinCore.regDeadlineOf(chairConfig, key) : { at: null, source: '' };
+            return { at: d.at, source: d.source, closed: d.at !== null && Date.now() >= d.at, text: CheckinCore.regDeadlineText(d.at) };
         }
+        function refreshRegLock() {
+            const d = currentRegDeadline();
+            const canOverride = currentRole === 'chair' || currentRole === 'super_admin';
+            const was = isEventLockedToday;
+            isEventLockedToday = d.closed && !canOverride;
+            const badge = document.getElementById('eventStatusBadge');
+            if (badge) {
+                badge.innerHTML = d.closed ? `🔒 報名已截止${d.text ? `<span class="block text-[10px] font-normal text-slate-500">${d.text}</span>` : ''}` : `🟢 開放報名中${d.text ? `<span class="block text-[10px] font-normal text-slate-500">截止 ${d.text}</span>` : ''}`;
+                badge.className = 'inline-flex flex-col items-center text-xs font-bold mt-0.5 ' + (d.closed ? 'text-amber-600' : 'text-emerald-600');
+            }
+            const label = document.getElementById('regStatusLabel');
+            if (label) {
+                label.innerText = isEventLockedToday ? '🔒 報名已截止（請洽活動主委）' : d.closed ? '已截止（主委／管理員仍可修改）' : d.text ? `編輯中（截止 ${d.text}）` : '編輯中';
+                label.className = d.closed ? 'font-bold text-amber-600' : 'font-bold text-emerald-600';
+            }
+            const btn = document.getElementById('submitRegBtn');
+            if (btn && !registrationSubmitting) { btn.disabled = isEventLockedToday; btn.classList.toggle('opacity-50', isEventLockedToday); }
+            if (was !== isEventLockedToday && loggedInUser) { try { renderMemberMasterTable(); renderSelectedMembersTable(); } catch (e) { /* 畫面還沒準備好 */ } }
+        }
+        setInterval(() => { try { if (loggedInUser && !document.hidden) refreshRegLock(); } catch (e) { /* 尚未載入完成 */ } }, 30000);   // 時間到了自動鎖上，不必重新整理
 
         function updateChairDashboard() {
             let cat = categoriesData.find(c => c.id === currentCatId);
@@ -5324,7 +5365,7 @@
                 if (thActionEl) thActionEl.innerText = '出席明細與差點';
             } else {
                 document.getElementById('kpiFourthCardTitle').innerText = '系統封存狀態';
-                document.getElementById('kpiGolfSummary').innerText = isEventLockedToday ? '🔒 已封存唯讀' : '🟢 進行中 (可編修)';
+                document.getElementById('kpiGolfSummary').innerText = currentRegDeadline().closed ? '🔒 報名已截止' : '🟢 進行中 (可編修)';
                 document.getElementById('kpiGolfSub').innerText = '當天 00:00 觸發唯讀';
                 if (titleEl) titleEl.innerText = '📋 各社已提交報名明細與名冊清單';
                 if (subEl) subEl.innerText = '點擊「🔍 名單明細」即可查看該社出席社友名冊';
@@ -6890,7 +6931,7 @@
 
         function triggerLifecycleStep(step) {
             if (step === 2) {
-                simulateEventDayLock();
+                alert('🔒 報名截止由活動主委在「活動設定與費用金額」設定截止日期與時間。\n\n沒有設定時，活動當天 00:00 自動截止。截止後社友的手機與各社執秘都不能再變更，只有活動主委與最高管理員可以修改。');
             } else if (step === 4) {
                 const confirmed = confirm('⚠️ 確定執行【來年新屆次主委啟動】？\n此動作將歸零當年度活動報名名單，但會【完整保留各社執秘的社友名冊庫與高爾夫差點】！');
                 if (confirmed) {

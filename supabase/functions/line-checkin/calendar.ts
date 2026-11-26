@@ -353,7 +353,7 @@ export async function attendanceReport(admin: Any, club: string, periodsIn: Any,
 function isSelfReg(roster: { ok: boolean; isPels?: boolean }, reg: RegDeps | undefined): boolean {
   return !!(roster && roster.ok && !roster.isPels && reg && reg.self);
 }
-const SELF_ERR: Record<string, string> = { REG_PAID_LOCKED: "CAL_RSVP_PAID_LOCKED", REG_SECRETARY_ONLY: "CAL_REG_SECRETARY_ONLY", REG_SELF_NOT_READY: "CAL_REG_NOT_READY", REG_BUSY: "CAL_REG_BUSY" };
+const SELF_ERR: Record<string, string> = { REG_PAID_LOCKED: "CAL_RSVP_PAID_LOCKED", REG_SECRETARY_ONLY: "CAL_REG_SECRETARY_ONLY", REG_SELF_NOT_READY: "CAL_REG_NOT_READY", REG_BUSY: "CAL_REG_BUSY", REG_CLOSED: "CAL_REG_CLOSED" };
 const selfFail = (code: string): never => fail(SELF_ERR[code] || "CAL_REG_UNAVAILABLE");
 const partOf = (v: Any) => v === "只用餐" ? "只用餐" : v === "參賽" ? "參賽" : undefined;
 
@@ -391,7 +391,8 @@ async function rsvpStatus(admin: Any, ev: Any, me: CalMe, reg: RegDeps | undefin
     const parts: Record<string, string> = {};
     for (const it of items) parts[personKey(it)] = it.participation === "只用餐" ? "只用餐" : "參賽";
     // sports＝要選「參賽／只用餐」；locked＝該社已繳費且這個活動收人頭費，手機不能再增減（請洽執秘）
-    out.self = { allowed: true, sports: !!info.sports, perHead: !!info.perHead, fees: info.sports ? { compete: info.fees.compete, mealOnly: info.fees.mealOnly } : info.anniv ? { meal: info.fees.meal } : null, locked: !!(info.perHead && info.paid), parts };
+    out.self = { allowed: true, sports: !!info.sports, perHead: !!info.perHead, fees: info.sports ? { compete: info.fees.compete, mealOnly: info.fees.mealOnly } : info.anniv ? { meal: info.fees.meal } : null, locked: !!(info.perHead && info.paid), parts,
+      closed: !!info.closed, deadline: info.deadlineAt === null || info.deadlineAt === undefined ? null : new Date(info.deadlineAt).toISOString(), deadlineSource: info.deadlineSource || "" };      // closed＝報名已截止（主委設定的截止時間；沒設定時是活動當天 00:00）
   } else if (roster.ok) out.self = { allowed: false, reason: roster.isPels ? "pels" : "" };      // PELS：要選出席方式並填旅平險個資，只能由執秘報名
   // listed＝已經在名單上、但不是我帶的（例如執秘代為登記）：前端顯示「已登記」，不能再勾
   const listedKeys = new Set<string>((data || []).filter((r: Any) => r.guest_of !== me.key).map((r: Any) => r.person_key));

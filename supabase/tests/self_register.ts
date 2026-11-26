@@ -168,4 +168,28 @@ ok("在總監行事曆取消：總監移出報名表", (await handleMember("cal_
 await handleMember("cal_rsvp_set", { id: "g1", join: true, parts: {}, withGov: true }, db, A, reg);
 await handleMember("cal_rsvp_set", { id: "g1", join: false }, db, A, reg);
 ok("秘書取消自己的報名：代總監報的一併取消", orderOf("高球賽", "甲社") === null);
+// ---------- 三、報名截止 ----------
+const NOW = Date.parse("2026-11-26T12:00:00+08:00");
+const cfg: any = { regDeadlines: { "a::1": "2026-11-26T11:59", "a::2": "2026-11-26T12:01", "a::bad": "明天" }, eventDates: { "a::3": { date: "2026-11-26" }, "a::4": { date: "2026-11-27" }, "a::2": { date: "2026-11-20" } } };
+ok("截止時間已過：已截止", Core.regClosed(cfg, "a::1", NOW) === true);
+ok("截止時間未到：未截止（即使活動日期比較早，也以主委設定的截止時間為準）", Core.regClosed(cfg, "a::2", NOW) === false && Core.regDeadlineOf(cfg, "a::2").source === "set");
+ok("沒設截止、有活動日期：活動當天 00:00 截止", Core.regClosed(cfg, "a::3", NOW) === true && Core.regDeadlineOf(cfg, "a::3").source === "eventDay");
+ok("沒設截止、活動在明天：還沒截止", Core.regClosed(cfg, "a::4", NOW) === false);
+ok("兩個都沒設、或格式不對：不截止", Core.regClosed(cfg, "a::none", NOW) === false && Core.regClosed(cfg, "a::bad", NOW) === false && Core.regDeadlineOf({}, "x").at === null);
+ok("截止時間文字（台灣時間）", Core.regDeadlineText(Date.parse("2026-12-03T18:00:00+08:00")) === "12/3（四）18:00" && Core.regDeadlineText(null) === "");
+state.registrationOrders = {}; T.calendar_roles.length = 0;
+await handleMember("cal_rsvp_set", { id: "g1", join: true, parts: { "王|Tom": "參賽" } }, db, A, reg);
+state.chairConfig.regDeadlines = { "sports::高球賽": "2020-01-01T23:59" };
+st = await handleMember("cal_rsvp_status", { id: "g1" }, db, A, reg);
+ok("狀態：標示已截止並帶出截止時間", st.self.closed === true && st.self.deadline === "2020-01-01T15:59:00.000Z" && st.self.deadlineSource === "set" && st.mine === "registered");
+ok("已截止：手機不能取消", await code(handleMember("cal_rsvp_set", { id: "g1", join: false }, db, A, reg)) === "CAL_REG_CLOSED" && names("高球賽", "甲社") === "王");
+ok("已截止：手機不能報名", await code(handleMember("cal_rsvp_set", { id: "g1", join: true, parts: {} }, db, C, reg)) === "CAL_REG_CLOSED");
+ok("已截止：不能改參加方式", await code(handleMember("cal_rsvp_set", { id: "g1", join: true, parts: { "王|Tom": "只用餐" } }, db, A, reg)) === "CAL_REG_CLOSED" && orderOf("高球賽", "甲社").items[0].participation === "參賽");
+state.chairConfig.regDeadlines = { "sports::高球賽": "2099-01-01T23:59" };
+st = await handleMember("cal_rsvp_status", { id: "g1" }, db, A, reg);
+ok("截止時間還沒到：可以取消，狀態帶出截止時間", st.self.closed === false && !!st.self.deadline && (await handleMember("cal_rsvp_set", { id: "g1", join: false }, db, A, reg)).mine === null);
+delete state.chairConfig.regDeadlines;
+state.chairConfig.eventDates = { "sports::高球賽": { date: "2020-01-01" } };
+ok("沒設截止、活動日期已過：手機不能報名", await code(handleMember("cal_rsvp_set", { id: "g1", join: true, parts: {} }, db, A, reg)) === "CAL_REG_CLOSED");
+delete state.chairConfig.eventDates;
 console.log("寫入次數", writes);

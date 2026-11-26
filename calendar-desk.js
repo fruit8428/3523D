@@ -339,7 +339,7 @@ function renderCalRsvpBox() {
 function cdRsvpAdd(key) { cdRsvpAddMany([key]); }
 function cdRsvpAddAll() { cdRsvpAddMany(cdRsvpPending().map(p => p.key)); }
 function cdRsvpAddMany(keys) {
-    if (typeof isEventLockedToday !== 'undefined' && isEventLockedToday) { alert('⚠️ 本活動今日已封存（唯讀狀態），無法增刪人員！'); return; }
+    if (typeof isEventLockedToday !== 'undefined' && isEventLockedToday) { alert('🔒 報名已經截止，無法增刪人員。如需變更請洽活動主委。'); return; }
     const members = (clubMemberDatabase[selectedClubName] || []);
     let added = 0; const missing = [];
     keys.forEach(k => {

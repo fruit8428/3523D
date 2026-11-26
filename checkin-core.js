@@ -343,7 +343,30 @@
         const n = (cat && cat.name) || '', sub = String(subName || '');
         return !!cat && (cat.id === 'sports' || hasWord(n, ['運動', '賽事', '體育', '球賽']) || hasWord(sub, ['球', '賽', '運動']));
     }
-    function selfRegInfo(state, payments, eventKey, club) {
+    // ---------- 報名截止（2026-11-26） ----------
+    // 主委在「活動設定」填的截止時間存在 chairConfig.regDeadlines['大類id::子活動名稱']＝'YYYY-MM-DDTHH:mm'（台灣時間）。
+    // 沒填截止時間、但有填活動日期＝活動當天 00:00 自動截止（保底）；兩個都沒填＝不截止。
+    // 截止後：社友的手機、執秘都不能再報名／變更／取消；活動主委與最高管理員仍可修改（由畫面與雲端各自判斷身分）。
+    function regDeadlineOf(chairConfig, eventKey) {
+        const cfg = chairConfig || {};
+        const d = (cfg.regDeadlines || {})[eventKey];
+        if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(d)) { const at = Date.parse(d + ':00+08:00'); if (Number.isFinite(at)) return { at, source: 'set' }; }
+        const ev = (cfg.eventDates || {})[eventKey];
+        if (ev && /^\d{4}-\d{2}-\d{2}$/.test(String(ev.date || ''))) { const at = Date.parse(ev.date + 'T00:00:00+08:00'); if (Number.isFinite(at)) return { at, source: 'eventDay' }; }
+        return { at: null, source: '' };
+    }
+    function regClosed(chairConfig, eventKey, nowMs) {
+        const d = regDeadlineOf(chairConfig, eventKey);
+        return d.at !== null && (nowMs === undefined ? Date.now() : nowMs) >= d.at;
+    }
+    function regDeadlineText(at) {      // 例：12/3（四）18:00（台灣時間）
+        if (at === null || at === undefined) return '';
+        const t = new Date(at + 8 * 3600 * 1000);
+        const p2 = n => String(n).padStart(2, '0');
+        return `${t.getUTCMonth() + 1}/${t.getUTCDate()}（${'日一二三四五六'[t.getUTCDay()]}）${p2(t.getUTCHours())}:${p2(t.getUTCMinutes())}`;
+    }
+
+    function selfRegInfo(state, payments, eventKey, club, nowMs) {
         const st = state || {};
         const { catId, subName } = parseEventKey(eventKey);
         const cat = (st.categoriesData || []).find(c => c.id === catId);
@@ -362,6 +385,9 @@
         };
         out.order = (((st.registrationOrders || {})[subName]) || []).find(o => o && o.clubName === club) || null;
         out.paid = isPaidStatus(((((payments || {})[eventKey]) || {})[club] || {}).status);
+        const dl = regDeadlineOf(st.chairConfig, eventKey);
+        out.deadlineAt = dl.at; out.deadlineSource = dl.source;
+        out.closed = dl.at !== null && (nowMs === undefined ? Date.now() : nowMs) >= dl.at;      // 報名已截止：手機不能再報名／變更／取消
         return out;
     }
     function selfRegItemFee(info, participation) {
@@ -371,10 +397,11 @@
      * change＝{ ensure:[{ key, participation, guestOf, by }], remove:[key] }（key＝姓名|Nick Name）
      *   ensure：不在報名表就加入（只收社友庫裡的人）；已經在，而且是運動賽事、參加方式不同，就改參加方式。
      * 回傳 { ok, code, before, after, added, removed, updated, delta }；after＝null 代表整張報名表移除（沒有人也沒有贊助）。
-     * code：REG_UNAVAILABLE／REG_SECRETARY_ONLY（PELS）／REG_PAID_LOCKED（該社已繳費，而這次變動會改變應繳金額）
+     * code：REG_UNAVAILABLE／REG_SECRETARY_ONLY（PELS）／REG_CLOSED（報名已截止）／REG_PAID_LOCKED（該社已繳費，而這次變動會改變應繳金額）
      */
     function selfRegApply(info, members, club, change, nowStr) {
         if (!info || !info.ok) return { ok: false, code: info && info.reason === 'pels' ? 'REG_SECRETARY_ONLY' : 'REG_UNAVAILABLE' };
+        if (info.closed) return { ok: false, code: 'REG_CLOSED' };
         const list = Array.isArray(members) ? members : [];
         const before = info.order ? JSON.parse(JSON.stringify(info.order)) : null;
         const order = info.order ? JSON.parse(JSON.stringify(info.order)) : {
@@ -475,6 +502,7 @@
 
     root.CheckinCore = {
         DUES_LIMITS, duesNormalize, duesCompute, duesMoney, duesPlainText,
+        regDeadlineOf, regClosed, regDeadlineText,
         subEventFeeOf, isSportsLikeEvent, selfRegInfo, selfRegItemFee, selfRegApply,
         isPaidStatus, isDistrictOfficeDivision, paymentDivisions, divisionPayRows, isPaymentTrackingCat, configuredClubFee, listStatEvents, eventStats,
         norm, personKey, makeEventKey, parseEventKey, isApportionEvent, isPelsEvent, PELS_SHORT,

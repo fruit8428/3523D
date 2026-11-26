@@ -251,6 +251,17 @@ bucket 不存在或 policy 未開時上傳會失敗，`describeEventDMError()` �
 - 已知限制：報名系統其他寫入路徑仍是整包覆寫，電腦端資料最多落後約 15 秒（收到廣播會立刻重讀），這段時間內別的裝置若存檔（例如主委改費用），理論上可能蓋掉剛在 LINE 報名的人——與既有的「最後寫入者獲勝」風險相同。`isEventLockedToday`（本機的唯讀開關）不影響手機報名。
 - 測試：`deno run --no-check --node-modules-dir=none -A supabase/tests/self_register.ts`（42 項：算法＋LINE 動作）、`node check_calendar_ui.js`（95 項）、`node check_rsvp_cancel.js`（需 8000 埠，14 項：舊紀錄同步、三方比對）。資料庫函式的 jsonb 運算式在 3521 用唯讀查詢驗過；**整條路（真的 LINE → 寫入 → 電腦同步）要使用者用手機實測**。
 
+### 報名截止（2026-11-26，取代「模擬封存」按鈕）
+
+原本主委後台的「🔒 模擬『活動當日 00:00』封存」只在按的那台電腦生效、不存檔、不會自動觸發，已**移除**（`simulateEventDayLock` 不要加回來）。現在是真正的截止：
+- **規則只有一份**：`checkin-core.js` 的 `regDeadlineOf(chairConfig, key)`／`regClosed()`／`regDeadlineText()`。主委在「活動設定與費用金額」填 ⏰ 報名截止日期＋時間（`#cfgRegDeadlineDate`／`#cfgRegDeadlineTime`，沒填時間＝當天 23:59）→ 存 `chairConfig.regDeadlines['大類id::子活動名稱']＝'YYYY-MM-DDTHH:mm'`（台灣時間；刻意不放 `eventDates`，因為沒填活動日期時 `eventDates` 那一筆會被刪掉）。**沒填截止日期但有活動日期＝活動當天 00:00 自動截止**（使用者同意的保底）；兩個都沒填＝不截止。分攤金／配合款沒有這個欄位（與活動日期同一列一起隱藏）。
+- **截止後誰不能改**（使用者決定）：社友的手機、各社執秘都不能報名／變更／取消；**活動主委與最高管理員仍可修改**。
+  - 報名系統：`refreshRegLock()`（由 `updateRolePermissionsUI()` 開頭、`saveChairSettings()`、送出前、每 30 秒呼叫）把 `isEventLockedToday` 設成「已截止且身分不是 chair／super_admin」，沿用原本各處的檢查（勾選社友、送出、贊助獎、貼接龍、`cdRsvpAddMany`），並更新 `#eventStatusBadge`、`#regStatusLabel`、送出按鈕。`deleteMember()` 對已截止的活動不幫執秘從報名表移除（提示洽主委）。
+  - 手機：`selfRegInfo` 多回 `closed`／`deadlineAt`／`deadlineSource`，`selfRegApply` 已截止回 `REG_CLOSED` → `CAL_REG_CLOSED`；`cal_rsvp_status` 的 `self` 多 `closed`、`deadline`（ISO）；`calendar.js` 截止前顯示「⏰ 報名截止：…」，截止後不顯示報名／取消按鈕。總監秘書幫總監報名同樣被擋。
+- **保護強度**：手機那一側由雲端把關。執秘那一側只是畫面上鎖——報名系統是瀏覽器直接用公開金鑰寫 `app_storage`（整個系統一直如此），懂技術的人繞得過；要真正擋住得把報名寫入全部搬到雲端，使用者尚未要求。
+- 沒有對應報名表的行程（社內例會等）沒有截止設定。
+- 測試：`self_register.ts`（54 項，含截止）、`node check_reg_deadline.js`（需 8000 埠，16 項）、`node check_calendar_ui.js`（98 項）。
+
 ### 貼上 LINE 接龍（2026-11-14）
 
 社友庫右上角「💬 貼上 LINE 接龍」→ `#lineRelayModal`。`parseLineRelay(text, members)` 是純函式：逐行去掉編號後用 `relayNorm`（全形轉半形、小寫、去空白）比對社友的中文姓名／Nick Name／去掉扶輪職稱的 Nick Name（`relayNickBase`），長字串優先、英文要完整單字；回傳 `{matched, unmatched, skipped, ambiguous, notes}`。`applyLineRelay()` 只把人加進 `currentFormSelectedMembers`（欄位要與 `toggleMemberSelection` 新增時一致），**不會自動送出**。PELS 仍需逐人填出席方式與旅平險資料。
